@@ -43,16 +43,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _bgCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 18))..repeat();
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000))..repeat(reverse: true);
-    _orbitCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 8))..repeat();
-    _connectedCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat(reverse: true);
+    _bgCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 18),
+    )..repeat();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat(reverse: true);
+    _orbitCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat();
+    _connectedCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
   }
 
   @override
   void dispose() {
-    _bgCtrl.dispose(); _pulseCtrl.dispose();
-    _orbitCtrl.dispose(); _connectedCtrl.dispose();
+    _bgCtrl.dispose();
+    _pulseCtrl.dispose();
+    _orbitCtrl.dispose();
+    _connectedCtrl.dispose();
     super.dispose();
   }
 
@@ -81,7 +95,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     center: const Alignment(0, 0.2),
                     radius: 1.2,
                     colors: [
-                      AppColors.aurora.withValues(alpha: 0.06 + 0.04 * _connectedCtrl.value),
+                      AppColors.aurora.withValues(
+                        alpha: 0.06 + 0.04 * _connectedCtrl.value,
+                      ),
                       Colors.transparent,
                     ],
                   ),
@@ -107,7 +123,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         if (!context.mounted) return;
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                              builder: (_) => const SubscriptionManagerScreen()),
+                            builder: (_) => const SubscriptionManagerScreen(),
+                          ),
                         );
                       },
                     ),
@@ -121,25 +138,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
                           // Статус
                           _StatusChip(state: vpn)
-                              .animate().fadeIn(duration: 600.ms).slideY(begin: -0.3),
+                              .animate()
+                              .fadeIn(duration: 600.ms)
+                              .slideY(begin: -0.3),
 
                           const SizedBox(height: 44),
 
                           // Главная кнопка
                           _OrbitalButton(
-                            state: vpn,
-                            pulseCtrl: _pulseCtrl,
-                            orbitCtrl: _orbitCtrl,
-                            connectedCtrl: _connectedCtrl,
-                            onTap: () => _handleTap(vpn, sub),
-                          ).animate().fadeIn(duration: 900.ms, delay: 100.ms)
+                                state: vpn,
+                                pulseCtrl: _pulseCtrl,
+                                orbitCtrl: _orbitCtrl,
+                                connectedCtrl: _connectedCtrl,
+                                onTap: () => _handleTap(vpn, sub),
+                              )
+                              .animate()
+                              .fadeIn(duration: 900.ms, delay: 100.ms)
                               .scale(begin: const Offset(0.85, 0.85)),
 
                           const SizedBox(height: 44),
 
                           // Селектор сервера
                           _ServerCard(sub: sub, vpn: vpn)
-                              .animate().fadeIn(duration: 600.ms, delay: 200.ms)
+                              .animate()
+                              .fadeIn(duration: 600.ms, delay: 200.ms)
                               .slideY(begin: 0.3),
 
                           const Spacer(flex: 1),
@@ -147,7 +169,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           // Трафик (только при подключении)
                           if (vpn is VpnConnected)
                             _TrafficPanel(state: vpn)
-                                .animate().fadeIn(duration: 500.ms).slideY(begin: 0.4),
+                                .animate()
+                                .fadeIn(duration: 500.ms)
+                                .slideY(begin: 0.4),
 
                           const SizedBox(height: 24),
                         ],
@@ -168,14 +192,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final vpn = ref.read(vpnControllerProvider.notifier);
     switch (state) {
       case VpnDisconnected() || VpnError():
-      // Приоритет: выбранный пользователем сервер → bestNode
+        // Приоритет: выбранный пользователем сервер → bestNode
         final picked = ref.read(nodeSelectionProvider);
-        final node   = picked ?? sub.bestNode;
+        final node = picked ?? sub.bestNode;
         if (node != null) {
           vpn.connect(node);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Нет доступных серверов')));
+            const SnackBar(content: Text('Нет доступных серверов')),
+          );
         }
       case VpnConnected() || VpnConnecting() || VpnDisconnecting():
         vpn.disconnect();
@@ -201,13 +226,19 @@ class _TopBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ShaderMask(
-                shaderCallback: (b) => AppColors.gradientPlasma
-                    .createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
-                child: const Text('ONYX', style: TextStyle(
-                  fontFamily: 'Syne', fontSize: 22,
-                  fontWeight: FontWeight.w800, letterSpacing: 6,
-                  color: Colors.white,
-                )),
+                shaderCallback: (b) => AppColors.gradientPlasma.createShader(
+                  Rect.fromLTWH(0, 0, b.width, b.height),
+                ),
+                child: const Text(
+                  'ONYX',
+                  style: TextStyle(
+                    fontFamily: 'Syne',
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 6,
+                    color: Colors.white,
+                  ),
+                ),
               ),
               GestureDetector(
                 onTap: () async {
@@ -219,7 +250,8 @@ class _TopBar extends StatelessWidget {
                 child: Text(
                   'by Orion_Z43',
                   style: TextStyle(
-                    fontFamily: 'DM Sans', fontSize: 10,
+                    fontFamily: 'DM Sans',
+                    fontSize: 10,
                     color: AppColors.nebula2,
                     decoration: TextDecoration.underline,
                     decorationColor: AppColors.nebula2.withValues(alpha: 0.4),
@@ -254,7 +286,8 @@ class _GlassIconBtn extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          width: 40, height: 40,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
             color: AppColors.glass,
             borderRadius: BorderRadius.circular(12),
@@ -276,10 +309,18 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, sub, color) = switch (state) {
-      VpnDisconnected()  => ('Не защищён',       'Трафик открыт',          AppColors.nova),
-      VpnConnecting()    => ('Подключение...',    'Устанавливаем туннель',  AppColors.ember),
-      VpnConnected()     => ('Защищён',           'Трафик зашифрован',      AppColors.aurora),
-      VpnDisconnecting() => ('Отключение...',     'Закрываем туннель',      AppColors.ember),
+      VpnDisconnected() => ('Не защищён', 'Трафик открыт', AppColors.nova),
+      VpnConnecting() => (
+        'Подключение...',
+        'Устанавливаем туннель',
+        AppColors.ember,
+      ),
+      VpnConnected() => ('Защищён', 'Трафик зашифрован', AppColors.aurora),
+      VpnDisconnecting() => (
+        'Отключение...',
+        'Закрываем туннель',
+        AppColors.ember,
+      ),
       VpnError(message: final msg) => ('Ошибка', msg, AppColors.nova),
     };
 
@@ -300,16 +341,26 @@ class _StatusChip extends StatelessWidget {
           children: [
             if (isLoading)
               SizedBox(
-                width: 10, height: 10,
-                child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: color,
+                ),
               )
             else
               Container(
-                width: 8, height: 8,
+                width: 8,
+                height: 8,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: color,
-                  boxShadow: [BoxShadow(color: color.withValues(alpha: 0.8), blurRadius: 6)],
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.8),
+                      blurRadius: 6,
+                    ),
+                  ],
                 ),
               ),
             const SizedBox(width: 10),
@@ -317,14 +368,23 @@ class _StatusChip extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(label, style: TextStyle(
-                  fontFamily: 'Syne', fontSize: 13,
-                  fontWeight: FontWeight.w700, color: color,
-                )),
-                Text(sub, style: TextStyle(
-                  fontFamily: 'DM Sans', fontSize: 10,
-                  color: color.withValues(alpha: 0.7),
-                )),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontFamily: 'Syne',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  sub,
+                  style: TextStyle(
+                    fontFamily: 'DM Sans',
+                    fontSize: 10,
+                    color: color.withValues(alpha: 0.7),
+                  ),
+                ),
               ],
             ),
           ],
@@ -350,11 +410,13 @@ class _OrbitalButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isConnected  = state is VpnConnected;
+    final isConnected = state is VpnConnected;
     final isConnecting = state is VpnConnecting || state is VpnDisconnecting;
 
-    final color = isConnected ? AppColors.aurora
-        : isConnecting ? AppColors.ember
+    final color = isConnected
+        ? AppColors.aurora
+        : isConnecting
+        ? AppColors.ember
         : AppColors.plasma;
 
     return AnimatedBuilder(
@@ -362,12 +424,13 @@ class _OrbitalButton extends StatelessWidget {
       builder: (_, __) {
         final pulse = pulseCtrl.value;
         final orbit = orbitCtrl.value;
-        final conn  = connectedCtrl.value;
+        final conn = connectedCtrl.value;
 
         return GestureDetector(
           onTap: onTap,
           child: SizedBox(
-            width: 220, height: 220,
+            width: 220,
+            height: 220,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -396,14 +459,16 @@ class _OrbitalButton extends StatelessWidget {
                     filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 600),
-                      width: 168, height: 168,
+                      width: 168,
+                      height: 168,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: isConnected
                             ? AppColors.gradientAurora
                             : isConnecting
                             ? const LinearGradient(
-                            colors: [AppColors.ember, Color(0xFFFF7B00)])
+                                colors: [AppColors.ember, Color(0xFFFF7B00)],
+                              )
                             : AppColors.gradientPlasma,
                         boxShadow: [
                           BoxShadow(
@@ -414,14 +479,17 @@ class _OrbitalButton extends StatelessWidget {
                         ],
                       ),
                       child: _ButtonContent(
-                          isConnected: isConnected, isConnecting: isConnecting),
+                        isConnected: isConnected,
+                        isConnecting: isConnecting,
+                      ),
                     ),
                   ),
                 ),
 
                 // Ободок стекла
                 Container(
-                  width: 168, height: 168,
+                  width: 168,
+                  height: 168,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
@@ -448,7 +516,7 @@ class _OrbitRingPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final r  = cx - 2;
+    final r = cx - 2;
 
     final paint = Paint()
       ..color = color.withValues(alpha: 0.25)
@@ -457,11 +525,12 @@ class _OrbitRingPainter extends CustomPainter {
     canvas.drawCircle(Offset(cx, cy), r, paint);
 
     final angle = progress * 2 * math.pi - math.pi / 2;
-    final dotX  = cx + r * math.cos(angle);
-    final dotY  = cy + r * math.sin(angle);
+    final dotX = cx + r * math.cos(angle);
+    final dotY = cy + r * math.sin(angle);
 
     canvas.drawCircle(
-      Offset(dotX, dotY), 4,
+      Offset(dotX, dotY),
+      4,
       Paint()
         ..color = color
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
@@ -482,8 +551,12 @@ class _ButtonContent extends StatelessWidget {
     if (isConnecting) {
       return const Center(
         child: SizedBox(
-          width: 44, height: 44,
-          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(
+            color: Colors.white,
+            strokeWidth: 2.5,
+          ),
         ),
       );
     }
@@ -493,15 +566,21 @@ class _ButtonContent extends StatelessWidget {
         // БАГ-ФИX: убрана иконка щита Icons.shield_rounded
         // Используем power-кнопку в обоих состояниях
         Icon(
-          isConnected ? Icons.power_settings_new_rounded : Icons.power_settings_new_rounded,
-          color: Colors.white, size: 46,
+          isConnected
+              ? Icons.power_settings_new_rounded
+              : Icons.power_settings_new_rounded,
+          color: Colors.white,
+          size: 46,
         ),
         const SizedBox(height: 10),
         Text(
           isConnected ? 'ОТКЛЮЧИТЬ' : 'ПОДКЛЮЧИТЬ',
           style: const TextStyle(
-            fontFamily: 'Syne', color: Colors.white,
-            fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2,
+            fontFamily: 'Syne',
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2,
           ),
         ),
       ],
@@ -520,22 +599,24 @@ class _ServerCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Приоритет: выбранный пользователем → bestNode
     final picked = ref.watch(nodeSelectionProvider);
-    final best   = picked ?? sub.bestNode;
+    final best = picked ?? sub.bestNode;
     final locked = vpn is VpnConnected;
-    final alive  = sub.aliveNodes.length;
-    final total  = sub.nodes.length;
+    final alive = sub.aliveNodes.length;
+    final total = sub.nodes.length;
     final isDeepProbing = sub.status == SubStatus.deepProbing;
 
     return GestureDetector(
-      onTap: locked ? null : () {
-        if (!context.mounted) return;
-        showModalBottomSheet(
-          context: context,
-          backgroundColor: Colors.transparent,
-          isScrollControlled: true,
-          builder: (_) => const NodeListSheet(),
-        );
-      },
+      onTap: locked
+          ? null
+          : () {
+              if (!context.mounted) return;
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.transparent,
+                isScrollControlled: true,
+                builder: (_) => const NodeListSheet(),
+              );
+            },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: GlassCard(
@@ -546,68 +627,83 @@ class _ServerCard extends ConsumerWidget {
               : best != null
               ? AppColors.plasma.withValues(alpha: 0.15)
               : null,
-          child: Row(children: [
-            // Индикатор
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 400),
-              width: 10, height: 10,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: best?.isTrulyWorking == true
-                    ? AppColors.aurora
-                    : best != null
-                    ? AppColors.aurora
-                    : AppColors.nebula2,
-                boxShadow: best != null
-                    ? [BoxShadow(
-                    color: AppColors.aurora.withValues(alpha: 0.6),
-                    blurRadius: 8)]
-                    : null,
+          child: Row(
+            children: [
+              // Индикатор
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 400),
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: best?.isTrulyWorking == true
+                      ? AppColors.aurora
+                      : best != null
+                      ? AppColors.aurora
+                      : AppColors.nebula2,
+                  boxShadow: best != null
+                      ? [
+                          BoxShadow(
+                            color: AppColors.aurora.withValues(alpha: 0.6),
+                            blurRadius: 8,
+                          ),
+                        ]
+                      : null,
+                ),
               ),
-            ),
-            const SizedBox(width: 14),
+              const SizedBox(width: 14),
 
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    best?.name ?? 'Серверы не загружены',
-                    style: const TextStyle(
-                      fontFamily: 'Syne', fontSize: 14,
-                      fontWeight: FontWeight.w600, color: AppColors.nebula0,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      best?.name ?? 'Серверы не загружены',
+                      style: const TextStyle(
+                        fontFamily: 'Syne',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.nebula0,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (total > 0) ...[
-                    const SizedBox(height: 2),
-                    if (isDeepProbing)
-                      _DeepProbeProgress(
+                    if (total > 0) ...[
+                      const SizedBox(height: 2),
+                      if (isDeepProbing)
+                        _DeepProbeProgress(
                           done: sub.deepProbedCount,
-                          total: sub.deepProbeTotal)
-                    else
-                      Text('$alive из $total серверов доступно',
+                          total: sub.deepProbeTotal,
+                        )
+                      else
+                        Text(
+                          '$alive из $total серверов доступно',
                           style: const TextStyle(
-                            fontFamily: 'DM Sans', fontSize: 11,
+                            fontFamily: 'DM Sans',
+                            fontSize: 11,
                             color: AppColors.nebula2,
-                          )),
+                          ),
+                        ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
 
-            if (best?.isTrulyWorking == true) ...[
-              _LiveBadge(),
-              const SizedBox(width: 8),
-            ] else if (best?.latencyMs != null) ...[
-              _LatencyBadge(ms: best!.latencyMs!),
-              const SizedBox(width: 8),
+              if (best?.isTrulyWorking == true) ...[
+                _LiveBadge(),
+                const SizedBox(width: 8),
+              ] else if (best?.latencyMs != null) ...[
+                _LatencyBadge(ms: best!.latencyMs!),
+                const SizedBox(width: 8),
+              ],
+
+              if (!locked)
+                const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: AppColors.nebula2,
+                  size: 20,
+                ),
             ],
-
-            if (!locked)
-              const Icon(Icons.keyboard_arrow_down_rounded,
-                  color: AppColors.nebula2, size: 20),
-          ]),
+          ),
         ),
       ),
     );
@@ -623,7 +719,8 @@ class _DeepProbeProgress extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     children: [
       SizedBox(
-        width: 10, height: 10,
+        width: 10,
+        height: 10,
         child: CircularProgressIndicator(
           strokeWidth: 1.5,
           color: AppColors.aurora,
@@ -634,7 +731,9 @@ class _DeepProbeProgress extends StatelessWidget {
       Text(
         'Глубокая проверка $done/$total...',
         style: const TextStyle(
-          fontFamily: 'DM Sans', fontSize: 11, color: AppColors.aurora,
+          fontFamily: 'DM Sans',
+          fontSize: 11,
+          color: AppColors.aurora,
         ),
       ),
     ],
@@ -649,17 +748,24 @@ class _LiveBadge extends StatelessWidget {
       color: AppColors.aurora.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(8),
       border: Border.all(
-          color: AppColors.aurora.withValues(alpha: 0.4), width: 0.8),
+        color: AppColors.aurora.withValues(alpha: 0.4),
+        width: 0.8,
+      ),
     ),
     child: const Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(Icons.verified_rounded, size: 10, color: AppColors.aurora),
         SizedBox(width: 3),
-        Text('LIVE', style: TextStyle(
-          fontFamily: 'DM Mono', fontSize: 10,
-          fontWeight: FontWeight.w700, color: AppColors.aurora,
-        )),
+        Text(
+          'LIVE',
+          style: TextStyle(
+            fontFamily: 'DM Mono',
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: AppColors.aurora,
+          ),
+        ),
       ],
     ),
   );
@@ -669,8 +775,10 @@ class _LatencyBadge extends StatelessWidget {
   const _LatencyBadge({required this.ms});
   final int ms;
 
-  Color get _color => ms < 150 ? AppColors.aurora
-      : ms < 400 ? AppColors.ember
+  Color get _color => ms < 150
+      ? AppColors.aurora
+      : ms < 400
+      ? AppColors.ember
       : AppColors.nova;
 
   @override
@@ -681,11 +789,15 @@ class _LatencyBadge extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       border: Border.all(color: _color.withValues(alpha: 0.3), width: 0.8),
     ),
-    child: Text('$msмс',
-        style: TextStyle(
-          fontFamily: 'DM Sans', fontSize: 11,
-          fontWeight: FontWeight.w600, color: _color,
-        )),
+    child: Text(
+      '$msмс',
+      style: TextStyle(
+        fontFamily: 'DM Sans',
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: _color,
+      ),
+    ),
   );
 }
 
@@ -696,16 +808,17 @@ class _TrafficPanel extends StatelessWidget {
   final VpnConnected state;
 
   String _bytes(int b) {
-    if (b < 1024)           return '${b}Б';
-    if (b < 1024 * 1024)    return '${(b / 1024).toStringAsFixed(1)}КБ';
-    if (b < 1024 * 1024 * 1024) return '${(b / (1024 * 1024)).toStringAsFixed(1)}МБ';
+    if (b < 1024) return '${b}Б';
+    if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)}КБ';
+    if (b < 1024 * 1024 * 1024)
+      return '${(b / (1024 * 1024)).toStringAsFixed(1)}МБ';
     return '${(b / (1024 * 1024 * 1024)).toStringAsFixed(2)}ГБ';
   }
 
   String _time(Duration d) =>
-      '${d.inHours.toString().padLeft(2,'0')}:'
-          '${(d.inMinutes%60).toString().padLeft(2,'0')}:'
-          '${(d.inSeconds%60).toString().padLeft(2,'0')}';
+      '${d.inHours.toString().padLeft(2, '0')}:'
+      '${(d.inMinutes % 60).toString().padLeft(2, '0')}:'
+      '${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -717,14 +830,26 @@ class _TrafficPanel extends StatelessWidget {
         glowColor: AppColors.aurora.withValues(alpha: 0.08),
         child: Row(
           children: [
-            _Stat(icon: Icons.arrow_downward_rounded, color: AppColors.aurora,
-                label: 'Получено', value: _bytes(state.rxBytes)),
+            _Stat(
+              icon: Icons.arrow_downward_rounded,
+              color: AppColors.aurora,
+              label: 'Получено',
+              value: _bytes(state.rxBytes),
+            ),
             const _Divider(),
-            _Stat(icon: Icons.access_time_rounded, color: AppColors.plasmaLight,
-                label: 'Время', value: _time(state.uptime)),
+            _Stat(
+              icon: Icons.access_time_rounded,
+              color: AppColors.plasmaLight,
+              label: 'Время',
+              value: _time(state.uptime),
+            ),
             const _Divider(),
-            _Stat(icon: Icons.arrow_upward_rounded, color: AppColors.plasma,
-                label: 'Отправлено', value: _bytes(state.txBytes)),
+            _Stat(
+              icon: Icons.arrow_upward_rounded,
+              color: AppColors.plasma,
+              label: 'Отправлено',
+              value: _bytes(state.txBytes),
+            ),
           ],
         ),
       ),
@@ -733,8 +858,12 @@ class _TrafficPanel extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({required this.icon, required this.color,
-    required this.label, required this.value});
+  const _Stat({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.value,
+  });
   final IconData icon;
   final Color color;
   final String label, value;
@@ -746,14 +875,24 @@ class _Stat extends StatelessWidget {
       children: [
         Icon(icon, color: color, size: 15),
         const SizedBox(height: 6),
-        Text(value, style: TextStyle(
-          fontFamily: 'Syne', fontSize: 14,
-          fontWeight: FontWeight.w700, color: AppColors.nebula0,
-        )),
+        Text(
+          value,
+          style: TextStyle(
+            fontFamily: 'Syne',
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.nebula0,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(
-          fontFamily: 'DM Sans', fontSize: 10, color: AppColors.nebula2,
-        )),
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 10,
+            color: AppColors.nebula2,
+          ),
+        ),
       ],
     ),
   );

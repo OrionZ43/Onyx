@@ -13,16 +13,15 @@ class BinaryManager {
   static const _singboxUrl =
       'https://github.com/SagerNet/sing-box/releases/download/'
       'v$_singboxVersion/sing-box-$_singboxVersion-windows-amd64.zip';
-  static const _wintunUrl =
-      'https://www.wintun.net/builds/wintun-0.14.1.zip';
+  static const _wintunUrl = 'https://www.wintun.net/builds/wintun-0.14.1.zip';
 
   late Directory _binDir;
   bool _initialized = false;
 
-  File get singboxExe  => File('${_binDir.path}\\sing-box.exe');
-  File get wintunDll   => File('${_binDir.path}\\wintun.dll');
-  File get configFile  => File('${_binDir.path}\\config.json');
-  File get pidFile     => File('${_binDir.path}\\sing-box.pid');
+  File get singboxExe => File('${_binDir.path}\\sing-box.exe');
+  File get wintunDll => File('${_binDir.path}\\wintun.dll');
+  File get configFile => File('${_binDir.path}\\config.json');
+  File get pidFile => File('${_binDir.path}\\sing-box.pid');
 
   /// Инициализация — создаём папку для бинарников
   Future<void> init() async {
@@ -35,8 +34,7 @@ class BinaryManager {
   }
 
   /// Проверяет наличие всех необходимых файлов
-  bool get isReady =>
-      singboxExe.existsSync() && wintunDll.existsSync();
+  bool get isReady => singboxExe.existsSync() && wintunDll.existsSync();
 
   /// Скачивает sing-box и wintun если они отсутствуют
   Future<void> ensureBinaries({
@@ -74,7 +72,9 @@ class BinaryManager {
           if (total > 0) {
             final pct = got / total;
             onStatus?.call(
-              'Скачиваем sing-box... ${(pct * 100).toInt()}%', pct);
+              'Скачиваем sing-box... ${(pct * 100).toInt()}%',
+              pct,
+            );
           }
         },
       );
@@ -106,8 +106,9 @@ class BinaryManager {
         onReceiveProgress: (got, total) {
           if (total > 0) {
             onStatus?.call(
-                'Скачиваем WinTUN... ${((got / total) * 100).toInt()}%',
-                got / total);
+              'Скачиваем WinTUN... ${((got / total) * 100).toInt()}%',
+              got / total,
+            );
           }
         },
       );
@@ -115,7 +116,10 @@ class BinaryManager {
       log.i('Распаковываем wintun.dll...', tag: 'BIN');
       // wintun.dll находится в wintun/bin/amd64/wintun.dll
       await _extractFileFromZip(
-          zipPath, 'wintun/bin/amd64/wintun.dll', wintunDll.path);
+        zipPath,
+        'wintun/bin/amd64/wintun.dll',
+        wintunDll.path,
+      );
       await File(zipPath).delete();
       log.i('wintun.dll готов', tag: 'BIN');
     } catch (e) {
@@ -126,9 +130,14 @@ class BinaryManager {
 
   /// Извлекает конкретный EXE из ZIP через PowerShell
   Future<void> _extractExeFromZip(
-      String zipPath, String exeName, String destPath) async {
+    String zipPath,
+    String exeName,
+    String destPath,
+  ) async {
     final result = await Process.run('powershell', [
-      '-NoProfile', '-NonInteractive', '-Command',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
       '''
       Add-Type -AssemblyName System.IO.Compression.FileSystem
       \$zip = [System.IO.Compression.ZipFile]::OpenRead('$zipPath')
@@ -141,7 +150,7 @@ class BinaryManager {
         exit 1
       }
       \$zip.Dispose()
-      '''
+      ''',
     ]);
 
     if (result.exitCode != 0) {
@@ -150,9 +159,14 @@ class BinaryManager {
   }
 
   Future<void> _extractFileFromZip(
-      String zipPath, String entryPath, String destPath) async {
+    String zipPath,
+    String entryPath,
+    String destPath,
+  ) async {
     final result = await Process.run('powershell', [
-      '-NoProfile', '-NonInteractive', '-Command',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
       '''
       Add-Type -AssemblyName System.IO.Compression.FileSystem
       \$zip = [System.IO.Compression.ZipFile]::OpenRead('$zipPath')
@@ -165,12 +179,11 @@ class BinaryManager {
         exit 1
       }
       \$zip.Dispose()
-      '''
+      ''',
     ]);
 
     if (result.exitCode != 0) {
-      throw Exception(
-          'Не удалось извлечь $entryPath: ${result.stderr}');
+      throw Exception('Не удалось извлечь $entryPath: ${result.stderr}');
     }
   }
 

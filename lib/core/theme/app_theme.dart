@@ -5,21 +5,21 @@ import 'app_colors.dart';
 abstract final class AppTheme {
   static ThemeData get dark {
     const base = ColorScheme.dark(
-      brightness:  Brightness.dark,
-      primary:     AppColors.plasma,
-      onPrimary:   AppColors.nebula0,
-      secondary:   AppColors.plasmaLight,
+      brightness: Brightness.dark,
+      primary: AppColors.plasma,
+      onPrimary: AppColors.nebula0,
+      secondary: AppColors.plasmaLight,
       onSecondary: AppColors.nebula0,
-      surface:     AppColors.void2,
-      onSurface:   AppColors.nebula0,
-      error:       AppColors.nova,
-      outline:     AppColors.horizon,
+      surface: AppColors.void2,
+      onSurface: AppColors.nebula0,
+      error: AppColors.nova,
+      outline: AppColors.horizon,
     );
 
     return ThemeData.dark(useMaterial3: true).copyWith(
-      colorScheme:             base,
+      colorScheme: base,
       scaffoldBackgroundColor: AppColors.void1,
-      textTheme:               _textTheme,
+      textTheme: _textTheme,
       cardTheme: CardThemeData(
         elevation: 0,
         color: Colors.transparent,
@@ -30,7 +30,9 @@ abstract final class AppTheme {
         margin: EdgeInsets.zero,
       ),
       dividerTheme: const DividerThemeData(
-        color: AppColors.horizon, thickness: 1, space: 1,
+        color: AppColors.horizon,
+        thickness: 1,
+        space: 1,
       ),
       iconTheme: const IconThemeData(color: AppColors.nebula1, size: 20),
       appBarTheme: AppBarTheme(
@@ -62,26 +64,72 @@ abstract final class AppTheme {
 
   static const TextTheme _textTheme = TextTheme(
     // Syne — геометрический гротеск, отличается от всего стандартного
-    displayLarge:  TextStyle(fontFamily: 'Syne', fontSize: 48,
-        fontWeight: FontWeight.w800, color: AppColors.nebula0, letterSpacing: -2),
-    headlineLarge: TextStyle(fontFamily: 'Syne', fontSize: 32,
-        fontWeight: FontWeight.w700, color: AppColors.nebula0, letterSpacing: -1),
-    headlineMedium:TextStyle(fontFamily: 'Syne', fontSize: 24,
-        fontWeight: FontWeight.w700, color: AppColors.nebula0, letterSpacing: -0.5),
-    titleLarge:    TextStyle(fontFamily: 'Syne', fontSize: 18,
-        fontWeight: FontWeight.w700, color: AppColors.nebula0),
-    titleMedium:   TextStyle(fontFamily: 'Syne', fontSize: 14,
-        fontWeight: FontWeight.w600, color: AppColors.nebula0, letterSpacing: 0.2),
+    displayLarge: TextStyle(
+      fontFamily: 'Syne',
+      fontSize: 48,
+      fontWeight: FontWeight.w800,
+      color: AppColors.nebula0,
+      letterSpacing: -2,
+    ),
+    headlineLarge: TextStyle(
+      fontFamily: 'Syne',
+      fontSize: 32,
+      fontWeight: FontWeight.w700,
+      color: AppColors.nebula0,
+      letterSpacing: -1,
+    ),
+    headlineMedium: TextStyle(
+      fontFamily: 'Syne',
+      fontSize: 24,
+      fontWeight: FontWeight.w700,
+      color: AppColors.nebula0,
+      letterSpacing: -0.5,
+    ),
+    titleLarge: TextStyle(
+      fontFamily: 'Syne',
+      fontSize: 18,
+      fontWeight: FontWeight.w700,
+      color: AppColors.nebula0,
+    ),
+    titleMedium: TextStyle(
+      fontFamily: 'Syne',
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      color: AppColors.nebula0,
+      letterSpacing: 0.2,
+    ),
     // DM Sans — чёткий, читаемый, но не дефолтный
-    bodyLarge:     TextStyle(fontFamily: 'DM Sans', fontSize: 16,
-        fontWeight: FontWeight.w400, color: AppColors.nebula0),
-    bodyMedium:    TextStyle(fontFamily: 'DM Sans', fontSize: 14,
-        fontWeight: FontWeight.w400, color: AppColors.nebula1),
-    bodySmall:     TextStyle(fontFamily: 'DM Sans', fontSize: 12,
-        fontWeight: FontWeight.w400, color: AppColors.nebula2),
-    labelLarge:    TextStyle(fontFamily: 'DM Sans', fontSize: 13,
-        fontWeight: FontWeight.w600, color: AppColors.nebula0, letterSpacing: 0.8),
-    labelMedium:   TextStyle(fontFamily: 'DM Sans', fontSize: 11,
-        fontWeight: FontWeight.w600, color: AppColors.nebula1, letterSpacing: 1.2),
+    bodyLarge: TextStyle(
+      fontFamily: 'DM Sans',
+      fontSize: 16,
+      fontWeight: FontWeight.w400,
+      color: AppColors.nebula0,
+    ),
+    bodyMedium: TextStyle(
+      fontFamily: 'DM Sans',
+      fontSize: 14,
+      fontWeight: FontWeight.w400,
+      color: AppColors.nebula1,
+    ),
+    bodySmall: TextStyle(
+      fontFamily: 'DM Sans',
+      fontSize: 12,
+      fontWeight: FontWeight.w400,
+      color: AppColors.nebula2,
+    ),
+    labelLarge: TextStyle(
+      fontFamily: 'DM Sans',
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      color: AppColors.nebula0,
+      letterSpacing: 0.8,
+    ),
+    labelMedium: TextStyle(
+      fontFamily: 'DM Sans',
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      color: AppColors.nebula1,
+      letterSpacing: 1.2,
+    ),
   );
 }

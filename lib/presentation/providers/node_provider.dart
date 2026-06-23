@@ -16,6 +16,6 @@ class NodeSelectionNotifier extends StateNotifier<Node?> {
 }
 
 final nodeSelectionProvider =
-StateNotifierProvider<NodeSelectionNotifier, Node?>(
+    StateNotifierProvider<NodeSelectionNotifier, Node?>(
       (_) => NodeSelectionNotifier(),
-);
+    );

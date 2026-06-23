@@ -80,20 +80,24 @@ class _Stat extends StatelessWidget {
       children: [
         Icon(icon, color: iconColor, size: 16),
         const SizedBox(height: 6),
-        Text(value,
-            style: const TextStyle(
-              fontFamily: 'Syne',
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.nebula0,
-            )),
+        Text(
+          value,
+          style: const TextStyle(
+            fontFamily: 'Syne',
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.nebula0,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(
-              fontFamily: 'DM Sans',
-              fontSize: 10,
-              color: AppColors.nebula2,
-            )),
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 10,
+            color: AppColors.nebula2,
+          ),
+        ),
       ],
     );
   }

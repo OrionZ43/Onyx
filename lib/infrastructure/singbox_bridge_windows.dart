@@ -29,23 +29,23 @@ class SingboxBridgeWindows {
 
   static const _apiPort = 9090;
 
-  final _binMgr    = BinaryManager.instance;
+  final _binMgr = BinaryManager.instance;
   final _apiClient = SingboxApiClient(port: _apiPort);
-  final _builder   = const SingboxConfigBuilder();
+  final _builder = const SingboxConfigBuilder();
 
-  Process?  _process;
-  Timer?    _statsTimer;
-  Timer?    _trafficWatchdog;
+  Process? _process;
+  Timer? _statsTimer;
+  Timer? _trafficWatchdog;
   BridgeState _state = BridgeState.idle;
 
   // Стримы для UI
-  final _stateCtrl  = StreamController<BridgeState>.broadcast();
-  final _statsCtrl  = StreamController<(int rx, int tx)>.broadcast();
-  final _errorCtrl  = StreamController<String>.broadcast();
+  final _stateCtrl = StreamController<BridgeState>.broadcast();
+  final _statsCtrl = StreamController<(int rx, int tx)>.broadcast();
+  final _errorCtrl = StreamController<String>.broadcast();
 
-  Stream<BridgeState>      get stateStream => _stateCtrl.stream;
+  Stream<BridgeState> get stateStream => _stateCtrl.stream;
   Stream<(int rx, int tx)> get statsStream => _statsCtrl.stream;
-  Stream<String>           get errorStream => _errorCtrl.stream;
+  Stream<String> get errorStream => _errorCtrl.stream;
   BridgeState get state => _state;
 
   // ── Публичный API ──────────────────────────────────────────────────────
@@ -72,7 +72,8 @@ class SingboxBridgeWindows {
       // 1. Проверка бинарников
       if (!_binMgr.isReady) {
         throw Exception(
-            'Бинарники не готовы. Запустите ensureBinaries() сначала.');
+          'Бинарники не готовы. Запустите ensureBinaries() сначала.',
+        );
       }
 
       // 2. Проверяем права администратора
@@ -99,8 +100,9 @@ class SingboxBridgeWindows {
 
       // ИСПРАВЛЕНО: мержим experimental вместо полной перезаписи,
       // чтобы сохранить cache_file из _buildExperimental().
-      final experimental =
-      Map<String, dynamic>.from(config['experimental'] as Map? ?? {});
+      final experimental = Map<String, dynamic>.from(
+        config['experimental'] as Map? ?? {},
+      );
       experimental['clash_api'] = {
         'external_controller': '127.0.0.1:$_apiPort',
         'secret': '',
@@ -147,7 +149,9 @@ class SingboxBridgeWindows {
 
       _process!.stderr
           .transform(const SystemEncoding().decoder)
-          .listen(_parseSingboxOutput); // sing-box пишет сюда ВСЁ, не только ошибки
+          .listen(
+            _parseSingboxOutput,
+          ); // sing-box пишет сюда ВСЁ, не только ошибки
 
       // Следим за завершением процесса
       _process!.exitCode.then((code) {
@@ -169,8 +173,9 @@ class SingboxBridgeWindows {
       if (!ready) {
         await _killProcess();
         throw Exception(
-            'sing-box не ответил за 15 секунд. '
-                'Возможно, не хватает прав администратора.');
+          'sing-box не ответил за 15 секунд. '
+          'Возможно, не хватает прав администратора.',
+        );
       }
 
       final version = await _apiClient.getVersion();
@@ -185,7 +190,7 @@ class SingboxBridgeWindows {
 
       log.i(
         'VPN активен. Подожди 5–10 секунд — Windows перестраивает маршруты '
-            'после поднятия TUN. Интернет появится автоматически.',
+        'после поднятия TUN. Интернет появится автоматически.',
         tag: 'BRIDGE',
       );
 
@@ -237,8 +242,9 @@ class SingboxBridgeWindows {
 
     log.i('Резолвим IP сервера: $host', tag: 'BRIDGE');
     try {
-      final addresses = await InternetAddress.lookup(host)
-          .timeout(const Duration(seconds: 5));
+      final addresses = await InternetAddress.lookup(
+        host,
+      ).timeout(const Duration(seconds: 5));
 
       final ipv4 = addresses
           .where((a) => a.type == InternetAddressType.IPv4)
@@ -250,7 +256,7 @@ class SingboxBridgeWindows {
       } else {
         log.w(
           'DNS вернул пустой список для $host. '
-              'Bypass не будет добавлен — рассчитываем на auto_detect_interface.',
+          'Bypass не будет добавлен — рассчитываем на auto_detect_interface.',
           tag: 'BRIDGE',
         );
       }
@@ -258,7 +264,7 @@ class SingboxBridgeWindows {
     } catch (e) {
       log.w(
         'Не удалось резолвнуть $host: $e. '
-            'Bypass не будет добавлен — рассчитываем на auto_detect_interface.',
+        'Bypass не будет добавлен — рассчитываем на auto_detect_interface.',
         tag: 'BRIDGE',
       );
       return null;
@@ -329,16 +335,17 @@ class SingboxBridgeWindows {
         if (total == 0) {
           log.w(
             '⚠ WATCHDOG: 8 секунд прошло, трафик = 0 байт!\n'
-                '  Скорее всего причина одна из:\n'
-                '  1. Нет прав Администратора — WinTUN не может изменить таблицу маршрутов\n'
-                '  2. VLESS-сервер недоступен или не поддерживает MUX (smux)\n'
-                '  3. IP сервера не удалось резолвнуть до старта — проверь DNS',
+            '  Скорее всего причина одна из:\n'
+            '  1. Нет прав Администратора — WinTUN не может изменить таблицу маршрутов\n'
+            '  2. VLESS-сервер недоступен или не поддерживает MUX (smux)\n'
+            '  3. IP сервера не удалось резолвнуть до старта — проверь DNS',
             tag: 'DIAG',
           );
+          _errorCtrl.add('WATCHDOG_NO_TRAFFIC');
         } else {
           log.i(
             '✓ WATCHDOG: трафик идёт — rx=${_fmtBytes(rx)}, tx=${_fmtBytes(tx)}. '
-                'VPN работает нормально.',
+            'VPN работает нормально.',
             tag: 'DIAG',
           );
         }
@@ -376,8 +383,11 @@ class SingboxBridgeWindows {
 
   Future<void> _killExisting() async {
     try {
-      await Process.run('taskkill', ['/F', '/IM', 'sing-box.exe'],
-          runInShell: true);
+      await Process.run('taskkill', [
+        '/F',
+        '/IM',
+        'sing-box.exe',
+      ], runInShell: true);
       log.d('Завершены старые процессы sing-box', tag: 'BRIDGE');
     } catch (_) {}
   }

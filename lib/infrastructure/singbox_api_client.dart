@@ -11,11 +11,13 @@ class SingboxApiClient {
   final String host;
   final int port;
 
-  late final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'http://$host:$port',
-    connectTimeout: const Duration(seconds: 3),
-    receiveTimeout: const Duration(seconds: 3),
-  ));
+  late final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: 'http://$host:$port',
+      connectTimeout: const Duration(seconds: 3),
+      receiveTimeout: const Duration(seconds: 3),
+    ),
+  );
 
   String get baseUrl => 'http://$host:$port';
 
@@ -31,7 +33,7 @@ class SingboxApiClient {
 
   /// Ждёт пока sing-box поднимет API (до [timeout])
   Future<bool> waitReady({
-    Duration timeout  = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 10),
     Duration interval = const Duration(milliseconds: 300),
   }) async {
     final deadline = DateTime.now().add(timeout);
@@ -76,7 +78,7 @@ class SingboxApiClient {
       if (r.statusCode == 200 && r.data is Map) {
         final data = r.data as Map<String, dynamic>;
         final downloadTotal = data['downloadTotal'] as int? ?? 0;
-        final uploadTotal   = data['uploadTotal']   as int? ?? 0;
+        final uploadTotal = data['uploadTotal'] as int? ?? 0;
         return (downloadTotal, uploadTotal);
       }
     } catch (_) {}
@@ -102,7 +104,7 @@ class TrafficStats {
   final int downBytes;
 
   factory TrafficStats.fromJson(Map<String, dynamic> json) => TrafficStats(
-    upBytes:   (json['up']   as num?)?.toInt() ?? 0,
+    upBytes: (json['up'] as num?)?.toInt() ?? 0,
     downBytes: (json['down'] as num?)?.toInt() ?? 0,
   );
 }

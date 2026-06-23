@@ -10,8 +10,8 @@ import '../../infrastructure/binary_manager.dart';
 enum SubStatus {
   idle,
   fetching,
-  probing,      // Этап 1: параллельный TCP-пинг
-  deepProbing,  // Этап 2: реальный HTTP-запрос через sing-box
+  probing, // Этап 1: параллельный TCP-пинг
+  deepProbing, // Этап 2: реальный HTTP-запрос через sing-box
   ready,
   error,
 }
@@ -20,19 +20,19 @@ enum SubStatus {
 
 class SubscriptionState {
   const SubscriptionState({
-    this.status           = SubStatus.idle,
-    this.nodes            = const [],
-    this.url              = '',
+    this.status = SubStatus.idle,
+    this.nodes = const [],
+    this.url = '',
     this.error,
-    this.probedCount      = 0,
-    this.deepProbedCount  = 0,
-    this.deepProbeTotal   = 0,
+    this.probedCount = 0,
+    this.deepProbedCount = 0,
+    this.deepProbeTotal = 0,
   });
 
-  final SubStatus  status;
+  final SubStatus status;
   final List<Node> nodes;
-  final String     url;
-  final String?    error;
+  final String url;
+  final String? error;
 
   /// Количество нод, прошедших TCP-пинг (для прогресс-бара Этапа 1).
   final int probedCount;
@@ -54,15 +54,15 @@ class SubscriptionState {
     // Приоритет: реально проверенная нода
     final verified = nodes.where((n) => n.isTrulyWorking).toList();
     if (verified.isNotEmpty) {
-      verified.sort((a, b) =>
-          (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999));
+      verified.sort(
+        (a, b) => (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999),
+      );
       return verified.first;
     }
 
     // Fallback: лучший по TCP-пингу
     final alive = aliveNodes
-      ..sort((a, b) =>
-          (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999));
+      ..sort((a, b) => (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999));
     return alive.isEmpty ? null : alive.first;
   }
 
@@ -74,16 +74,15 @@ class SubscriptionState {
     int? probedCount,
     int? deepProbedCount,
     int? deepProbeTotal,
-  }) =>
-      SubscriptionState(
-        status:          status          ?? this.status,
-        nodes:           nodes           ?? this.nodes,
-        url:             url             ?? this.url,
-        error:           error,
-        probedCount:     probedCount     ?? this.probedCount,
-        deepProbedCount: deepProbedCount ?? this.deepProbedCount,
-        deepProbeTotal:  deepProbeTotal  ?? this.deepProbeTotal,
-      );
+  }) => SubscriptionState(
+    status: status ?? this.status,
+    nodes: nodes ?? this.nodes,
+    url: url ?? this.url,
+    error: error,
+    probedCount: probedCount ?? this.probedCount,
+    deepProbedCount: deepProbedCount ?? this.deepProbedCount,
+    deepProbeTotal: deepProbeTotal ?? this.deepProbeTotal,
+  );
 }
 
 // ── SubscriptionController ────────────────────────────────────────────────────
@@ -94,7 +93,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   }
 
   final _service = SubscriptionService();
-  final _probe   = const SmartProbe();
+  final _probe = const SmartProbe();
   static const _urlKey = 'sub_url';
 
   // ── Публичный API ──────────────────────────────────────────────────────────
@@ -102,8 +101,12 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   /// Загрузить подписку по URL и запустить двухэтапную проверку.
   Future<void> loadFromUrl(String url) async {
     state = state.copyWith(
-        status: SubStatus.fetching, url: url,
-        probedCount: 0, deepProbedCount: 0, deepProbeTotal: 0);
+      status: SubStatus.fetching,
+      url: url,
+      probedCount: 0,
+      deepProbedCount: 0,
+      deepProbeTotal: 0,
+    );
 
     // ─── Этап 0: Загрузка и парсинг ──────────────────────────────────────
     final result = await _service.fetch(url);
@@ -118,7 +121,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     if (mounted) {
       state = state.copyWith(
         status: SubStatus.probing,
-        nodes:  result.nodes,
+        nodes: result.nodes,
         probedCount: 0,
       );
     }
@@ -127,8 +130,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       result.nodes,
       onProgress: (done, total) {
         if (mounted) {
-          state = state.copyWith(
-              status: SubStatus.probing, probedCount: done);
+          state = state.copyWith(status: SubStatus.probing, probedCount: done);
         }
       },
     );
@@ -139,8 +141,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
     if (!mounted) return;
     state = state.copyWith(
-      status:      SubStatus.ready,   // UI показывает результаты Этапа 1
-      nodes:       probed,
+      status: SubStatus.ready, // UI показывает результаты Этапа 1
+      nodes: probed,
       probedCount: probed.length,
     );
 
@@ -152,27 +154,39 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   Future<void> reprobe() async {
     if (state.nodes.isEmpty) return;
     state = state.copyWith(
-        status: SubStatus.probing,
-        probedCount: 0, deepProbedCount: 0, deepProbeTotal: 0);
+      status: SubStatus.probing,
+      probedCount: 0,
+      deepProbedCount: 0,
+      deepProbeTotal: 0,
+    );
 
     final probed = await _probe.probeAll(
       state.nodes,
       onProgress: (done, total) {
         if (mounted) {
-          state = state.copyWith(
-              status: SubStatus.probing, probedCount: done);
+          state = state.copyWith(status: SubStatus.probing, probedCount: done);
         }
       },
     );
 
     if (!mounted) return;
     state = state.copyWith(
-      status:      SubStatus.ready,
-      nodes:       probed,
+      status: SubStatus.ready,
+      nodes: probed,
       probedCount: probed.length,
     );
 
     await _runDeepProbe(probed);
+  }
+
+  void markNodeAsDead(String nodeId) {
+    final updated = state.nodes.map((n) {
+      if (n.id == nodeId) {
+        return n.copyWith(isAlive: false, isTrulyWorking: false);
+      }
+      return n;
+    }).toList();
+    state = state.copyWith(nodes: updated);
   }
 
   // ── Приватные ─────────────────────────────────────────────────────────────
@@ -191,9 +205,9 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
     if (mounted) {
       state = state.copyWith(
-        status:         SubStatus.deepProbing,
+        status: SubStatus.deepProbing,
         deepProbedCount: 0,
-        deepProbeTotal:  candidateCount,
+        deepProbeTotal: candidateCount,
       );
     }
 
@@ -204,9 +218,9 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       onProgress: (done, total) {
         if (mounted) {
           state = state.copyWith(
-            status:          SubStatus.deepProbing,
+            status: SubStatus.deepProbing,
             deepProbedCount: done,
-            deepProbeTotal:  total,
+            deepProbeTotal: total,
           );
         }
       },
@@ -217,15 +231,10 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     if (workingNode != null) {
       // Помечаем найденную ноду как isTrulyWorking = true в общем списке
       final updatedNodes = state.nodes.map((n) {
-        return n.id == workingNode.id
-            ? n.copyWith(isTrulyWorking: true)
-            : n;
+        return n.id == workingNode.id ? n.copyWith(isTrulyWorking: true) : n;
       }).toList();
 
-      state = state.copyWith(
-        status: SubStatus.ready,
-        nodes:  updatedNodes,
-      );
+      state = state.copyWith(status: SubStatus.ready, nodes: updatedNodes);
     } else {
       // Ни одна нода не прошла — возвращаемся в ready без изменений
       state = state.copyWith(status: SubStatus.ready);
@@ -245,6 +254,6 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 final subscriptionProvider =
-StateNotifierProvider<SubscriptionController, SubscriptionState>(
+    StateNotifierProvider<SubscriptionController, SubscriptionState>(
       (_) => SubscriptionController(),
-);
+    );

@@ -18,17 +18,17 @@ class LogEntry {
 
   String get levelLabel => switch (level) {
     LogLevel.debug => 'DBG',
-    LogLevel.info  => 'INF',
-    LogLevel.warn  => 'WRN',
+    LogLevel.info => 'INF',
+    LogLevel.warn => 'WRN',
     LogLevel.error => 'ERR',
   };
 
   String get timeStr {
     final t = timestamp;
-    return '${t.hour.toString().padLeft(2,'0')}:'
-           '${t.minute.toString().padLeft(2,'0')}:'
-           '${t.second.toString().padLeft(2,'0')}'
-           '.${(t.millisecond ~/ 10).toString().padLeft(2,'0')}';
+    return '${t.hour.toString().padLeft(2, '0')}:'
+        '${t.minute.toString().padLeft(2, '0')}:'
+        '${t.second.toString().padLeft(2, '0')}'
+        '.${(t.millisecond ~/ 10).toString().padLeft(2, '0')}';
   }
 
   @override
@@ -47,10 +47,14 @@ class LogService extends ChangeNotifier {
   List<LogEntry> get entries => List.unmodifiable(_entries);
 
   void _add(LogLevel level, String message, String tag) {
-    _entries.add(LogEntry(
-      level: level, message: message,
-      timestamp: DateTime.now(), tag: tag,
-    ));
+    _entries.add(
+      LogEntry(
+        level: level,
+        message: message,
+        timestamp: DateTime.now(),
+        tag: tag,
+      ),
+    );
     if (_entries.length > _maxEntries) {
       _entries.removeAt(0);
     }
@@ -62,8 +66,8 @@ class LogService extends ChangeNotifier {
   }
 
   void d(String msg, {String tag = 'APP'}) => _add(LogLevel.debug, msg, tag);
-  void i(String msg, {String tag = 'APP'}) => _add(LogLevel.info,  msg, tag);
-  void w(String msg, {String tag = 'APP'}) => _add(LogLevel.warn,  msg, tag);
+  void i(String msg, {String tag = 'APP'}) => _add(LogLevel.info, msg, tag);
+  void w(String msg, {String tag = 'APP'}) => _add(LogLevel.warn, msg, tag);
   void e(String msg, {String tag = 'APP'}) => _add(LogLevel.error, msg, tag);
 
   void clear() {
@@ -79,4 +83,6 @@ class LogService extends ChangeNotifier {
 final log = LogService.instance;
 
 // Riverpod provider для watch в UI
-final logProvider = ChangeNotifierProvider<LogService>((_) => LogService.instance);
+final logProvider = ChangeNotifierProvider<LogService>(
+  (_) => LogService.instance,
+);

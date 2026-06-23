@@ -63,22 +63,41 @@ class _NebulaPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cx = size.width  / 2;
+    final cx = size.width / 2;
     final cy = size.height * 0.4;
 
     // Большое фиолетовое облако
-    _drawBlob(canvas, cx, cy, 200, progress * math.pi * 2,
-        const Color(0x302A1566), 140);
+    _drawBlob(
+      canvas,
+      cx,
+      cy,
+      200,
+      progress * math.pi * 2,
+      const Color(0x302A1566),
+      140,
+    );
 
     // Синее облако
-    _drawBlob(canvas, cx, cy, 160,
-        progress * math.pi * 2 + math.pi * 0.6,
-        const Color(0x221533AA), 120);
+    _drawBlob(
+      canvas,
+      cx,
+      cy,
+      160,
+      progress * math.pi * 2 + math.pi * 0.6,
+      const Color(0x221533AA),
+      120,
+    );
 
     // Маленькое зелёное (aurora)
-    _drawBlob(canvas, cx - 60, cy + 80, 80,
-        progress * math.pi * 2 + math.pi * 1.2,
-        const Color(0x1400C8A0), 90);
+    _drawBlob(
+      canvas,
+      cx - 60,
+      cy + 80,
+      80,
+      progress * math.pi * 2 + math.pi * 1.2,
+      const Color(0x1400C8A0),
+      90,
+    );
 
     // Центральное свечение под кнопкой
     final center = Offset(cx, cy + size.height * 0.12);
@@ -92,8 +111,15 @@ class _NebulaPainter extends CustomPainter {
     canvas.drawCircle(center, 180, glow);
   }
 
-  void _drawBlob(Canvas canvas, double cx, double cy,
-      double radius, double angle, Color color, double blur) {
+  void _drawBlob(
+    Canvas canvas,
+    double cx,
+    double cy,
+    double radius,
+    double angle,
+    Color color,
+    double blur,
+  ) {
     final x = cx + radius * math.cos(angle) * 0.5;
     final y = cy + radius * math.sin(angle) * 0.35;
     canvas.drawCircle(
@@ -123,7 +149,8 @@ class _StarFieldPainter extends CustomPainter {
       final r = rng.nextDouble() * 1.5 + 0.3;
       final a = rng.nextDouble() * 0.6 + 0.1;
       canvas.drawCircle(
-        Offset(x, y), r,
+        Offset(x, y),
+        r,
         Paint()..color = Colors.white.withValues(alpha: a),
       );
     }
@@ -132,8 +159,10 @@ class _StarFieldPainter extends CustomPainter {
       final x = rng.nextDouble() * size.width;
       final y = rng.nextDouble() * size.height;
       canvas.drawCircle(
-        Offset(x, y), 0.4,
-        Paint()..color = Colors.white.withValues(alpha: rng.nextDouble() * 0.25),
+        Offset(x, y),
+        0.4,
+        Paint()
+          ..color = Colors.white.withValues(alpha: rng.nextDouble() * 0.25),
       );
     }
   }
@@ -147,18 +176,22 @@ class _TwinklePainter extends CustomPainter {
   final double progress;
 
   static final _rng = math.Random(0xBEEFCAFE);
-  static final _stars = List.generate(20, (_) => [
-    _rng.nextDouble(), // x factor
-    _rng.nextDouble(), // y factor
-    _rng.nextDouble(), // phase
-    _rng.nextDouble() * 1.2 + 0.6, // size
-  ]);
+  static final _stars = List.generate(
+    20,
+    (_) => [
+      _rng.nextDouble(), // x factor
+      _rng.nextDouble(), // y factor
+      _rng.nextDouble(), // phase
+      _rng.nextDouble() * 1.2 + 0.6, // size
+    ],
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final s in _stars) {
       final phase = s[2];
-      final alpha = (math.sin((progress + phase) * math.pi * 2) * 0.5 + 0.5) * 0.7 + 0.1;
+      final alpha =
+          (math.sin((progress + phase) * math.pi * 2) * 0.5 + 0.5) * 0.7 + 0.1;
       canvas.drawCircle(
         Offset(s[0] * size.width, s[1] * size.height * 0.75),
         s[3],

@@ -81,7 +81,16 @@ class NodeScorer {
   ];
 
   /// Двухбуквенные ISO 3166-1 коды оптимальных стран для точного поиска.
-  static const Set<String> _optimalIsoCodes = {'de', 'nl', 'pl', 'fi', 'se', 'tr', 'gb', 'uk'};
+  static const Set<String> _optimalIsoCodes = {
+    'de',
+    'nl',
+    'pl',
+    'fi',
+    'se',
+    'tr',
+    'gb',
+    'uk',
+  };
 
   // ── Публичный API ─────────────────────────────────────────────────────────
 
@@ -134,7 +143,7 @@ class NodeScorer {
     final ms = node.latencyMs ?? 9999;
 
     if (node.security == 'reality') parts.add('REALITY +${_realityBonus}pts');
-    if (_isOptimalGeo(node.name))   parts.add('GEO +${_geoBonus}pts');
+    if (_isOptimalGeo(node.name)) parts.add('GEO +${_geoBonus}pts');
 
     final bonusStr = parts.isEmpty ? 'no bonus' : parts.join(' | ');
     return '$bonusStr | latency=${ms}ms | score=${score(node)}';
