@@ -9,7 +9,7 @@ class GlassCard extends StatelessWidget {
     super.key,
     required this.child,
     this.borderRadius = 24.0,
-    this.blur = 20.0,
+    this.blur = 30.0,
     this.opacity = 1.0,
     this.padding,
     this.border = true,
@@ -49,7 +49,7 @@ class GlassCard extends StatelessWidget {
               gradient: AppColors.gradientGlass(opacity: opacity),
               borderRadius: radius,
               border: border
-                  ? Border.all(color: AppColors.glassBorder, width: 1.0)
+                  ? Border.all(color: AppColors.glassBorder, width: 0.5)
                   : null,
             ),
             child: child,

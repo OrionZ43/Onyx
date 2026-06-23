@@ -67,11 +67,11 @@ class _SetupScreenState extends State<SetupScreen>
                       width: 96,
                       height: 96,
                       decoration: BoxDecoration(
-                        gradient: AppColors.gradientPlasma,
+                        gradient: AppColors.gradientGlass(),
                         borderRadius: BorderRadius.circular(28),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.plasma.withValues(
+                            color: AppColors.accentSilver.withValues(
                               alpha: 0.3 + 0.2 * _pulseCtrl.value,
                             ),
                             blurRadius: 32 + 16 * _pulseCtrl.value,
@@ -134,13 +134,13 @@ class _SetupScreenState extends State<SetupScreen>
                                   height: 16,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: AppColors.plasma,
+                                    color: AppColors.accentSilver,
                                   ),
                                 )
                               else if (_step == _SetupStep.done)
                                 const Icon(
                                   Icons.check_circle_rounded,
-                                  color: AppColors.aurora,
+                                  color: AppColors.accentGold,
                                   size: 16,
                                 )
                               else
@@ -169,7 +169,7 @@ class _SetupScreenState extends State<SetupScreen>
                               child: LinearProgressIndicator(
                                 value: _progress,
                                 backgroundColor: AppColors.void3,
-                                color: AppColors.plasma,
+                                color: AppColors.accentSilver,
                                 minHeight: 4,
                               ),
                             ),
@@ -200,11 +200,12 @@ class _SetupScreenState extends State<SetupScreen>
                         width: double.infinity,
                         height: 56,
                         decoration: BoxDecoration(
-                          gradient: AppColors.gradientPlasma,
+                          gradient: AppColors.gradientGlass(),
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.plasma.withValues(alpha: 0.4),
+                              color:
+                                  AppColors.accentSilver.withValues(alpha: 0.4),
                               blurRadius: 20,
                             ),
                           ],

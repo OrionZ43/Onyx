@@ -69,7 +69,7 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const CircularProgressIndicator(
-                                color: AppColors.plasma),
+                                color: AppColors.accentSilver),
                             const SizedBox(height: 16),
                             Text(
                               'Проверяем серверы... ${sub.probedCount}/${sub.nodes.length}',
@@ -183,7 +183,7 @@ class _SheetHeader extends ConsumerWidget {
           child: Row(
             children: [
               ShaderMask(
-                shaderCallback: (b) => AppColors.gradientPlasma.createShader(
+                shaderCallback: (b) => AppColors.gradientGlass().createShader(
                   Rect.fromLTWH(0, 0, b.width, b.height),
                 ),
                 child: const Icon(
@@ -204,7 +204,7 @@ class _SheetHeader extends ConsumerWidget {
               ),
               const Spacer(),
               GlassPill(
-                color: AppColors.aurora,
+                color: AppColors.accentGold,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 4,
@@ -214,7 +214,7 @@ class _SheetHeader extends ConsumerWidget {
                   style: const TextStyle(
                     fontFamily: 'DM Sans',
                     fontSize: 11,
-                    color: AppColors.aurora,
+                    color: AppColors.accentGold,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -230,7 +230,7 @@ class _SheetHeader extends ConsumerWidget {
                   child: Icon(
                     Icons.refresh_rounded,
                     size: 16,
-                    color: AppColors.plasmaLight,
+                    color: AppColors.nebula1,
                   ),
                 ),
               ),
@@ -312,12 +312,12 @@ class _CountryGroup extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: expanded
-                  ? AppColors.plasma.withValues(alpha: 0.08)
+                  ? AppColors.accentSilver.withValues(alpha: 0.08)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: expanded
-                    ? AppColors.horizonGlow
+                    ? AppColors.horizon
                     : AppColors.glassBorder.withValues(alpha: 0.4),
               ),
             ),
@@ -330,7 +330,8 @@ class _CountryGroup extends StatelessWidget {
                       fontFamily: 'Syne',
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: expanded ? AppColors.plasma : AppColors.nebula0,
+                      color:
+                          expanded ? AppColors.accentSilver : AppColors.nebula0,
                     ),
                   ),
                 ),
@@ -399,22 +400,22 @@ class _CompactNodeRow extends StatelessWidget {
   final VoidCallback onTap;
 
   Color _qColor() => switch (node.quality) {
-        NodeQuality.excellent => AppColors.aurora,
+        NodeQuality.excellent => AppColors.accentGold,
         NodeQuality.good => const Color(0xFF80E8B0),
-        NodeQuality.poor => AppColors.ember,
+        NodeQuality.poor => AppColors.accentSilver,
         NodeQuality.dead => AppColors.nebula2,
       };
 
   @override
   Widget build(BuildContext context) {
     final qc = _qColor();
-    final selectedBorder = isSelected ? AppColors.plasma : null;
+    final selectedBorder = isSelected ? AppColors.accentSilver : null;
 
     // Вычисляем цвет фона и выносим его на уровень Material
     final bgColor = isSelected
-        ? AppColors.plasma.withValues(alpha: 0.10)
+        ? AppColors.accentSilver.withValues(alpha: 0.10)
         : node.isTrulyWorking
-            ? AppColors.aurora.withValues(alpha: 0.06)
+            ? AppColors.accentGold.withValues(alpha: 0.06)
             : AppColors.void2.withValues(alpha: 0.8);
 
     return Padding(
@@ -425,8 +426,8 @@ class _CompactNodeRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(10),
-          splashColor: AppColors.plasma.withValues(alpha: 0.25),
-          highlightColor: AppColors.plasma.withValues(alpha: 0.1),
+          splashColor: AppColors.accentSilver.withValues(alpha: 0.25),
+          highlightColor: AppColors.accentSilver.withValues(alpha: 0.1),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
@@ -436,7 +437,7 @@ class _CompactNodeRow extends StatelessWidget {
                 color: selectedBorder != null
                     ? selectedBorder.withValues(alpha: 0.6)
                     : node.isTrulyWorking
-                        ? AppColors.aurora.withValues(alpha: 0.3)
+                        ? AppColors.accentGold.withValues(alpha: 0.3)
                         : AppColors.glassBorder.withValues(alpha: 0.3),
                 width: isSelected ? 1.2 : 1.0,
               ),
@@ -501,7 +502,9 @@ class _CompactNodeRow extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: 'DM Sans',
                       fontSize: 11,
-                      color: isSelected ? AppColors.plasma : AppColors.nebula1,
+                      color: isSelected
+                          ? AppColors.accentSilver
+                          : AppColors.nebula1,
                       fontWeight:
                           isSelected ? FontWeight.w600 : FontWeight.w400,
                     ),
@@ -511,10 +514,10 @@ class _CompactNodeRow extends StatelessWidget {
 
                 // Бейдж LIVE / MUX
                 if (node.isTrulyWorking) ...[
-                  _SmallBadge('LIVE', AppColors.aurora),
+                  _SmallBadge('LIVE', AppColors.accentGold),
                   const SizedBox(width: 4),
                 ] else if (node.muxEnabled) ...[
-                  _SmallBadge('MUX', AppColors.plasma),
+                  _SmallBadge('MUX', AppColors.accentSilver),
                   const SizedBox(width: 4),
                 ],
 
@@ -523,7 +526,7 @@ class _CompactNodeRow extends StatelessWidget {
                   const Icon(
                     Icons.check_circle_rounded,
                     size: 14,
-                    color: AppColors.plasma,
+                    color: AppColors.accentSilver,
                   ),
 
                 // Пинг
@@ -554,9 +557,9 @@ class _MsChip extends StatelessWidget {
   final int ms;
 
   Color get _c => ms < 150
-      ? AppColors.aurora
+      ? AppColors.accentGold
       : ms < 400
-          ? AppColors.ember
+          ? AppColors.accentSilver
           : AppColors.nova;
 
   @override

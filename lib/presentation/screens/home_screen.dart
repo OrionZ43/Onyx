@@ -97,7 +97,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     center: const Alignment(0, 0.2),
                     radius: 1.2,
                     colors: [
-                      AppColors.aurora.withValues(
+                      AppColors.accentGold.withValues(
                         alpha: 0.06 + 0.04 * _connectedCtrl.value,
                       ),
                       Colors.transparent,
@@ -147,11 +147,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           const SizedBox(height: 44),
 
                           // Главная кнопка
-                          _OrbitalButton(
+                          _EclipseButton(
                             state: vpn,
                             pulseCtrl: _pulseCtrl,
                             orbitCtrl: _orbitCtrl,
-                            connectedCtrl: _connectedCtrl,
                             onTap: () => _handleTap(vpn, sub),
                           )
                               .animate()
@@ -228,7 +227,7 @@ class _TopBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ShaderMask(
-                shaderCallback: (b) => AppColors.gradientPlasma.createShader(
+                shaderCallback: (b) => AppColors.gradientGlass().createShader(
                   Rect.fromLTWH(0, 0, b.width, b.height),
                 ),
                 child: const Text(
@@ -315,13 +314,13 @@ class _StatusChip extends StatelessWidget {
       VpnConnecting() => (
           'Подключение...',
           'Устанавливаем туннель',
-          AppColors.ember,
+          AppColors.accentSilver,
         ),
-      VpnConnected() => ('Защищён', 'Трафик зашифрован', AppColors.aurora),
+      VpnConnected() => ('Защищён', 'Трафик зашифрован', AppColors.accentGold),
       VpnDisconnecting() => (
           'Отключение...',
           'Закрываем туннель',
-          AppColors.ember,
+          AppColors.accentSilver,
         ),
       VpnError(message: final msg) => ('Ошибка', msg, AppColors.nova),
     };
@@ -396,199 +395,127 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-// ── Орбитальная кнопка ─────────────────────────────────────────────────────
+// ── Затмение (Кнопка подключения) ───────────────────────────────────────────
 
-class _OrbitalButton extends StatelessWidget {
-  const _OrbitalButton({
+class _EclipseButton extends StatelessWidget {
+  const _EclipseButton({
     required this.state,
     required this.pulseCtrl,
     required this.orbitCtrl,
-    required this.connectedCtrl,
     required this.onTap,
   });
   final VpnState state;
-  final AnimationController pulseCtrl, orbitCtrl, connectedCtrl;
+  final AnimationController pulseCtrl, orbitCtrl;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isConnected = state is VpnConnected;
     final isConnecting = state is VpnConnecting || state is VpnDisconnecting;
+    final activeColor =
+        isConnected ? AppColors.accentGold : AppColors.accentSilver;
 
-    final color = isConnected
-        ? AppColors.aurora
-        : isConnecting
-            ? AppColors.ember
-            : AppColors.plasma;
-
-    return AnimatedBuilder(
-      animation: Listenable.merge([pulseCtrl, orbitCtrl, connectedCtrl]),
-      builder: (_, __) {
-        final pulse = pulseCtrl.value;
-        final orbit = orbitCtrl.value;
-        final conn = connectedCtrl.value;
-
-        return GestureDetector(
-          onTap: onTap,
-          child: SizedBox(
-            width: 220,
-            height: 220,
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([pulseCtrl, orbitCtrl]),
+        builder: (_, __) {
+          final pulse = pulseCtrl.value;
+          return SizedBox(
+            width: 240,
+            height: 240,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Внешнее свечение
+                // Пульсирующее свечение
                 Container(
-                  width: 200 + 20 * pulse,
-                  height: 200 + 20 * pulse,
+                  width: 180 + 40 * pulse,
+                  height: 180 + 40 * pulse,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: color.withValues(
-                      alpha: isConnected ? 0.08 + 0.04 * conn : 0.06 * pulse,
-                    ),
+                    boxShadow: [
+                      BoxShadow(
+                          color: activeColor.withValues(
+                              alpha: isConnected ? 0.15 : 0.05),
+                          blurRadius: 60)
+                    ],
                   ),
                 ),
-
-                // Орбитальное кольцо (только при подключении)
-                if (isConnected)
-                  CustomPaint(
-                    size: const Size(190, 190),
-                    painter: _OrbitRingPainter(progress: orbit, color: color),
-                  ),
-
-                // Основная кнопка — жидкое стекло
-                ClipOval(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 600),
-                      width: 168,
-                      height: 168,
+                // Вращающийся аккреционный диск (только при подключении)
+                if (isConnected || isConnecting)
+                  Transform.rotate(
+                    angle: orbitCtrl.value * 2 * math.pi,
+                    child: Container(
+                      width: 200, height: 200,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: isConnected
-                            ? AppColors.gradientAurora
-                            : isConnecting
-                                ? const LinearGradient(
-                                    colors: [
-                                      AppColors.ember,
-                                      Color(0xFFFF7B00)
-                                    ],
-                                  )
-                                : AppColors.gradientPlasma,
-                        boxShadow: [
-                          BoxShadow(
-                            color: color.withValues(alpha: 0.45 + 0.15 * pulse),
-                            blurRadius: 40 + 16 * pulse,
-                            spreadRadius: -4,
-                          ),
-                        ],
+                        gradient: SweepGradient(
+                          colors: [
+                            Colors.transparent,
+                            activeColor.withValues(alpha: 0.8),
+                            Colors.transparent
+                          ],
+                          stops: const [0.0, 0.5, 1.0],
+                        ),
                       ),
-                      child: _ButtonContent(
-                        isConnected: isConnected,
-                        isConnecting: isConnecting,
+                      padding: const EdgeInsets.all(2), // толщина кольца
+                      child: Container(
+                        decoration: const BoxDecoration(
+                            shape: BoxShape.circle, color: AppColors.void0),
                       ),
                     ),
+                  )
+                else
+                  Container(
+                    width: 196,
+                    height: 196,
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border:
+                            Border.all(color: AppColors.glassBorder, width: 1)),
                   ),
-                ),
-
-                // Ободок стекла
+                // Само ядро (Черная дыра / Матовый камень Onyx)
                 Container(
-                  width: 168,
-                  height: 168,
+                  width: 180,
+                  height: 180,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      width: 1,
-                    ),
+                    color: AppColors.void1,
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black54, blurRadius: 20)
+                    ],
+                  ),
+                  child: Center(
+                    child: isConnecting
+                        ? const CircularProgressIndicator(
+                            color: AppColors.accentGold, strokeWidth: 2)
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.power_settings_new_rounded,
+                                  color: isConnected
+                                      ? AppColors.accentGold
+                                      : AppColors.nebula1,
+                                  size: 42),
+                              const SizedBox(height: 12),
+                              Text(isConnected ? 'СВЯЗЬ УСТАНОВЛЕНА' : 'ЗАПУСК',
+                                  style: TextStyle(
+                                      fontFamily: 'Syne',
+                                      fontSize: 10,
+                                      letterSpacing: 3,
+                                      fontWeight: FontWeight.w800,
+                                      color: isConnected
+                                          ? AppColors.accentGold
+                                          : AppColors.nebula1)),
+                            ],
+                          ),
                   ),
                 ),
               ],
             ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _OrbitRingPainter extends CustomPainter {
-  const _OrbitRingPainter({required this.progress, required this.color});
-  final double progress;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final r = cx - 2;
-
-    final paint = Paint()
-      ..color = color.withValues(alpha: 0.25)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-    canvas.drawCircle(Offset(cx, cy), r, paint);
-
-    final angle = progress * 2 * math.pi - math.pi / 2;
-    final dotX = cx + r * math.cos(angle);
-    final dotY = cy + r * math.sin(angle);
-
-    canvas.drawCircle(
-      Offset(dotX, dotY),
-      4,
-      Paint()
-        ..color = color
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-    canvas.drawCircle(Offset(dotX, dotY), 2.5, Paint()..color = Colors.white);
-  }
-
-  @override
-  bool shouldRepaint(_OrbitRingPainter old) => old.progress != progress;
-}
-
-class _ButtonContent extends StatelessWidget {
-  const _ButtonContent({required this.isConnected, required this.isConnecting});
-  final bool isConnected, isConnecting;
-
-  @override
-  Widget build(BuildContext context) {
-    if (isConnecting) {
-      return const Center(
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 2.5,
-          ),
-        ),
-      );
-    }
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // БАГ-ФИX: убрана иконка щита Icons.shield_rounded
-        // Используем power-кнопку в обоих состояниях
-        Icon(
-          isConnected
-              ? Icons.power_settings_new_rounded
-              : Icons.power_settings_new_rounded,
-          color: Colors.white,
-          size: 46,
-        ),
-        const SizedBox(height: 10),
-        Text(
-          isConnected ? 'ОТКЛЮЧИТЬ' : 'ПОДКЛЮЧИТЬ',
-          style: const TextStyle(
-            fontFamily: 'Syne',
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2,
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 }
@@ -628,9 +555,9 @@ class _ServerCard extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           borderRadius: 20,
           glowColor: best?.isTrulyWorking == true
-              ? AppColors.aurora.withValues(alpha: 0.25)
+              ? AppColors.accentGold.withValues(alpha: 0.25)
               : best != null
-                  ? AppColors.plasma.withValues(alpha: 0.15)
+                  ? AppColors.accentSilver.withValues(alpha: 0.15)
                   : null,
           child: Row(
             children: [
@@ -642,14 +569,14 @@ class _ServerCard extends ConsumerWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: best?.isTrulyWorking == true
-                      ? AppColors.aurora
+                      ? AppColors.accentGold
                       : best != null
-                          ? AppColors.aurora
+                          ? AppColors.accentGold
                           : AppColors.nebula2,
                   boxShadow: best != null
                       ? [
                           BoxShadow(
-                            color: AppColors.aurora.withValues(alpha: 0.6),
+                            color: AppColors.accentGold.withValues(alpha: 0.6),
                             blurRadius: 8,
                           ),
                         ]
@@ -728,7 +655,7 @@ class _DeepProbeProgress extends StatelessWidget {
             height: 10,
             child: CircularProgressIndicator(
               strokeWidth: 1.5,
-              color: AppColors.aurora,
+              color: AppColors.accentGold,
               value: total > 0 ? done / total : null,
             ),
           ),
@@ -738,7 +665,7 @@ class _DeepProbeProgress extends StatelessWidget {
             style: const TextStyle(
               fontFamily: 'DM Sans',
               fontSize: 11,
-              color: AppColors.aurora,
+              color: AppColors.accentGold,
             ),
           ),
         ],
@@ -750,17 +677,17 @@ class _LiveBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(
-          color: AppColors.aurora.withValues(alpha: 0.12),
+          color: AppColors.accentGold.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: AppColors.aurora.withValues(alpha: 0.4),
+            color: AppColors.accentGold.withValues(alpha: 0.4),
             width: 0.8,
           ),
         ),
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.verified_rounded, size: 10, color: AppColors.aurora),
+            Icon(Icons.verified_rounded, size: 10, color: AppColors.accentGold),
             SizedBox(width: 3),
             Text(
               'LIVE',
@@ -768,7 +695,7 @@ class _LiveBadge extends StatelessWidget {
                 fontFamily: 'DM Mono',
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
-                color: AppColors.aurora,
+                color: AppColors.accentGold,
               ),
             ),
           ],
@@ -781,9 +708,9 @@ class _LatencyBadge extends StatelessWidget {
   final int ms;
 
   Color get _color => ms < 150
-      ? AppColors.aurora
+      ? AppColors.accentGold
       : ms < 400
-          ? AppColors.ember
+          ? AppColors.accentSilver
           : AppColors.nova;
 
   @override
@@ -831,26 +758,26 @@ class _TrafficPanel extends StatelessWidget {
       child: GlassCard(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
         borderRadius: 22,
-        glowColor: AppColors.aurora.withValues(alpha: 0.08),
+        glowColor: AppColors.accentGold.withValues(alpha: 0.08),
         child: Row(
           children: [
             _Stat(
               icon: Icons.arrow_downward_rounded,
-              color: AppColors.aurora,
+              color: AppColors.accentGold,
               label: 'Получено',
               value: _bytes(state.rxBytes),
             ),
             const _Divider(),
             _Stat(
               icon: Icons.access_time_rounded,
-              color: AppColors.plasmaLight,
+              color: AppColors.nebula1,
               label: 'Время',
               value: _time(state.uptime),
             ),
             const _Divider(),
             _Stat(
               icon: Icons.arrow_upward_rounded,
-              color: AppColors.plasma,
+              color: AppColors.accentSilver,
               label: 'Отправлено',
               value: _bytes(state.txBytes),
             ),

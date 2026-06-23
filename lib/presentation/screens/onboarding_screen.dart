@@ -216,7 +216,7 @@ class _OnyxLogo extends StatelessWidget {
           children: [
             // Текстовый логотип ONYX — крупно, без щита
             ShaderMask(
-              shaderCallback: (b) => AppColors.gradientPlasma.createShader(
+              shaderCallback: (b) => AppColors.gradientGlass().createShader(
                 Rect.fromLTWH(0, 0, b.width, b.height),
               ),
               child: const Text(
@@ -285,7 +285,7 @@ class _Headline extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         ShaderMask(
-          shaderCallback: (b) => AppColors.gradientPlasma.createShader(
+          shaderCallback: (b) => AppColors.gradientGlass().createShader(
             Rect.fromLTWH(0, 0, b.width, b.height),
           ),
           child: FittedBox(
@@ -355,7 +355,7 @@ class _UrlInputState extends State<_UrlInput> {
     final borderColor = hasError
         ? AppColors.nova
         : _focused
-            ? AppColors.plasma
+            ? AppColors.accentSilver
             : AppColors.glassBorder;
 
     return Column(
@@ -368,7 +368,7 @@ class _UrlInputState extends State<_UrlInput> {
             boxShadow: _focused
                 ? [
                     BoxShadow(
-                      color: AppColors.plasmaGlow,
+                      color: AppColors.accentSilverGlow,
                       blurRadius: 20,
                       spreadRadius: -2,
                     ),
@@ -390,7 +390,8 @@ class _UrlInputState extends State<_UrlInput> {
                     const SizedBox(width: 16),
                     Icon(
                       Icons.link_rounded,
-                      color: _focused ? AppColors.plasma : AppColors.nebula2,
+                      color:
+                          _focused ? AppColors.accentSilver : AppColors.nebula2,
                       size: 18,
                     ),
                     const SizedBox(width: 10),
@@ -462,7 +463,7 @@ class _UrlInputState extends State<_UrlInput> {
             children: [
               const Icon(
                 Icons.auto_awesome_rounded,
-                color: AppColors.plasma,
+                color: AppColors.accentSilver,
                 size: 12,
               ),
               const SizedBox(width: 6),
@@ -471,9 +472,10 @@ class _UrlInputState extends State<_UrlInput> {
                 style: TextStyle(
                   fontFamily: 'DM Sans',
                   fontSize: 12,
-                  color: AppColors.plasma.withValues(alpha: 0.8),
+                  color: AppColors.accentSilver.withValues(alpha: 0.8),
                   decoration: TextDecoration.underline,
-                  decorationColor: AppColors.plasma.withValues(alpha: 0.4),
+                  decorationColor:
+                      AppColors.accentSilver.withValues(alpha: 0.4),
                 ),
               ),
             ],
@@ -527,7 +529,7 @@ class _ProgressBlock extends StatelessWidget {
                 height: 14,
                 child: CircularProgressIndicator(
                   strokeWidth: 1.5,
-                  color: AppColors.plasma,
+                  color: AppColors.accentSilver,
                   value: progress,
                 ),
               ),
@@ -551,7 +553,7 @@ class _ProgressBlock extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progress,
                 backgroundColor: AppColors.void3,
-                color: AppColors.plasma,
+                color: AppColors.accentSilver,
                 minHeight: 3,
               ),
             ),
@@ -586,7 +588,7 @@ class _ConnectButton extends StatelessWidget {
             height: 58,
             decoration: BoxDecoration(
               gradient: onTap != null
-                  ? AppColors.gradientPlasma
+                  ? AppColors.gradientGlass()
                   : const LinearGradient(
                       colors: [AppColors.void3, AppColors.void3],
                     ),
@@ -594,7 +596,7 @@ class _ConnectButton extends StatelessWidget {
               boxShadow: onTap != null
                   ? [
                       BoxShadow(
-                        color: AppColors.plasma.withValues(alpha: 0.4),
+                        color: AppColors.accentSilver.withValues(alpha: 0.4),
                         blurRadius: 24,
                         spreadRadius: -2,
                       ),

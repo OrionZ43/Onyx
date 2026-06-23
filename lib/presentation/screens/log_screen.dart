@@ -118,7 +118,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
 
                               ShaderMask(
                                 shaderCallback: (b) =>
-                                    AppColors.gradientPlasma.createShader(
+                                    AppColors.gradientGlass().createShader(
                                   Rect.fromLTWH(0, 0, b.width, b.height),
                                 ),
                                 child: const Icon(
@@ -140,7 +140,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               const SizedBox(width: 8),
 
                               GlassPill(
-                                color: AppColors.plasma,
+                                color: AppColors.accentSilver,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
                                   vertical: 3,
@@ -150,7 +150,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                                   style: const TextStyle(
                                     fontFamily: 'DM Sans',
                                     fontSize: 11,
-                                    color: AppColors.plasmaLight,
+                                    color: AppColors.nebula1,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -204,7 +204,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                           const Icon(
                             Icons.circle,
                             size: 6,
-                            color: AppColors.aurora,
+                            color: AppColors.accentGold,
                           ),
                           const SizedBox(width: 8),
                           const Text(
@@ -231,7 +231,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                             child: Switch.adaptive(
                               value: _autoScroll,
                               onChanged: (v) => setState(() => _autoScroll = v),
-                              activeThumbColor: AppColors.plasma,
+                              activeThumbColor: AppColors.accentSilver,
                             ),
                           ),
                         ],
@@ -313,18 +313,17 @@ class _FilterBtn extends StatelessWidget {
           width: 34,
           height: 34,
           decoration: BoxDecoration(
-            color: current != null ? AppColors.plasmaTrace : AppColors.glass,
+            color: current != null ? AppColors.glass : AppColors.glass,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: current != null
-                  ? AppColors.horizonGlow
-                  : AppColors.glassBorder,
+              color:
+                  current != null ? AppColors.horizon : AppColors.glassBorder,
             ),
           ),
           child: Icon(
             Icons.filter_list_rounded,
             size: 16,
-            color: current != null ? AppColors.plasma : AppColors.nebula1,
+            color: current != null ? AppColors.accentSilver : AppColors.nebula1,
           ),
         ),
         itemBuilder: (_) => [
@@ -384,14 +383,14 @@ class _LogRow extends StatelessWidget {
 
   Color get _levelColor => switch (entry.level) {
         LogLevel.debug => AppColors.nebula1,
-        LogLevel.info => AppColors.plasma,
-        LogLevel.warn => AppColors.ember,
+        LogLevel.info => AppColors.accentSilver,
+        LogLevel.warn => AppColors.accentSilver,
         LogLevel.error => AppColors.nova,
       };
 
   Color get _bg => switch (entry.level) {
         LogLevel.error => AppColors.nova.withValues(alpha: 0.04),
-        LogLevel.warn => AppColors.ember.withValues(alpha: 0.03),
+        LogLevel.warn => AppColors.accentSilver.withValues(alpha: 0.03),
         _ => Colors.transparent,
       };
 
@@ -436,7 +435,7 @@ class _LogRow extends StatelessWidget {
             style: TextStyle(
               fontFamily: 'DM Mono',
               fontSize: 10,
-              color: AppColors.plasma.withValues(alpha: 0.5),
+              color: AppColors.accentSilver.withValues(alpha: 0.5),
             ),
           ),
           const SizedBox(width: 6),

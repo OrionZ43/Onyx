@@ -144,11 +144,12 @@ class _SubscriptionManagerScreenState
                                     vertical: 8,
                                   ),
                                   decoration: BoxDecoration(
-                                    gradient: AppColors.gradientPlasma,
+                                    gradient: AppColors.gradientGlass(),
                                     borderRadius: BorderRadius.circular(10),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: AppColors.plasma.withValues(
+                                        color:
+                                            AppColors.accentSilver.withValues(
                                           alpha: 0.35,
                                         ),
                                         blurRadius: 12,
@@ -187,7 +188,7 @@ class _SubscriptionManagerScreenState
                     if (sub.status == SubStatus.fetching ||
                         sub.status == SubStatus.probing)
                       Container(
-                        color: AppColors.plasma.withValues(alpha: 0.06),
+                        color: AppColors.accentSilver.withValues(alpha: 0.06),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 10,
@@ -199,7 +200,7 @@ class _SubscriptionManagerScreenState
                               height: 14,
                               child: CircularProgressIndicator(
                                 strokeWidth: 1.5,
-                                color: AppColors.plasma,
+                                color: AppColors.accentSilver,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -223,7 +224,7 @@ class _SubscriptionManagerScreenState
                       child: _loading
                           ? const Center(
                               child: CircularProgressIndicator(
-                                color: AppColors.plasma,
+                                color: AppColors.accentSilver,
                               ),
                             )
                           : _entries.isEmpty
@@ -369,11 +370,11 @@ class _SubscriptionManagerScreenState
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  gradient: AppColors.gradientPlasma,
+                  gradient: AppColors.gradientGlass(),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.plasma.withValues(alpha: 0.3),
+                      color: AppColors.accentSilver.withValues(alpha: 0.3),
                       blurRadius: 12,
                     ),
                   ],
@@ -514,11 +515,11 @@ class _EmptyState extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                 decoration: BoxDecoration(
-                  gradient: AppColors.gradientPlasma,
+                  gradient: AppColors.gradientGlass(),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.plasma.withValues(alpha: 0.35),
+                      color: AppColors.accentSilver.withValues(alpha: 0.35),
                       blurRadius: 20,
                     ),
                   ],
@@ -569,7 +570,8 @@ class _SubCard extends StatelessWidget {
     return GlassCard(
       padding: const EdgeInsets.all(16),
       borderRadius: 18,
-      glowColor: isActive ? AppColors.plasma.withValues(alpha: 0.2) : null,
+      glowColor:
+          isActive ? AppColors.accentSilver.withValues(alpha: 0.2) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -581,7 +583,7 @@ class _SubCard extends StatelessWidget {
                 height: 38,
                 decoration: BoxDecoration(
                   gradient: isActive
-                      ? AppColors.gradientPlasma
+                      ? AppColors.gradientGlass()
                       : const LinearGradient(
                           colors: [AppColors.void3, AppColors.void3],
                         ),
@@ -606,7 +608,9 @@ class _SubCard extends StatelessWidget {
                         fontFamily: 'Syne',
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: isActive ? AppColors.plasma : AppColors.nebula0,
+                        color: isActive
+                            ? AppColors.accentSilver
+                            : AppColors.nebula0,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -632,10 +636,10 @@ class _SubCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.plasma.withValues(alpha: 0.12),
+                    color: AppColors.accentSilver.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: AppColors.plasma.withValues(alpha: 0.3),
+                      color: AppColors.accentSilver.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Text(
@@ -644,7 +648,7 @@ class _SubCard extends StatelessWidget {
                       fontFamily: 'DM Mono',
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.plasma,
+                      color: AppColors.accentSilver,
                     ),
                   ),
                 ),
@@ -663,7 +667,7 @@ class _SubCard extends StatelessWidget {
                   child: Container(
                     height: 36,
                     decoration: BoxDecoration(
-                      gradient: isActive ? null : AppColors.gradientPlasma,
+                      gradient: isActive ? null : AppColors.gradientGlass(),
                       color: isActive ? AppColors.void3 : null,
                       borderRadius: BorderRadius.circular(10),
                       border: isActive
@@ -673,7 +677,8 @@ class _SubCard extends StatelessWidget {
                           ? null
                           : [
                               BoxShadow(
-                                color: AppColors.plasma.withValues(alpha: 0.25),
+                                color: AppColors.accentSilver
+                                    .withValues(alpha: 0.25),
                                 blurRadius: 10,
                               ),
                             ],

@@ -9,10 +9,12 @@ class CosmicBackground extends StatelessWidget {
     super.key,
     required this.animation,
     this.intensity = 1.0,
+    this.isConnected = false,
   });
 
   final Animation<double> animation;
   final double intensity;
+  final bool isConnected;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +34,7 @@ class CosmicBackground extends StatelessWidget {
             painter: _NebulaPainter(
               progress: animation.value,
               intensity: intensity,
+              isConnected: isConnected,
             ),
           ),
         ),
@@ -57,54 +60,34 @@ class CosmicBackground extends StatelessWidget {
 }
 
 class _NebulaPainter extends CustomPainter {
-  const _NebulaPainter({required this.progress, required this.intensity});
+  const _NebulaPainter(
+      {required this.progress,
+      required this.intensity,
+      required this.isConnected});
   final double progress;
   final double intensity;
+  final bool isConnected;
 
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height * 0.4;
 
-    // Большое фиолетовое облако
-    _drawBlob(
-      canvas,
-      cx,
-      cy,
-      200,
-      progress * math.pi * 2,
-      const Color(0x302A1566),
-      140,
-    );
-
-    // Синее облако
-    _drawBlob(
-      canvas,
-      cx,
-      cy,
-      160,
-      progress * math.pi * 2 + math.pi * 0.6,
-      const Color(0x221533AA),
-      120,
-    );
-
-    // Маленькое зелёное (aurora)
-    _drawBlob(
-      canvas,
-      cx - 60,
-      cy + 80,
-      80,
-      progress * math.pi * 2 + math.pi * 1.2,
-      const Color(0x1400C8A0),
-      90,
-    );
+    // Глубокий сапфир
+    _drawBlob(canvas, cx, cy, 250, progress * math.pi * 2,
+        const Color(0x150F1A3A), 200);
+    // Темный аметист
+    _drawBlob(canvas, cx, cy, 200, progress * math.pi * 2 + math.pi,
+        const Color(0x101A0F2E), 180);
 
     // Центральное свечение под кнопкой
     final center = Offset(cx, cy + size.height * 0.12);
+    final glowColor =
+        isConnected ? AppColors.accentGold : AppColors.accentSilver;
     final glow = Paint()
       ..shader = RadialGradient(
         colors: [
-          AppColors.plasma.withValues(alpha: 0.12 * intensity),
+          glowColor.withValues(alpha: 0.05 * intensity),
           Colors.transparent,
         ],
       ).createShader(Rect.fromCircle(center: center, radius: 180));

@@ -6,9 +6,9 @@ abstract final class AppTheme {
   static ThemeData get dark {
     const base = ColorScheme.dark(
       brightness: Brightness.dark,
-      primary: AppColors.plasma,
+      primary: AppColors.accentSilver,
       onPrimary: AppColors.nebula0,
-      secondary: AppColors.plasmaLight,
+      secondary: AppColors.accentSilver,
       onSecondary: AppColors.nebula0,
       surface: AppColors.void2,
       onSurface: AppColors.nebula0,

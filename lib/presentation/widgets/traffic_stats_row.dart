@@ -14,28 +14,28 @@ class TrafficStatsRow extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: AppColors.gradientGlass(),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.horizonGlow),
+        border: Border.all(color: AppColors.horizon),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _Stat(
             icon: Icons.arrow_downward_rounded,
-            iconColor: AppColors.aurora,
+            iconColor: AppColors.accentGold,
             label: 'Получено',
             value: _fmtBytes(state.rxBytes),
           ),
           _VDivider(),
           _Stat(
             icon: Icons.timer_outlined,
-            iconColor: AppColors.plasmaLight,
+            iconColor: AppColors.nebula1,
             label: 'Время',
             value: _fmtDuration(state.uptime),
           ),
           _VDivider(),
           _Stat(
             icon: Icons.arrow_upward_rounded,
-            iconColor: AppColors.plasma,
+            iconColor: AppColors.accentSilver,
             label: 'Отправлено',
             value: _fmtBytes(state.txBytes),
           ),
