@@ -247,7 +247,6 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     final saved = prefs.getString(_urlKey);
     if (saved != null && saved.isNotEmpty) {
       state = state.copyWith(url: saved);
-      await loadFromUrl(saved);
     }
   }
 }

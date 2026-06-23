@@ -18,12 +18,12 @@ void main() async {
     await windowManager.ensureInitialized();
     await localNotifier.setup(appName: 'Onyx');
     WindowOptions windowOptions = const WindowOptions(
-      size: Size(400, 800),
-      minimumSize: Size(400, 800),
+      size: Size(1200, 800),
+      minimumSize: Size(800, 600),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
+      titleBarStyle: TitleBarStyle.normal,
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
