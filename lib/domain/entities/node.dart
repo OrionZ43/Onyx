@@ -96,8 +96,7 @@ class Node {
   }
 
   @override
-  String toString() =>
-      'Node($name, $host:$port, ${latencyMs}ms, sni=$sni, '
+  String toString() => 'Node($name, $host:$port, ${latencyMs}ms, sni=$sni, '
       'working=$isTrulyWorking)';
 }
 
