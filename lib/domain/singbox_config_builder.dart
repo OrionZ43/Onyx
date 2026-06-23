@@ -221,6 +221,15 @@ class SingboxConfigBuilder {
         {'protocol': 'dns', 'outbound': 'dns-out'},
         // Локальные адреса никогда не идут через прокси
         {'ip_is_private': true, 'outbound': 'direct'},
+        // Обход VPN для RU-доменов и популярных сервисов
+        {
+          'domain_suffix': [
+            '.ru', '.su', '.xn--p1ai', // .рф
+            'vk.com', 'vk.ru', 'yandex.ru', 'ya.ru', 'mail.ru',
+            'gosuslugi.ru', 'mos.ru', 'sberbank.ru', 'tbank.ru', 'avito.ru'
+          ],
+          'outbound': 'direct'
+        },
         // Bypass сервера: ip_cidr работает с сырыми L3-пакетами TUN
         if (serverIp != null)
           {

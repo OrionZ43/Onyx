@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/node.dart';
@@ -140,6 +141,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_urlKey, url);
 
+    _saveCache(probed);
+
     if (!mounted) return;
     state = state.copyWith(
       status: SubStatus.ready, // UI показывает результаты Этапа 1
@@ -169,6 +172,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
         }
       },
     );
+
+    _saveCache(probed);
 
     if (!mounted) return;
     state = state.copyWith(
@@ -235,6 +240,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
         return n.id == workingNode.id ? n.copyWith(isTrulyWorking: true) : n;
       }).toList();
 
+      _saveCache(updatedNodes);
       state = state.copyWith(status: SubStatus.ready, nodes: updatedNodes);
     } else {
       // Ни одна нода не прошла — возвращаемся в ready без изменений
@@ -242,11 +248,30 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     }
   }
 
+  Future<void> _saveCache(List<Node> nodes) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = nodes.map((n) => jsonEncode(n.toJson())).toList();
+    await prefs.setStringList('cached_nodes', jsonList);
+  }
+
   Future<void> _loadSavedUrl() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_urlKey);
+    final cached = prefs.getStringList('cached_nodes');
+
     if (saved != null && saved.isNotEmpty) {
-      state = state.copyWith(url: saved);
+      if (cached != null && cached.isNotEmpty) {
+        try {
+          final nodes =
+              cached.map((s) => Node.fromJson(jsonDecode(s))).toList();
+          state =
+              state.copyWith(url: saved, nodes: nodes, status: SubStatus.ready);
+        } catch (_) {
+          state = state.copyWith(url: saved);
+        }
+      } else {
+        state = state.copyWith(url: saved);
+      }
     }
   }
 }

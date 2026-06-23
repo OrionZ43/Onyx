@@ -62,36 +62,57 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
 
               // ── Список ────────────────────────────────────────────────────
               Expanded(
-                child: nodes.isEmpty
-                    ? _EmptyState()
-                    : ListView(
-                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
-                        children: [
-                          for (final entry in groups.entries)
-                            _CountryGroup(
-                              country: entry.key,
-                              nodes: entry.value,
-                              alive: entry.value.where((n) => n.isAlive).length,
-                              bestMs: _bestMs(entry.value),
-                              expanded: _expanded[entry.key] ??
-                                  _shouldAutoExpand(entry.key, groups),
-                              selectedNode: selected,
-                              onToggle: () => setState(
-                                () => _expanded[entry.key] =
-                                    !(_expanded[entry.key] ??
-                                        _shouldAutoExpand(entry.key, groups)),
-                              ),
-                              onSelectNode: (node) {
-                                // Сохраняем выбор и закрываем шторку
-                                ref
-                                    .read(nodeSelectionProvider.notifier)
-                                    .select(node);
-                                if (!context.mounted) return;
-                                Navigator.of(context).pop();
-                              },
+                child: (sub.status == SubStatus.probing ||
+                        sub.status == SubStatus.deepProbing)
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(
+                                color: AppColors.plasma),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Проверяем серверы... ${sub.probedCount}/${sub.nodes.length}',
+                              style: const TextStyle(
+                                  color: AppColors.nebula1,
+                                  fontFamily: 'DM Sans'),
                             ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      )
+                    : nodes.isEmpty
+                        ? _EmptyState()
+                        : ListView(
+                            padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
+                            children: [
+                              for (final entry in groups.entries)
+                                _CountryGroup(
+                                  country: entry.key,
+                                  nodes: entry.value,
+                                  alive: entry.value
+                                      .where((n) => n.isAlive)
+                                      .length,
+                                  bestMs: _bestMs(entry.value),
+                                  expanded: _expanded[entry.key] ??
+                                      _shouldAutoExpand(entry.key, groups),
+                                  selectedNode: selected,
+                                  onToggle: () => setState(
+                                    () => _expanded[entry.key] =
+                                        !(_expanded[entry.key] ??
+                                            _shouldAutoExpand(
+                                                entry.key, groups)),
+                                  ),
+                                  onSelectNode: (node) {
+                                    // Сохраняем выбор и закрываем шторку
+                                    ref
+                                        .read(nodeSelectionProvider.notifier)
+                                        .select(node);
+                                    if (!context.mounted) return;
+                                    Navigator.of(context).pop();
+                                  },
+                                ),
+                            ],
+                          ),
               ),
             ],
           ),
@@ -137,12 +158,12 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
 
 // ── Шапка шторки ──────────────────────────────────────────────────────────
 
-class _SheetHeader extends StatelessWidget {
+class _SheetHeader extends ConsumerWidget {
   const _SheetHeader({required this.nodeCount, required this.aliveCount});
   final int nodeCount, aliveCount;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -195,6 +216,21 @@ class _SheetHeader extends StatelessWidget {
                     fontSize: 11,
                     color: AppColors.aurora,
                     fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Кнопка обновления
+              GestureDetector(
+                onTap: () {
+                  ref.read(subscriptionProvider.notifier).reprobe();
+                },
+                child: const GlassPill(
+                  padding: EdgeInsets.all(6),
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: 16,
+                    color: AppColors.plasmaLight,
                   ),
                 ),
               ),
