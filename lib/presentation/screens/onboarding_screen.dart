@@ -41,7 +41,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   String? _error;
 
   static const _example =
-      'https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt';
+      'https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt';
 
   @override
   void initState() {
@@ -107,8 +107,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          CosmicBackground(animation: _bgCtrl),
-
+          RepaintBoundary(
+            child: CosmicBackground(animation: _bgCtrl),
+          ),
           SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -354,8 +355,8 @@ class _UrlInputState extends State<_UrlInput> {
     final borderColor = hasError
         ? AppColors.nova
         : _focused
-        ? AppColors.plasma
-        : AppColors.glassBorder;
+            ? AppColors.plasma
+            : AppColors.glassBorder;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -431,7 +432,6 @@ class _UrlInputState extends State<_UrlInput> {
             ),
           ),
         ),
-
         if (hasError) ...[
           const SizedBox(height: 8),
           Row(
@@ -455,9 +455,7 @@ class _UrlInputState extends State<_UrlInput> {
             ],
           ),
         ],
-
         const SizedBox(height: 10),
-
         GestureDetector(
           onTap: widget.onExample,
           child: Row(
@@ -501,8 +499,7 @@ class _ProgressBlock extends StatelessWidget {
     final double? progress;
 
     if (isDeepProbing) {
-      label =
-          'Глубокая проверка топ-${state.deepProbeTotal} нод... '
+      label = 'Глубокая проверка топ-${state.deepProbeTotal} нод... '
           '${state.deepProbedCount}/${state.deepProbeTotal}';
       progress = state.deepProbeTotal > 0
           ? state.deepProbedCount / state.deepProbeTotal

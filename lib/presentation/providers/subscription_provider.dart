@@ -74,15 +74,16 @@ class SubscriptionState {
     int? probedCount,
     int? deepProbedCount,
     int? deepProbeTotal,
-  }) => SubscriptionState(
-    status: status ?? this.status,
-    nodes: nodes ?? this.nodes,
-    url: url ?? this.url,
-    error: error,
-    probedCount: probedCount ?? this.probedCount,
-    deepProbedCount: deepProbedCount ?? this.deepProbedCount,
-    deepProbeTotal: deepProbeTotal ?? this.deepProbeTotal,
-  );
+  }) =>
+      SubscriptionState(
+        status: status ?? this.status,
+        nodes: nodes ?? this.nodes,
+        url: url ?? this.url,
+        error: error,
+        probedCount: probedCount ?? this.probedCount,
+        deepProbedCount: deepProbedCount ?? this.deepProbedCount,
+        deepProbeTotal: deepProbeTotal ?? this.deepProbeTotal,
+      );
 }
 
 // ── SubscriptionController ────────────────────────────────────────────────────
@@ -255,5 +256,5 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
 final subscriptionProvider =
     StateNotifierProvider<SubscriptionController, SubscriptionState>(
-      (_) => SubscriptionController(),
-    );
+  (_) => SubscriptionController(),
+);
