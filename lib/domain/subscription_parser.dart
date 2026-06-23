@@ -9,7 +9,7 @@ class SubscriptionParser {
 
   List<Node> parse(String raw) {
     final decoded = _tryBase64(raw.trim()) ?? raw.trim();
-    final lines   = decoded
+    final lines = decoded
         .split(RegExp(r'[\n\r]+'))
         .map((l) => l.trim())
         .where((l) => l.startsWith('vless://'))
@@ -41,31 +41,30 @@ class SubscriptionParser {
   Node? _parseVlessUri(String uri) {
     try {
       // vless://UUID@host:port?params#name
-      final u      = Uri.parse(uri);
-      final uuid   = u.userInfo;
-      final host   = u.host;
-      final port   = u.port;
+      final u = Uri.parse(uri);
+      final uuid = u.userInfo;
+      final host = u.host;
+      final port = u.port;
       final params = u.queryParameters;
-      final name   = Uri.decodeComponent(
-          u.fragment.isEmpty ? host : u.fragment);
+      final name = Uri.decodeComponent(u.fragment.isEmpty ? host : u.fragment);
 
       if (uuid.isEmpty || host.isEmpty || port == 0) return null;
 
       return Node(
-        id:          _nodeId(host, port, uuid),
-        name:        name,
-        host:        host,
-        port:        port,
-        uuid:        uuid,
-        flow:        params['flow']        ?? '',
-        security:    params['security']    ?? 'none',
-        fingerprint: params['fp']          ?? 'chrome',
-        sni:         params['sni']         ?? host,
-        path:        params['path']        ?? params['serviceName'] ?? '/',
-        network:     params['type']        ?? 'tcp',
+        id: _nodeId(host, port, uuid),
+        name: name,
+        host: host,
+        port: port,
+        uuid: uuid,
+        flow: params['flow'] ?? '',
+        security: params['security'] ?? 'none',
+        fingerprint: params['fp'] ?? 'chrome',
+        sni: params['sni'] ?? host,
+        path: params['path'] ?? params['serviceName'] ?? '/',
+        network: params['type'] ?? 'tcp',
         // Reality-специфичные параметры
-        realityPbk:  params['pbk']         ?? '',
-        realitySid:  params['sid']         ?? '',
+        realityPbk: params['pbk'] ?? '',
+        realitySid: params['sid'] ?? '',
       );
     } catch (_) {
       return null;

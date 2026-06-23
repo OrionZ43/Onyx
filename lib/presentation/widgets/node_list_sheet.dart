@@ -28,9 +28,9 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final sub      = ref.watch(subscriptionProvider);
+    final sub = ref.watch(subscriptionProvider);
     final selected = ref.watch(nodeSelectionProvider);
-    final nodes    = sub.nodes;
+    final nodes = sub.nodes;
 
     // Группируем по стране (первый emoji / первое слово)
     final groups = _group(nodes);
@@ -65,28 +65,34 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
                 child: nodes.isEmpty
                     ? _EmptyState()
                     : ListView(
-                  padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
-                  children: [
-                    for (final entry in groups.entries)
-                      _CountryGroup(
-                        country:  entry.key,
-                        nodes:    entry.value,
-                        alive:    entry.value.where((n) => n.isAlive).length,
-                        bestMs:   _bestMs(entry.value),
-                        expanded: _expanded[entry.key] ?? _shouldAutoExpand(entry.key, groups),
-                        selectedNode: selected,
-                        onToggle: () => setState(() =>
-                        _expanded[entry.key] = !(_expanded[entry.key]
-                            ?? _shouldAutoExpand(entry.key, groups))),
-                        onSelectNode: (node) {
-                          // Сохраняем выбор и закрываем шторку
-                          ref.read(nodeSelectionProvider.notifier).select(node);
-                          if (!context.mounted) return;
-                          Navigator.of(context).pop();
-                        },
+                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
+                        children: [
+                          for (final entry in groups.entries)
+                            _CountryGroup(
+                              country: entry.key,
+                              nodes: entry.value,
+                              alive: entry.value.where((n) => n.isAlive).length,
+                              bestMs: _bestMs(entry.value),
+                              expanded:
+                                  _expanded[entry.key] ??
+                                  _shouldAutoExpand(entry.key, groups),
+                              selectedNode: selected,
+                              onToggle: () => setState(
+                                () => _expanded[entry.key] =
+                                    !(_expanded[entry.key] ??
+                                        _shouldAutoExpand(entry.key, groups)),
+                              ),
+                              onSelectNode: (node) {
+                                // Сохраняем выбор и закрываем шторку
+                                ref
+                                    .read(nodeSelectionProvider.notifier)
+                                    .select(node);
+                                if (!context.mounted) return;
+                                Navigator.of(context).pop();
+                              },
+                            ),
+                        ],
                       ),
-                  ],
-                ),
               ),
             ],
           ),
@@ -144,7 +150,8 @@ class _SheetHeader extends StatelessWidget {
         // Ручка
         Container(
           margin: const EdgeInsets.only(top: 12, bottom: 8),
-          width: 36, height: 4,
+          width: 36,
+          height: 4,
           decoration: BoxDecoration(
             color: AppColors.nebula2.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(2),
@@ -156,24 +163,39 @@ class _SheetHeader extends StatelessWidget {
           child: Row(
             children: [
               ShaderMask(
-                shaderCallback: (b) => AppColors.gradientPlasma
-                    .createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
-                child: const Icon(Icons.dns_rounded, color: Colors.white, size: 18),
+                shaderCallback: (b) => AppColors.gradientPlasma.createShader(
+                  Rect.fromLTWH(0, 0, b.width, b.height),
+                ),
+                child: const Icon(
+                  Icons.dns_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 10),
-              const Text('Выбор сервера', style: TextStyle(
-                fontFamily: 'Syne', fontSize: 16,
-                fontWeight: FontWeight.w700, color: AppColors.nebula0,
-              )),
+              const Text(
+                'Выбор сервера',
+                style: TextStyle(
+                  fontFamily: 'Syne',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.nebula0,
+                ),
+              ),
               const Spacer(),
               GlassPill(
                 color: AppColors.aurora,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 child: Text(
                   '$aliveCount / $nodeCount онлайн',
                   style: const TextStyle(
-                    fontFamily: 'DM Sans', fontSize: 11,
-                    color: AppColors.aurora, fontWeight: FontWeight.w600,
+                    fontFamily: 'DM Sans',
+                    fontSize: 11,
+                    color: AppColors.aurora,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -197,17 +219,23 @@ class _EmptyState extends StatelessWidget {
       children: [
         Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 48),
         const SizedBox(height: 16),
-        const Text('Серверы не загружены',
-            style: TextStyle(
-              fontFamily: 'Syne', fontSize: 16,
-              color: AppColors.nebula1,
-            )),
+        const Text(
+          'Серверы не загружены',
+          style: TextStyle(
+            fontFamily: 'Syne',
+            fontSize: 16,
+            color: AppColors.nebula1,
+          ),
+        ),
         const SizedBox(height: 8),
-        const Text('Добавьте подписку на главном экране',
-            style: TextStyle(
-              fontFamily: 'DM Sans', fontSize: 12,
-              color: AppColors.nebula2,
-            )),
+        const Text(
+          'Добавьте подписку на главном экране',
+          style: TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 12,
+            color: AppColors.nebula2,
+          ),
+        ),
       ],
     ),
   );
@@ -258,28 +286,41 @@ class _CountryGroup extends StatelessWidget {
                     : AppColors.glassBorder.withValues(alpha: 0.4),
               ),
             ),
-            child: Row(children: [
-              Expanded(
-                child: Text(country, style: TextStyle(
-                  fontFamily: 'Syne', fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: expanded ? AppColors.plasma : AppColors.nebula0,
-                )),
-              ),
-              Text('$alive/${nodes.length}', style: const TextStyle(
-                fontFamily: 'DM Sans', fontSize: 11,
-                color: AppColors.nebula2,
-              )),
-              const SizedBox(width: 10),
-              if (bestMs != null) _MsChip(ms: bestMs!),
-              const SizedBox(width: 8),
-              AnimatedRotation(
-                turns: expanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: const Icon(Icons.keyboard_arrow_down_rounded,
-                    color: AppColors.nebula2, size: 18),
-              ),
-            ]),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    country,
+                    style: TextStyle(
+                      fontFamily: 'Syne',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: expanded ? AppColors.plasma : AppColors.nebula0,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$alive/${nodes.length}',
+                  style: const TextStyle(
+                    fontFamily: 'DM Sans',
+                    fontSize: 11,
+                    color: AppColors.nebula2,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                if (bestMs != null) _MsChip(ms: bestMs!),
+                const SizedBox(width: 8),
+                AnimatedRotation(
+                  turns: expanded ? 0.5 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.nebula2,
+                    size: 18,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
 
@@ -289,20 +330,20 @@ class _CountryGroup extends StatelessWidget {
           curve: Curves.easeInOut,
           child: expanded
               ? Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < nodes.length; i++)
-                _CompactNodeRow(
-                  node: nodes[i],
-                  isSelected: selectedNode?.id == nodes[i].id,
-                  onTap: () => onSelectNode(nodes[i]),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < nodes.length; i++)
+                      _CompactNodeRow(
+                            node: nodes[i],
+                            isSelected: selectedNode?.id == nodes[i].id,
+                            onTap: () => onSelectNode(nodes[i]),
+                          )
+                          .animate(delay: (i * 25).ms)
+                          .fadeIn(duration: 200.ms)
+                          .slideX(begin: 0.04),
+                    const SizedBox(height: 4),
+                  ],
                 )
-                    .animate(delay: (i * 25).ms)
-                    .fadeIn(duration: 200.ms)
-                    .slideX(begin: 0.04),
-              const SizedBox(height: 4),
-            ],
-          )
               : const SizedBox.shrink(),
         ),
       ],
@@ -324,9 +365,9 @@ class _CompactNodeRow extends StatelessWidget {
 
   Color _qColor() => switch (node.quality) {
     NodeQuality.excellent => AppColors.aurora,
-    NodeQuality.good      => const Color(0xFF80E8B0),
-    NodeQuality.poor      => AppColors.ember,
-    NodeQuality.dead      => AppColors.nebula2,
+    NodeQuality.good => const Color(0xFF80E8B0),
+    NodeQuality.poor => AppColors.ember,
+    NodeQuality.dead => AppColors.nebula2,
   };
 
   @override
@@ -365,76 +406,106 @@ class _CompactNodeRow extends StatelessWidget {
                 width: isSelected ? 1.2 : 1.0,
               ),
             ),
-            child: Row(children: [
-              // Точка статуса
-              Container(
-                width: 6, height: 6,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: qc,
-                  boxShadow: node.isAlive
-                      ? [BoxShadow(color: qc.withValues(alpha: 0.6), blurRadius: 5)]
-                      : null,
+            child: Row(
+              children: [
+                // Точка статуса
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: qc,
+                    boxShadow: node.isAlive
+                        ? [
+                            BoxShadow(
+                              color: qc.withValues(alpha: 0.6),
+                              blurRadius: 5,
+                            ),
+                          ]
+                        : null,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
+                const SizedBox(width: 10),
 
-              // Номер
-              Text('#${node.id.substring(0, 4)}', style: const TextStyle(
-                fontFamily: 'DM Mono', fontSize: 10, color: AppColors.nebula2,
-              )),
-              const SizedBox(width: 10),
-
-              // Транспорт + безопасность
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: AppColors.void3,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${node.network.toUpperCase()} · ${node.security.toUpperCase()}',
+                // Номер
+                Text(
+                  '#${node.id.substring(0, 4)}',
                   style: const TextStyle(
-                    fontFamily: 'DM Mono', fontSize: 9, color: AppColors.nebula2,
+                    fontFamily: 'DM Mono',
+                    fontSize: 10,
+                    color: AppColors.nebula2,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 10),
 
-              // SNI / имя
-              Expanded(
-                child: Text(
-                  node.name,
-                  style: TextStyle(
-                    fontFamily: 'DM Sans', fontSize: 11,
-                    color: isSelected ? AppColors.plasma : AppColors.nebula1,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                // Транспорт + безопасность
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
                   ),
-                  overflow: TextOverflow.ellipsis,
+                  decoration: BoxDecoration(
+                    color: AppColors.void3,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${node.network.toUpperCase()} · ${node.security.toUpperCase()}',
+                    style: const TextStyle(
+                      fontFamily: 'DM Mono',
+                      fontSize: 9,
+                      color: AppColors.nebula2,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
 
-              // Бейдж LIVE / MUX
-              if (node.isTrulyWorking) ...[
-                _SmallBadge('LIVE', AppColors.aurora),
-                const SizedBox(width: 4),
-              ] else if (node.muxEnabled) ...[
-                _SmallBadge('MUX', AppColors.plasma),
-                const SizedBox(width: 4),
+                // SNI / имя
+                Expanded(
+                  child: Text(
+                    node.name,
+                    style: TextStyle(
+                      fontFamily: 'DM Sans',
+                      fontSize: 11,
+                      color: isSelected ? AppColors.plasma : AppColors.nebula1,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+
+                // Бейдж LIVE / MUX
+                if (node.isTrulyWorking) ...[
+                  _SmallBadge('LIVE', AppColors.aurora),
+                  const SizedBox(width: 4),
+                ] else if (node.muxEnabled) ...[
+                  _SmallBadge('MUX', AppColors.plasma),
+                  const SizedBox(width: 4),
+                ],
+
+                // Иконка "выбрано"
+                if (isSelected)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    size: 14,
+                    color: AppColors.plasma,
+                  ),
+
+                // Пинг
+                if (!isSelected && node.latencyMs != null)
+                  _MsChip(ms: node.latencyMs!)
+                else if (!isSelected)
+                  const Text(
+                    '—',
+                    style: TextStyle(
+                      fontFamily: 'DM Mono',
+                      fontSize: 11,
+                      color: AppColors.nebula2,
+                    ),
+                  ),
               ],
-
-              // Иконка "выбрано"
-              if (isSelected)
-                const Icon(Icons.check_circle_rounded,
-                    size: 14, color: AppColors.plasma),
-
-              // Пинг
-              if (!isSelected && node.latencyMs != null)
-                _MsChip(ms: node.latencyMs!)
-              else if (!isSelected)
-                const Text('—', style: TextStyle(
-                    fontFamily: 'DM Mono', fontSize: 11, color: AppColors.nebula2)),
-            ]),
+            ),
           ),
         ),
       ),
@@ -448,16 +519,22 @@ class _MsChip extends StatelessWidget {
   const _MsChip({required this.ms});
   final int ms;
 
-  Color get _c => ms < 150 ? AppColors.aurora
-      : ms < 400 ? AppColors.ember
+  Color get _c => ms < 150
+      ? AppColors.aurora
+      : ms < 400
+      ? AppColors.ember
       : AppColors.nova;
 
   @override
-  Widget build(BuildContext context) => Text('${ms}мс',
-      style: TextStyle(
-        fontFamily: 'DM Mono', fontSize: 11,
-        fontWeight: FontWeight.w700, color: _c,
-      ));
+  Widget build(BuildContext context) => Text(
+    '${ms}мс',
+    style: TextStyle(
+      fontFamily: 'DM Mono',
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      color: _c,
+    ),
+  );
 }
 
 class _SmallBadge extends StatelessWidget {
@@ -473,9 +550,14 @@ class _SmallBadge extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       border: Border.all(color: color.withValues(alpha: 0.3), width: 0.6),
     ),
-    child: Text(label, style: TextStyle(
-      fontFamily: 'DM Mono', fontSize: 8,
-      fontWeight: FontWeight.w700, color: color,
-    )),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontFamily: 'DM Mono',
+        fontSize: 8,
+        fontWeight: FontWeight.w700,
+        color: color,
+      ),
+    ),
   );
 }

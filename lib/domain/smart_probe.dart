@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import '../core/log_service.dart';
 import 'entities/node.dart';
-import 'node_scorer.dart';        // ← NEW: Умная система весов
+import 'node_scorer.dart'; // ← NEW: Умная система весов
 import 'singbox_config_builder.dart';
 
 // ── TCP ProbeResult ───────────────────────────────────────────────────────────
@@ -16,9 +16,9 @@ class ProbeResult {
     this.latencyMs,
     this.error,
   });
-  final Node    node;
-  final bool    isAlive;
-  final int?    latencyMs;
+  final Node node;
+  final bool isAlive;
+  final int? latencyMs;
   final String? error;
 }
 
@@ -50,23 +50,25 @@ class SmartProbe {
   ///
   /// [onProgress] вызывается после каждой проверенной ноды.
   Future<List<Node>> probeAll(
-      List<Node> nodes, {
-        void Function(int done, int total)? onProgress,
-      }) async {
-    log.i('Этап 1: TCP-пинг ${nodes.length} узлов (по $_concurrency параллельно)',
-        tag: 'PROBE');
+    List<Node> nodes, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    log.i(
+      'Этап 1: TCP-пинг ${nodes.length} узлов (по $_concurrency параллельно)',
+      tag: 'PROBE',
+    );
 
     final results = List<Node?>.filled(nodes.length, null);
     int done = 0;
 
     for (var i = 0; i < nodes.length; i += _concurrency) {
-      final end          = min(i + _concurrency, nodes.length);
-      final batch        = nodes.sublist(i, end);
+      final end = min(i + _concurrency, nodes.length);
+      final batch = nodes.sublist(i, end);
       final batchIndices = List.generate(end - i, (j) => i + j);
 
       final probed = await Future.wait(
         List.generate(batch.length, (j) async {
-          final node   = batch[j];
+          final node = batch[j];
           final result = await probeOne(node);
           done++;
           onProgress?.call(done, nodes.length);
@@ -107,11 +109,17 @@ class SmartProbe {
     final sw = Stopwatch()..start();
     try {
       final socket = await Socket.connect(
-          node.host, node.port, timeout: _timeout);
+        node.host,
+        node.port,
+        timeout: _timeout,
+      );
       sw.stop();
       await socket.close();
       return ProbeResult(
-          node: node, isAlive: true, latencyMs: sw.elapsedMilliseconds);
+        node: node,
+        isAlive: true,
+        latencyMs: sw.elapsedMilliseconds,
+      );
     } catch (e) {
       sw.stop();
       return ProbeResult(node: node, isAlive: false, error: e.toString());
@@ -139,12 +147,14 @@ class SmartProbe {
     );
 
     for (var i = 0; i < topN.length; i++) {
-      final node  = topN[i];
+      final node = topN[i];
       final score = NodeScorer.score(node);
       final label = NodeScorer.debugLabel(node);
-      buffer.write('  #${(i + 1).toString().padLeft(2)}  '
-          'score=${score.toString().padLeft(6)}  '
-          '${node.name.padRight(30)}  ($label)\n');
+      buffer.write(
+        '  #${(i + 1).toString().padLeft(2)}  '
+        'score=${score.toString().padLeft(6)}  '
+        '${node.name.padRight(30)}  ($label)\n',
+      );
     }
 
     log.i(buffer.toString(), tag: 'PROBE');
@@ -227,9 +237,9 @@ class DeepProbe {
   /// [sortedNodes] — список, уже отсортированный [NodeScorer] (лучший первый).
   /// [onProgress]  — (проверено, всего_живых) для отображения прогресса.
   Future<Node?> findWorkingNode(
-      List<Node> sortedNodes, {
-        void Function(int done, int total)? onProgress,
-      }) async {
+    List<Node> sortedNodes, {
+    void Function(int done, int total)? onProgress,
+  }) async {
     final candidates = sortedNodes.where((n) => n.isAlive).toList();
 
     if (candidates.isEmpty) {
@@ -239,22 +249,24 @@ class DeepProbe {
 
     log.i(
       'Этап 2: Deep Probe — ${candidates.length} кандидатов, '
-          'батчи по $_batchSize, HTTPS→$_probeHost',
+      'батчи по $_batchSize, HTTPS→$_probeHost',
       tag: 'DEEP',
     );
 
     int done = 0;
 
-    for (var batchStart = 0;
-    batchStart < candidates.length;
-    batchStart += _batchSize) {
+    for (
+      var batchStart = 0;
+      batchStart < candidates.length;
+      batchStart += _batchSize
+    ) {
       final batchEnd = min(batchStart + _batchSize, candidates.length);
-      final batch    = candidates.sublist(batchStart, batchEnd);
+      final batch = candidates.sublist(batchStart, batchEnd);
 
       log.d(
         'Батч ${batchStart ~/ _batchSize + 1}: '
-            'ноды ${batchStart + 1}–$batchEnd из ${candidates.length} '
-            '[${batch.map((n) => n.name).join(', ')}]',
+        'ноды ${batchStart + 1}–$batchEnd из ${candidates.length} '
+        '[${batch.map((n) => n.name).join(', ')}]',
         tag: 'DEEP',
       );
 
@@ -269,12 +281,15 @@ class DeepProbe {
 
       log.d(
         'Батч ${batchStart ~/ _batchSize + 1} провалился. '
-            'Осталось проверить: ${candidates.length - batchEnd}',
+        'Осталось проверить: ${candidates.length - batchEnd}',
         tag: 'DEEP',
       );
     }
 
-    log.w('Этап 2: ни одна нода не прошла реальную HTTPS-проверку', tag: 'DEEP');
+    log.w(
+      'Этап 2: ни одна нода не прошла реальную HTTPS-проверку',
+      tag: 'DEEP',
+    );
     return null;
   }
 
@@ -283,7 +298,7 @@ class DeepProbe {
   Future<Node?> _runBatch(List<Node> batch, {required int portOffset}) async {
     final winnerCmpl = Completer<Node?>();
     final activeProcs = <int, Process>{};
-    final cancelled   = [false];
+    final cancelled = [false];
     int pending = batch.length;
 
     void onProbeResult(Node? winner, int port) {
@@ -291,17 +306,18 @@ class DeepProbe {
 
       if (winner != null) {
         cancelled[0] = true;
-        final toKill = Map<int, Process>.from(activeProcs)
-          ..remove(port);
+        final toKill = Map<int, Process>.from(activeProcs)..remove(port);
 
         if (toKill.isNotEmpty) {
           log.d(
             '🎯 Победитель: ${winner.name}. '
-                'Убиваем ${toKill.length} лишних sing-box процессов...',
+            'Убиваем ${toKill.length} лишних sing-box процессов...',
             tag: 'DEEP',
           );
           for (final proc in toKill.values) {
-            try { proc.kill(); } catch (_) {}
+            try {
+              proc.kill();
+            } catch (_) {}
           }
         }
 
@@ -319,11 +335,11 @@ class DeepProbe {
       final node = batch[i];
       final port = _basePort + portOffset + i;
       _probeOneNode(
-        node:        node,
-        port:        port,
+        node: node,
+        port: port,
         activeProcs: activeProcs,
-        cancelled:   cancelled,
-        onResult:    onProbeResult,
+        cancelled: cancelled,
+        onResult: onProbeResult,
       );
     }
 
@@ -337,12 +353,14 @@ class DeepProbe {
         if (!winnerCmpl.isCompleted) {
           log.w(
             'Батч: общий таймаут ${batchTimeout.inSeconds}с. '
-                'Принудительно убиваем ${activeProcs.length} процессов.',
+            'Принудительно убиваем ${activeProcs.length} процессов.',
             tag: 'DEEP',
           );
           cancelled[0] = true;
           for (final proc in activeProcs.values) {
-            try { proc.kill(); } catch (_) {}
+            try {
+              proc.kill();
+            } catch (_) {}
           }
           activeProcs.clear();
           winnerCmpl.complete(null);
@@ -361,7 +379,7 @@ class DeepProbe {
   }) async {
     final configPath = _probeConfigPath(port);
     Process? process;
-    Node?    winner;
+    Node? winner;
 
     try {
       if (cancelled[0]) return;
@@ -369,20 +387,25 @@ class DeepProbe {
       await _writeProbeConfig(node, port, configPath);
       if (cancelled[0]) return;
 
-      process = await Process.start(
-        singboxExePath,
-        ['run', '-c', configPath],
-        mode: ProcessStartMode.detached,
-      );
+      process = await Process.start(singboxExePath, [
+        'run',
+        '-c',
+        configPath,
+      ], mode: ProcessStartMode.detached);
       activeProcs[port] = process;
-      log.d('[${node.name}] PID=${process.pid}, SOCKS5 порт=$port', tag: 'DEEP');
+      log.d(
+        '[${node.name}] PID=${process.pid}, SOCKS5 порт=$port',
+        tag: 'DEEP',
+      );
 
       await Future.delayed(_startupDelay);
       if (cancelled[0]) return;
 
       if (!await _isSocksListening(port)) {
-        log.d('[${node.name}] SOCKS5:$port не отвечает — sing-box не стартовал?',
-            tag: 'DEEP');
+        log.d(
+          '[${node.name}] SOCKS5:$port не отвечает — sing-box не стартовал?',
+          tag: 'DEEP',
+        );
         return;
       }
       if (cancelled[0]) return;
@@ -396,8 +419,10 @@ class DeepProbe {
       );
 
       if (ok) {
-        log.i('✓ [${node.name}] HTTP 204 через порт $port — нода рабочая!',
-            tag: 'DEEP');
+        log.i(
+          '✓ [${node.name}] HTTP 204 через порт $port — нода рабочая!',
+          tag: 'DEEP',
+        );
         winner = node.copyWith(isTrulyWorking: true);
       } else {
         log.w('✗ [${node.name}] HTTPS-проверка провалилась', tag: 'DEEP');
@@ -405,9 +430,13 @@ class DeepProbe {
     } catch (e) {
       log.d('[${node.name}] _probeOneNode ошибка: $e', tag: 'DEEP');
     } finally {
-      try { process?.kill(); } catch (_) {}
+      try {
+        process?.kill();
+      } catch (_) {}
       activeProcs.remove(port);
-      try { File(configPath).deleteSync(); } catch (_) {}
+      try {
+        File(configPath).deleteSync();
+      } catch (_) {}
       onResult(winner, port);
     }
   }
@@ -423,7 +452,10 @@ class DeepProbe {
       final request = await client.getUrl(url);
       final response = await request.close().timeout(_httpTimeout);
 
-      log.d('[$nodeName] HTTPS ответ: HTTP ${response.statusCode}', tag: 'DEEP');
+      log.d(
+        '[$nodeName] HTTPS ответ: HTTP ${response.statusCode}',
+        tag: 'DEEP',
+      );
       return response.statusCode == 204 || response.statusCode == 200;
     } catch (e) {
       log.d('[$nodeName] HTTPS-проверка таймаут/ошибка', tag: 'DEEP');
@@ -436,7 +468,10 @@ class DeepProbe {
   Future<bool> _isSocksListening(int port) async {
     try {
       final s = await Socket.connect(
-          '127.0.0.1', port, timeout: const Duration(seconds: 2));
+        '127.0.0.1',
+        port,
+        timeout: const Duration(seconds: 2),
+      );
       await s.close();
       return true;
     } catch (_) {
@@ -453,8 +488,8 @@ class DeepProbe {
 
   Future<void> _writeProbeConfig(Node node, int port, String path) async {
     final builder = const SingboxConfigBuilder();
-    final config  = builder.buildProbeConfig(node, port);
-    final json    = builder.buildJson(config);
+    final config = builder.buildProbeConfig(node, port);
+    final json = builder.buildJson(config);
     await File(path).writeAsString(json, flush: true);
     log.d('Probe-конфиг: $path', tag: 'DEEP');
   }

@@ -21,15 +21,14 @@ void main() async {
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor:                    Colors.transparent,
-      statusBarIconBrightness:           Brightness.light,
-      systemNavigationBarColor:          Color(0xFF03020A),
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFF03020A),
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
 
-  log.i('Onyx стартует... Платформа: ${Platform.operatingSystem}',
-      tag: 'MAIN');
+  log.i('Onyx стартует... Платформа: ${Platform.operatingSystem}', tag: 'MAIN');
 
   // Инициализируем BinaryManager (создаёт директорию)
   await BinaryManager.instance.init();
@@ -52,8 +51,7 @@ class _OnyxAppState extends State<OnyxApp> {
   void initState() {
     super.initState();
     // Если бинарники уже есть — пропускаем SetupScreen
-    _setupDone = !Platform.isWindows ||
-        BinaryManager.instance.isReady;
+    _setupDone = !Platform.isWindows || BinaryManager.instance.isReady;
     log.i('Бинарники готовы: $_setupDone', tag: 'MAIN');
   }
 
@@ -65,9 +63,7 @@ class _OnyxAppState extends State<OnyxApp> {
       theme: AppTheme.dark,
       home: _setupDone
           ? const OnboardingScreen()
-          : SetupScreen(
-        onComplete: () => setState(() => _setupDone = true),
-      ),
+          : SetupScreen(onComplete: () => setState(() => _setupDone = true)),
     );
   }
 }

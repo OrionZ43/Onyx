@@ -8,27 +8,21 @@ class SingboxConfigBuilder {
   /// [resolvedServerIp] — IP-адрес сервера, предварительно резолвнутый
   /// вызывающим кодом ДО создания TUN-интерфейса.
   Map<String, dynamic> buildTunConfig(
-      Node node, {
-        int socksPort = 2080,
-        String? resolvedServerIp,
-      }) {
+    Node node, {
+    int socksPort = 2080,
+    String? resolvedServerIp,
+  }) {
     return {
-      'log': {
-        'level':     'info',
-        'timestamp': true,
-      },
-      'dns':      _buildDns(),
-      'inbounds': [
-        _buildTun(),
-        _buildSocks(socksPort),
-      ],
+      'log': {'level': 'info', 'timestamp': true},
+      'dns': _buildDns(),
+      'inbounds': [_buildTun(), _buildSocks(socksPort)],
       'outbounds': [
         _buildVless(node),
         {'type': 'direct', 'tag': 'direct'},
-        {'type': 'block',  'tag': 'block'},
-        {'type': 'dns',    'tag': 'dns-out'},
+        {'type': 'block', 'tag': 'block'},
+        {'type': 'dns', 'tag': 'dns-out'},
       ],
-      'route':        _buildRoute(node, resolvedServerIp: resolvedServerIp),
+      'route': _buildRoute(node, resolvedServerIp: resolvedServerIp),
       'experimental': _buildExperimental(),
     };
   }
@@ -38,11 +32,12 @@ class SingboxConfigBuilder {
       'log': {'level': 'error'},
       'inbounds': [
         {
-          'type': 'mixed', // <--- МАГИЯ ЗДЕСЬ: работает и как HTTP, и как SOCKS5
+          'type':
+              'mixed', // <--- МАГИЯ ЗДЕСЬ: работает и как HTTP, и как SOCKS5
           'tag': 'mixed-in',
           'listen': '127.0.0.1',
           'listen_port': proxyPort,
-        }
+        },
       ],
       'outbounds': [
         _buildVless(node),
@@ -58,36 +53,36 @@ class SingboxConfigBuilder {
   // ── Inbounds ───────────────────────────────────────────────────────────────
 
   Map<String, dynamic> _buildTun() => {
-    'type':                       'tun',
-    'tag':                        'tun-in',
-    'inet4_address':              '172.19.0.1/30',
-    'inet6_address':              'fdfe:dcba:9876::1/126',
-    'mtu':                        1400,
-    'auto_route':                 true,
-    'strict_route':               true,
-    'stack':                      'system',
-    'sniff':                      true,
+    'type': 'tun',
+    'tag': 'tun-in',
+    'inet4_address': '172.19.0.1/30',
+    'inet6_address': 'fdfe:dcba:9876::1/126',
+    'mtu': 1400,
+    'auto_route': true,
+    'strict_route': true,
+    'stack': 'system',
+    'sniff': true,
     'sniff_override_destination': true,
   };
 
   Map<String, dynamic> _buildSocks(int port) => {
-    'type':        'socks',
-    'tag':         'socks-in',
-    'listen':      '127.0.0.1',
+    'type': 'socks',
+    'tag': 'socks-in',
+    'listen': '127.0.0.1',
     'listen_port': port,
-    'sniff':       true,
+    'sniff': true,
   };
 
   // ── Outbound ───────────────────────────────────────────────────────────────
 
   Map<String, dynamic> _buildVless(Node node) {
     final out = <String, dynamic>{
-      'type':        'vless',
-      'tag':         'proxy',
-      'server':      node.host,
+      'type': 'vless',
+      'tag': 'proxy',
+      'server': node.host,
       'server_port': node.port,
-      'uuid':        node.uuid,
-      'tls':         _buildTls(node),
+      'uuid': node.uuid,
+      'tls': _buildTls(node),
     };
 
     if (node.flow.isNotEmpty) {
@@ -99,8 +94,8 @@ class SingboxConfigBuilder {
 
     if (node.muxEnabled) {
       out['multiplex'] = {
-        'enabled':     true,
-        'protocol':    node.muxProtocol,
+        'enabled': true,
+        'protocol': node.muxProtocol,
         'max_streams': node.muxMaxStreams,
       };
     }
@@ -110,19 +105,16 @@ class SingboxConfigBuilder {
 
   Map<String, dynamic> _buildTls(Node node) {
     final tls = <String, dynamic>{
-      'enabled':     node.security != 'none',
+      'enabled': node.security != 'none',
       'server_name': node.sni,
-      'utls': {
-        'enabled':     true,
-        'fingerprint': node.fingerprint,
-      },
+      'utls': {'enabled': true, 'fingerprint': node.fingerprint},
     };
 
     if (node.security == 'reality') {
       tls['reality'] = {
-        'enabled':    true,
+        'enabled': true,
         'public_key': node.realityPbk,
-        'short_id':   node.realitySid,
+        'short_id': node.realitySid,
       };
     }
 
@@ -132,14 +124,11 @@ class SingboxConfigBuilder {
   Map<String, dynamic>? _buildTransport(Node node) {
     return switch (node.network) {
       'ws' => {
-        'type':    'ws',
-        'path':    node.path,
+        'type': 'ws',
+        'path': node.path,
         'headers': {'Host': node.sni},
       },
-      'grpc' => {
-        'type':         'grpc',
-        'service_name': node.path.replaceAll('/', ''),
-      },
+      'grpc' => {'type': 'grpc', 'service_name': node.path.replaceAll('/', '')},
       'h2' => {
         'type': 'http',
         'host': [node.sni],
@@ -188,17 +177,17 @@ class SingboxConfigBuilder {
     'servers': [
       {
         // Основной: DoH через зашифрованный прокси — ТСПУ не видит запросы
-        'tag':     'dns-remote',
+        'tag': 'dns-remote',
         'address': 'https://8.8.8.8/dns-query',
-        'detour':  'proxy',
+        'detour': 'proxy',
       },
       {
         // Служебный: plaintext DNS только для разрешения адресов outbound-ов
         // самого sing-box (см. rules ниже). Биндится к физическому NIC через
         // auto_detect_interface, поэтому ТСПУ его не перехватывает.
-        'tag':     'dns-local',
+        'tag': 'dns-local',
         'address': '8.8.8.8',
-        'detour':  'direct',
+        'detour': 'direct',
       },
     ],
     'rules': [
@@ -207,11 +196,11 @@ class SingboxConfigBuilder {
         // (например, IP VLESS-сервера), использовать прямой DNS, а не прокси.
         // Предотвращает бесконечную рекурсию: прокси → DNS → прокси → ...
         'outbound': 'any',
-        'server':   'dns-local',
+        'server': 'dns-local',
       },
     ],
     // Весь остальной DNS (запросы клиентских приложений) → DoH через прокси
-    'final':           'dns-remote',
+    'final': 'dns-remote',
     'independent_cache': true,
   };
 
@@ -222,12 +211,9 @@ class SingboxConfigBuilder {
   /// Ключевое требование: bypass VLESS-сервера через ip_cidr (а не domain),
   /// потому что TUN работает на уровне L3 — в сырых IP-пакетах нет имени
   /// домена. Правило domain молча игнорируется, пакет летит в proxy → петля.
-  Map<String, dynamic> _buildRoute(
-      Node node, {
-        String? resolvedServerIp,
-      }) {
-    final serverIp = resolvedServerIp
-        ?? (_isIpAddress(node.host) ? node.host : null);
+  Map<String, dynamic> _buildRoute(Node node, {String? resolvedServerIp}) {
+    final serverIp =
+        resolvedServerIp ?? (_isIpAddress(node.host) ? node.host : null);
 
     return {
       'rules': [
@@ -237,7 +223,10 @@ class SingboxConfigBuilder {
         {'ip_is_private': true, 'outbound': 'direct'},
         // Bypass сервера: ip_cidr работает с сырыми L3-пакетами TUN
         if (serverIp != null)
-          {'ip_cidr': ['$serverIp/32'], 'outbound': 'direct'},
+          {
+            'ip_cidr': ['$serverIp/32'],
+            'outbound': 'direct',
+          },
       ],
       // На Windows ОБЯЗАТЕЛЕН: привязывает исходящие сокеты sing-box
       // (VLESS outbound, dns-local) к физическому адаптеру (Wi-Fi/Ethernet),
@@ -254,12 +243,7 @@ class SingboxConfigBuilder {
   }
 
   Map<String, dynamic> _buildExperimental() => {
-    'clash_api': {
-      'external_controller': '127.0.0.1:9090',
-      'secret':              '',
-    },
-    'cache_file': {
-      'enabled': true,
-    },
+    'clash_api': {'external_controller': '127.0.0.1:9090', 'secret': ''},
+    'cache_file': {'enabled': true},
   };
 }

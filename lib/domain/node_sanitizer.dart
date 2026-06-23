@@ -21,10 +21,7 @@ class NodeSanitizer {
     if (isTcp && node.security == 'reality') {
       // ПРАВИЛО А: Обычные TCP Reality серверы.
       // Требуют vision, иначе сбросят соединение. MUX их убьёт.
-      node = node.copyWith(
-        flow: 'xtls-rprx-vision',
-        muxEnabled: false,
-      );
+      node = node.copyWith(flow: 'xtls-rprx-vision', muxEnabled: false);
     } else {
       // ПРАВИЛО Б: Публичные WS / gRPC / xhttp серверы.
       //
@@ -41,8 +38,8 @@ class NodeSanitizer {
       // Если у тебя приватный сервер с поддержкой smux —
       // включи MUX вручную в настройках ноды после подключения.
       node = node.copyWith(
-        flow:      '',
-        muxEnabled: false,   // ← ИСПРАВЛЕНО: было true, ломало публичные серверы
+        flow: '',
+        muxEnabled: false, // ← ИСПРАВЛЕНО: было true, ломало публичные серверы
       );
     }
 

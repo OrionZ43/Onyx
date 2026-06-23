@@ -30,7 +30,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     with TickerProviderStateMixin {
-  final _urlCtrl   = TextEditingController();
+  final _urlCtrl = TextEditingController();
   final _focusNode = FocusNode();
 
   late AnimationController _bgCtrl;
@@ -47,12 +47,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   void initState() {
     super.initState();
     _bgCtrl = AnimationController(
-        vsync: this, duration: const Duration(seconds: 20))..repeat();
+      vsync: this,
+      duration: const Duration(seconds: 20),
+    )..repeat();
     _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 2200))
-      ..repeat(reverse: true);
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
     _shineCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 3500))..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 3500),
+    )..repeat();
   }
 
   @override
@@ -73,19 +78,24 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         // ref.listen (не в build-методе напрямую), но для надёжности
         // добавляем проверку mounted.
         if (!mounted) return;
-        Navigator.of(context).pushReplacement(PageRouteBuilder(
-          pageBuilder: (_, a, __) => const HomeScreen(),
-          transitionsBuilder: (_, a, __, child) =>
-              FadeTransition(opacity: a, child: child),
-          transitionDuration: const Duration(milliseconds: 800),
-        ));
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (_, a, __) => const HomeScreen(),
+            transitionsBuilder: (_, a, __, child) =>
+                FadeTransition(opacity: a, child: child),
+            transitionDuration: const Duration(milliseconds: 800),
+          ),
+        );
       }
       if (next.status == SubStatus.error) {
-        setState(() { _loading = false; _error = next.error; });
+        setState(() {
+          _loading = false;
+          _error = next.error;
+        });
       }
-      if (next.status == SubStatus.fetching
-          || next.status == SubStatus.probing
-          || next.status == SubStatus.deepProbing) {
+      if (next.status == SubStatus.fetching ||
+          next.status == SubStatus.probing ||
+          next.status == SubStatus.deepProbing) {
         setState(() => _loading = true);
       }
     });
@@ -111,14 +121,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       const SizedBox(height: 56),
 
                       // ── Логотип: текст + by Orion_Z43 ─────────────────
-                      _OnyxLogo(pulseCtrl: _pulseCtrl)
-                          .animate().fadeIn(duration: 800.ms).slideY(begin: -0.3),
+                      _OnyxLogo(
+                        pulseCtrl: _pulseCtrl,
+                      ).animate().fadeIn(duration: 800.ms).slideY(begin: -0.3),
 
                       const SizedBox(height: 52),
 
                       // ── Заголовок (FIXED overflow) ─────────────────────
                       const _Headline()
-                          .animate().fadeIn(duration: 700.ms, delay: 150.ms)
+                          .animate()
+                          .fadeIn(duration: 700.ms, delay: 150.ms)
                           .slideY(begin: 0.2),
 
                       const SizedBox(height: 48),
@@ -147,8 +159,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 400),
                         child: _loading
-                            ? _ProgressBlock(state: sub)
-                            .animate().fadeIn(duration: 300.ms)
+                            ? _ProgressBlock(
+                                state: sub,
+                              ).animate().fadeIn(duration: 300.ms)
                             : const SizedBox(height: 0),
                       ),
 
@@ -162,7 +175,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       ).animate().fadeIn(duration: 700.ms, delay: 350.ms),
 
                       // РЕДИЗАЙН: _FeaturesRow удалён — для десктопа не нужен
-
                       const SizedBox(height: 56),
                     ],
                   ),
@@ -203,13 +215,16 @@ class _OnyxLogo extends StatelessWidget {
           children: [
             // Текстовый логотип ONYX — крупно, без щита
             ShaderMask(
-              shaderCallback: (b) => AppColors.gradientPlasma
-                  .createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
+              shaderCallback: (b) => AppColors.gradientPlasma.createShader(
+                Rect.fromLTWH(0, 0, b.width, b.height),
+              ),
               child: const Text(
                 'ONYX',
                 style: TextStyle(
-                  fontFamily: 'Syne', fontSize: 48,
-                  fontWeight: FontWeight.w800, letterSpacing: 10,
+                  fontFamily: 'Syne',
+                  fontSize: 48,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 10,
                   color: Colors.white,
                 ),
               ),
@@ -227,7 +242,8 @@ class _OnyxLogo extends StatelessWidget {
               child: Text(
                 'by Orion_Z43',
                 style: TextStyle(
-                  fontFamily: 'DM Sans', fontSize: 12,
+                  fontFamily: 'DM Sans',
+                  fontSize: 12,
                   color: AppColors.nebula2,
                   decoration: TextDecoration.underline,
                   decorationColor: AppColors.nebula2.withValues(alpha: 0.4),
@@ -258,24 +274,29 @@ class _Headline extends StatelessWidget {
           child: const Text(
             'Один тап —',
             style: TextStyle(
-              fontFamily: 'Syne', fontSize: 42,
-              fontWeight: FontWeight.w800, color: AppColors.nebula0,
+              fontFamily: 'Syne',
+              fontSize: 42,
+              fontWeight: FontWeight.w800,
+              color: AppColors.nebula0,
               height: 1.1,
             ),
           ),
         ),
         const SizedBox(height: 4),
         ShaderMask(
-          shaderCallback: (b) => AppColors.gradientPlasma
-              .createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
+          shaderCallback: (b) => AppColors.gradientPlasma.createShader(
+            Rect.fromLTWH(0, 0, b.width, b.height),
+          ),
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: const Text(
               'полная защита.',
               style: TextStyle(
-                fontFamily: 'Syne', fontSize: 42,
-                fontWeight: FontWeight.w800, color: Colors.white,
+                fontFamily: 'Syne',
+                fontSize: 42,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
                 height: 1.1,
               ),
             ),
@@ -284,10 +305,12 @@ class _Headline extends StatelessWidget {
         const SizedBox(height: 16),
         const Text(
           'Вставьте ссылку на подписку — приложение\n'
-              'выберет лучший сервер автоматически.',
+          'выберет лучший сервер автоматически.',
           style: TextStyle(
-            fontFamily: 'DM Sans', fontSize: 15,
-            color: AppColors.nebula1, height: 1.55,
+            fontFamily: 'DM Sans',
+            fontSize: 15,
+            color: AppColors.nebula1,
+            height: 1.55,
           ),
         ),
       ],
@@ -321,7 +344,8 @@ class _UrlInputState extends State<_UrlInput> {
   void initState() {
     super.initState();
     widget.focusNode.addListener(
-            () => setState(() => _focused = widget.focusNode.hasFocus));
+      () => setState(() => _focused = widget.focusNode.hasFocus),
+    );
   }
 
   @override
@@ -341,9 +365,13 @@ class _UrlInputState extends State<_UrlInput> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             boxShadow: _focused
-                ? [BoxShadow(
-                color: AppColors.plasmaGlow,
-                blurRadius: 20, spreadRadius: -2)]
+                ? [
+                    BoxShadow(
+                      color: AppColors.plasmaGlow,
+                      blurRadius: 20,
+                      spreadRadius: -2,
+                    ),
+                  ]
                 : null,
           ),
           child: ClipRRect(
@@ -371,24 +399,28 @@ class _UrlInputState extends State<_UrlInput> {
                         focusNode: widget.focusNode,
                         style: const TextStyle(
                           fontFamily: 'DM Sans',
-                          color: AppColors.nebula0, fontSize: 13,
+                          color: AppColors.nebula0,
+                          fontSize: 13,
                         ),
                         decoration: const InputDecoration(
                           border: InputBorder.none,
                           hintText: 'https://example.com/subscription',
                           hintStyle: TextStyle(
-                            color: AppColors.nebula2, fontSize: 13,
+                            color: AppColors.nebula2,
+                            fontSize: 13,
                           ),
-                          contentPadding:
-                          EdgeInsets.symmetric(vertical: 16),
+                          contentPadding: EdgeInsets.symmetric(vertical: 16),
                         ),
                         keyboardType: TextInputType.url,
                         autocorrect: false,
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.content_paste_rounded,
-                          color: AppColors.nebula2, size: 18),
+                      icon: const Icon(
+                        Icons.content_paste_rounded,
+                        color: AppColors.nebula2,
+                        size: 18,
+                      ),
                       onPressed: widget.onPaste,
                       tooltip: 'Вставить',
                     ),
@@ -404,13 +436,21 @@ class _UrlInputState extends State<_UrlInput> {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.error_outline_rounded,
-                  color: AppColors.nova, size: 14),
+              const Icon(
+                Icons.error_outline_rounded,
+                color: AppColors.nova,
+                size: 14,
+              ),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(widget.error!,
-                    style: const TextStyle(color: AppColors.nova,
-                        fontFamily: 'DM Sans', fontSize: 12)),
+                child: Text(
+                  widget.error!,
+                  style: const TextStyle(
+                    color: AppColors.nova,
+                    fontFamily: 'DM Sans',
+                    fontSize: 12,
+                  ),
+                ),
               ),
             ],
           ),
@@ -422,17 +462,22 @@ class _UrlInputState extends State<_UrlInput> {
           onTap: widget.onExample,
           child: Row(
             children: [
-              const Icon(Icons.auto_awesome_rounded,
-                  color: AppColors.plasma, size: 12),
+              const Icon(
+                Icons.auto_awesome_rounded,
+                color: AppColors.plasma,
+                size: 12,
+              ),
               const SizedBox(width: 6),
-              Text('Вставить тестовую подписку',
-                  style: TextStyle(
-                    fontFamily: 'DM Sans', fontSize: 12,
-                    color: AppColors.plasma.withValues(alpha: 0.8),
-                    decoration: TextDecoration.underline,
-                    decorationColor:
-                    AppColors.plasma.withValues(alpha: 0.4),
-                  )),
+              Text(
+                'Вставить тестовую подписку',
+                style: TextStyle(
+                  fontFamily: 'DM Sans',
+                  fontSize: 12,
+                  color: AppColors.plasma.withValues(alpha: 0.8),
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppColors.plasma.withValues(alpha: 0.4),
+                ),
+              ),
             ],
           ),
         ),
@@ -449,25 +494,26 @@ class _ProgressBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isProbing      = state.status == SubStatus.probing;
-    final isDeepProbing  = state.status == SubStatus.deepProbing;
+    final isProbing = state.status == SubStatus.probing;
+    final isDeepProbing = state.status == SubStatus.deepProbing;
 
     final String label;
     final double? progress;
 
     if (isDeepProbing) {
-      label    = 'Глубокая проверка топ-${state.deepProbeTotal} нод... '
+      label =
+          'Глубокая проверка топ-${state.deepProbeTotal} нод... '
           '${state.deepProbedCount}/${state.deepProbeTotal}';
       progress = state.deepProbeTotal > 0
           ? state.deepProbedCount / state.deepProbeTotal
           : null;
     } else if (isProbing) {
-      label    = 'Проверяем серверы... ${state.probedCount}/${state.nodes.length}';
+      label = 'Проверяем серверы... ${state.probedCount}/${state.nodes.length}';
       progress = state.nodes.isNotEmpty
           ? state.probedCount / state.nodes.length
           : null;
     } else {
-      label    = 'Загружаем список серверов...';
+      label = 'Загружаем список серверов...';
       progress = null;
     }
 
@@ -480,19 +526,24 @@ class _ProgressBlock extends StatelessWidget {
           Row(
             children: [
               SizedBox(
-                width: 14, height: 14,
+                width: 14,
+                height: 14,
                 child: CircularProgressIndicator(
-                  strokeWidth: 1.5, color: AppColors.plasma,
+                  strokeWidth: 1.5,
+                  color: AppColors.plasma,
                   value: progress,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(label,
-                    style: const TextStyle(
-                      fontFamily: 'DM Sans', fontSize: 12,
-                      color: AppColors.nebula1,
-                    )),
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: 'DM Sans',
+                    fontSize: 12,
+                    color: AppColors.nebula1,
+                  ),
+                ),
               ),
             ],
           ),
@@ -540,13 +591,17 @@ class _ConnectButton extends StatelessWidget {
               gradient: onTap != null
                   ? AppColors.gradientPlasma
                   : const LinearGradient(
-                  colors: [AppColors.void3, AppColors.void3]),
+                      colors: [AppColors.void3, AppColors.void3],
+                    ),
               borderRadius: BorderRadius.circular(18),
               boxShadow: onTap != null
-                  ? [BoxShadow(
-                color: AppColors.plasma.withValues(alpha: 0.4),
-                blurRadius: 24, spreadRadius: -2,
-              )]
+                  ? [
+                      BoxShadow(
+                        color: AppColors.plasma.withValues(alpha: 0.4),
+                        blurRadius: 24,
+                        spreadRadius: -2,
+                      ),
+                    ]
                   : null,
             ),
             child: Stack(
@@ -554,30 +609,40 @@ class _ConnectButton extends StatelessWidget {
                 if (onTap != null)
                   Positioned(
                     left: (shine * 2 - 0.5) * 300 - 60,
-                    top: 0, bottom: 0,
+                    top: 0,
+                    bottom: 0,
                     child: Container(
                       width: 60,
                       decoration: const BoxDecoration(
-                        gradient: LinearGradient(colors: [
-                          Colors.transparent,
-                          Color(0x1FFFFFFF),
-                          Colors.transparent,
-                        ]),
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.transparent,
+                            Color(0x1FFFFFFF),
+                            Colors.transparent,
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 Center(
                   child: loading
                       ? const SizedBox(
-                    width: 22, height: 22,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                      : const Text('Подключиться',
-                      style: TextStyle(
-                        fontFamily: 'Syne', fontSize: 16,
-                        fontWeight: FontWeight.w700, color: Colors.white,
-                      )),
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Подключиться',
+                          style: TextStyle(
+                            fontFamily: 'Syne',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ],
             ),
