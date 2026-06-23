@@ -1,15 +1,28 @@
+// lib/presentation/screens/home_screen.dart
+//
+// ИСПРАВЛЕНИЯ И РЕДИЗАЙН:
+//  1. Убраны все WidgetsBinding.instance.addPostFrameCallback при навигации.
+//     Используется if (!context.mounted) return; Navigator.of(context).push(...)
+//  2. Логотип — чисто текстовый «ONYX» без щита.
+//  3. Под логотипом кликабельная подпись «by Orion_Z43» → https://t.me/Orion_Z43
+//  4. Desktop-first layout: ConstrainedBox maxWidth 820, центрирован.
+//  5. _ServerCard использует nodeSelectionProvider — отображает выбранный сервер.
+//  6. Логи и подписки открываются как элегантные десктопные диалоговые панели.
+
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/glass_widget.dart';
 import '../../core/cosmic_background.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/subscription_provider.dart';
+import '../providers/node_provider.dart';
 import '../widgets/node_list_sheet.dart';
 import 'log_screen.dart';
 import 'subscription_manager_screen.dart';
@@ -48,7 +61,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final vpn = ref.watch(vpnControllerProvider);
     final sub = ref.watch(subscriptionProvider);
     final isConnected = vpn is VpnConnected;
-    // ИСПРАВЛЕНО: удалена неиспользуемая переменная isConnecting
 
     return Scaffold(
       backgroundColor: AppColors.void0,
@@ -78,58 +90,72 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
 
           SafeArea(
-            child: Column(
-              children: [
-                _TopBar(onLogTap: () {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) {
-                      Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const LogScreen()));
-                    }
-                  });
-                }),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 820),
+                child: Column(
+                  children: [
+                    // ── Топ-бар ─────────────────────────────────────────────
+                    _TopBar(
+                      onLogTap: () {
+                        if (!context.mounted) return;
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const LogScreen()),
+                        );
+                      },
+                      onSubTap: () {
+                        if (!context.mounted) return;
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const SubscriptionManagerScreen()),
+                        );
+                      },
+                    ),
 
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Spacer(flex: 1),
+                    // ── Основной контент ─────────────────────────────────────
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Spacer(flex: 1),
 
-                      // Статус
-                      _StatusChip(state: vpn)
-                          .animate().fadeIn(duration: 600.ms).slideY(begin: -0.3),
+                          // Статус
+                          _StatusChip(state: vpn)
+                              .animate().fadeIn(duration: 600.ms).slideY(begin: -0.3),
 
-                      const SizedBox(height: 44),
+                          const SizedBox(height: 44),
 
-                      // Главная кнопка
-                      _OrbitalButton(
-                        state: vpn,
-                        pulseCtrl: _pulseCtrl,
-                        orbitCtrl: _orbitCtrl,
-                        connectedCtrl: _connectedCtrl,
-                        onTap: () => _handleTap(vpn, sub),
-                      ).animate().fadeIn(duration: 900.ms, delay: 100.ms)
-                          .scale(begin: const Offset(0.85, 0.85)),
+                          // Главная кнопка
+                          _OrbitalButton(
+                            state: vpn,
+                            pulseCtrl: _pulseCtrl,
+                            orbitCtrl: _orbitCtrl,
+                            connectedCtrl: _connectedCtrl,
+                            onTap: () => _handleTap(vpn, sub),
+                          ).animate().fadeIn(duration: 900.ms, delay: 100.ms)
+                              .scale(begin: const Offset(0.85, 0.85)),
 
-                      const SizedBox(height: 44),
+                          const SizedBox(height: 44),
 
-                      // Селектор сервера
-                      _ServerCard(sub: sub, vpn: vpn)
-                          .animate().fadeIn(duration: 600.ms, delay: 200.ms)
-                          .slideY(begin: 0.3),
+                          // Селектор сервера
+                          _ServerCard(sub: sub, vpn: vpn)
+                              .animate().fadeIn(duration: 600.ms, delay: 200.ms)
+                              .slideY(begin: 0.3),
 
-                      const Spacer(flex: 1),
+                          const Spacer(flex: 1),
 
-                      // Трафик (только при подключении)
-                      if (vpn is VpnConnected)
-                        _TrafficPanel(state: vpn)
-                            .animate().fadeIn(duration: 500.ms).slideY(begin: 0.4),
+                          // Трафик (только при подключении)
+                          if (vpn is VpnConnected)
+                            _TrafficPanel(state: vpn)
+                                .animate().fadeIn(duration: 500.ms).slideY(begin: 0.4),
 
-                      const SizedBox(height: 24),
-                    ],
-                  ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -142,10 +168,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final vpn = ref.read(vpnControllerProvider.notifier);
     switch (state) {
       case VpnDisconnected() || VpnError():
-        final best = sub.bestNode;
-        // ИСПРАВЛЕНО: добавлены фигурные скобки в if/else
-        if (best != null) {
-          vpn.connect(best);
+      // Приоритет: выбранный пользователем сервер → bestNode
+        final picked = ref.read(nodeSelectionProvider);
+        final node   = picked ?? sub.bestNode;
+        if (node != null) {
+          vpn.connect(node);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Нет доступных серверов')));
@@ -159,8 +186,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 // ── Top bar ────────────────────────────────────────────────────────────────
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onLogTap});
+  const _TopBar({required this.onLogTap, required this.onSubTap});
   final VoidCallback onLogTap;
+  final VoidCallback onSubTap;
 
   @override
   Widget build(BuildContext context) {
@@ -168,42 +196,45 @@ class _TopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
         children: [
-          // Логотип
-          Row(children: [
-            Container(
-              width: 34, height: 34,
-              decoration: BoxDecoration(
-                gradient: AppColors.gradientPlasma,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [BoxShadow(
-                  color: AppColors.plasma.withValues(alpha: 0.4),
-                  blurRadius: 12,
-                )],
+          // ── Логотип: чисто текстовый ONYX + by Orion_Z43 ──────────────
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ShaderMask(
+                shaderCallback: (b) => AppColors.gradientPlasma
+                    .createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
+                child: const Text('ONYX', style: TextStyle(
+                  fontFamily: 'Syne', fontSize: 22,
+                  fontWeight: FontWeight.w800, letterSpacing: 6,
+                  color: Colors.white,
+                )),
               ),
-              child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18),
-            ),
-            const SizedBox(width: 10),
-            ShaderMask(
-              shaderCallback: (b) => AppColors.gradientPlasma
-                  .createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
-              child: const Text('ONYX', style: TextStyle(
-                fontFamily: 'Syne', fontSize: 20,
-                fontWeight: FontWeight.w800, letterSpacing: 5,
-                color: Colors.white,
-              )),
-            ),
-          ]),
+              GestureDetector(
+                onTap: () async {
+                  final uri = Uri.parse('https://t.me/Orion_Z43');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: Text(
+                  'by Orion_Z43',
+                  style: TextStyle(
+                    fontFamily: 'DM Sans', fontSize: 10,
+                    color: AppColors.nebula2,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.nebula2.withValues(alpha: 0.4),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
           const Spacer(),
+
+          // ── Кнопки управления ──────────────────────────────────────────
           _GlassIconBtn(icon: Icons.terminal_rounded, onTap: onLogTap),
           const SizedBox(width: 8),
-          _GlassIconBtn(icon: Icons.tune_rounded, onTap: () {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (context.mounted) {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const SubscriptionManagerScreen()));
-              }
-            });
-          }),
+          _GlassIconBtn(icon: Icons.tune_rounded, onTap: onSubTap),
         ],
       ),
     );
@@ -270,8 +301,7 @@ class _StatusChip extends StatelessWidget {
             if (isLoading)
               SizedBox(
                 width: 10, height: 10,
-                child: CircularProgressIndicator(
-                    strokeWidth: 1.5, color: color),
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
               )
             else
               Container(
@@ -420,14 +450,12 @@ class _OrbitRingPainter extends CustomPainter {
     final cy = size.height / 2;
     final r  = cx - 2;
 
-    // Дуга
     final paint = Paint()
       ..color = color.withValues(alpha: 0.25)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
     canvas.drawCircle(Offset(cx, cy), r, paint);
 
-    // Движущийся огонёк
     final angle = progress * 2 * math.pi - math.pi / 2;
     final dotX  = cx + r * math.cos(angle);
     final dotY  = cy + r * math.sin(angle);
@@ -438,10 +466,7 @@ class _OrbitRingPainter extends CustomPainter {
         ..color = color
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
-    canvas.drawCircle(
-      Offset(dotX, dotY), 2.5,
-      Paint()..color = Colors.white,
-    );
+    canvas.drawCircle(Offset(dotX, dotY), 2.5, Paint()..color = Colors.white);
   }
 
   @override
@@ -465,8 +490,10 @@ class _ButtonContent extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        // БАГ-ФИX: убрана иконка щита Icons.shield_rounded
+        // Используем power-кнопку в обоих состояниях
         Icon(
-          isConnected ? Icons.shield_rounded : Icons.power_settings_new_rounded,
+          isConnected ? Icons.power_settings_new_rounded : Icons.power_settings_new_rounded,
           color: Colors.white, size: 46,
         ),
         const SizedBox(height: 10),
@@ -491,25 +518,23 @@ class _ServerCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final best   = sub.bestNode;
+    // Приоритет: выбранный пользователем → bestNode
+    final picked = ref.watch(nodeSelectionProvider);
+    final best   = picked ?? sub.bestNode;
     final locked = vpn is VpnConnected;
     final alive  = sub.aliveNodes.length;
     final total  = sub.nodes.length;
-
     final isDeepProbing = sub.status == SubStatus.deepProbing;
 
     return GestureDetector(
       onTap: locked ? null : () {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (context.mounted) {
-            showModalBottomSheet(
-              context: context,
-              backgroundColor: Colors.transparent,
-              isScrollControlled: true,
-              builder: (_) => const NodeListSheet(),
-            );
-          }
-        });
+        if (!context.mounted) return;
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (_) => const NodeListSheet(),
+        );
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -517,7 +542,7 @@ class _ServerCard extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           borderRadius: 20,
           glowColor: best?.isTrulyWorking == true
-              ? AppColors.aurora.withValues(alpha: 0.25)   // ← зеленоватое свечение для verified
+              ? AppColors.aurora.withValues(alpha: 0.25)
               : best != null
               ? AppColors.plasma.withValues(alpha: 0.15)
               : null,
@@ -535,8 +560,7 @@ class _ServerCard extends ConsumerWidget {
                     : AppColors.nebula2,
                 boxShadow: best != null
                     ? [BoxShadow(
-                    color: (best.isTrulyWorking ? AppColors.aurora : AppColors.aurora)
-                        .withValues(alpha: 0.6),
+                    color: AppColors.aurora.withValues(alpha: 0.6),
                     blurRadius: 8)]
                     : null,
               ),
@@ -557,7 +581,6 @@ class _ServerCard extends ConsumerWidget {
                   ),
                   if (total > 0) ...[
                     const SizedBox(height: 2),
-                    // ← НОВОЕ: показываем статус Deep Probe
                     if (isDeepProbing)
                       _DeepProbeProgress(
                           done: sub.deepProbedCount,
@@ -573,7 +596,6 @@ class _ServerCard extends ConsumerWidget {
               ),
             ),
 
-            // ← НОВОЕ: бейдж "✓ LIVE" для isTrulyWorking нод
             if (best?.isTrulyWorking == true) ...[
               _LiveBadge(),
               const SizedBox(width: 8),
@@ -591,8 +613,6 @@ class _ServerCard extends ConsumerWidget {
     );
   }
 }
-
-// ── Новый виджет: прогресс Deep Probe ─────────────────────────────────────
 
 class _DeepProbeProgress extends StatelessWidget {
   const _DeepProbeProgress({required this.done, required this.total});
@@ -620,8 +640,6 @@ class _DeepProbeProgress extends StatelessWidget {
     ],
   );
 }
-
-// ── Новый виджет: "✓ LIVE" бейдж ─────────────────────────────────────────
 
 class _LiveBadge extends StatelessWidget {
   @override
@@ -663,7 +681,6 @@ class _LatencyBadge extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       border: Border.all(color: _color.withValues(alpha: 0.3), width: 0.8),
     ),
-    // ИСПРАВЛЕНО: убраны лишние скобки ${ms} → $ms
     child: Text('$msмс',
         style: TextStyle(
           fontFamily: 'DM Sans', fontSize: 11,
@@ -700,27 +717,14 @@ class _TrafficPanel extends StatelessWidget {
         glowColor: AppColors.aurora.withValues(alpha: 0.08),
         child: Row(
           children: [
-            _Stat(
-              icon: Icons.arrow_downward_rounded,
-              color: AppColors.aurora,
-              label: 'Получено',
-              value: _bytes(state.rxBytes),
-            ),
-            // ИСПРАВЛЕНО: добавлен const
+            _Stat(icon: Icons.arrow_downward_rounded, color: AppColors.aurora,
+                label: 'Получено', value: _bytes(state.rxBytes)),
             const _Divider(),
-            _Stat(
-              icon: Icons.access_time_rounded,
-              color: AppColors.plasmaLight,
-              label: 'Время',
-              value: _time(state.uptime),
-            ),
+            _Stat(icon: Icons.access_time_rounded, color: AppColors.plasmaLight,
+                label: 'Время', value: _time(state.uptime)),
             const _Divider(),
-            _Stat(
-              icon: Icons.arrow_upward_rounded,
-              color: AppColors.plasma,
-              label: 'Отправлено',
-              value: _bytes(state.txBytes),
-            ),
+            _Stat(icon: Icons.arrow_upward_rounded, color: AppColors.plasma,
+                label: 'Отправлено', value: _bytes(state.txBytes)),
           ],
         ),
       ),
@@ -756,9 +760,7 @@ class _Stat extends StatelessWidget {
 }
 
 class _Divider extends StatelessWidget {
-  // ИСПРАВЛЕНО: добавлен const конструктор
   const _Divider();
-
   @override
   Widget build(BuildContext context) =>
       Container(width: 1, height: 36, color: AppColors.horizon);

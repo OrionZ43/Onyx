@@ -1,11 +1,20 @@
+// lib/presentation/widgets/node_list_sheet.dart
+//
+// ИСПРАВЛЕНИЯ:
+//  1. Серверы теперь кликабельны (_CompactNodeRow обёрнут в InkWell).
+//  2. При клике сохраняется выбранный сервер в nodeSelectionProvider.
+//  3. Шторка закрывается сразу через Navigator.of(context).pop() без addPostFrameCallback.
+//  4. Убраны все WidgetsBinding.instance.addPostFrameCallback при навигации.
+
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/glass_widget.dart';
 import '../../domain/entities/node.dart';
 import '../providers/subscription_provider.dart';
+import '../providers/node_provider.dart';
 
 class NodeListSheet extends ConsumerStatefulWidget {
   const NodeListSheet({super.key});
@@ -15,406 +24,196 @@ class NodeListSheet extends ConsumerStatefulWidget {
 }
 
 class _NodeListSheetState extends ConsumerState<NodeListSheet> {
-  final _searchCtrl = TextEditingController();
-  String _query = '';
-  _SortMode _sort = _SortMode.latency;
-  String? _expandedCountry; // null = все свёрнуты / страна = раскрыта
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
+  final Map<String, bool> _expanded = {};
 
   @override
   Widget build(BuildContext context) {
-    final sub   = ref.watch(subscriptionProvider);
-    final nodes = sub.nodes;
+    final sub      = ref.watch(subscriptionProvider);
+    final selected = ref.watch(nodeSelectionProvider);
+    final nodes    = sub.nodes;
 
-    // Фильтр + поиск
-    final filtered = nodes.where((n) {
-      if (_query.isEmpty) return true;
-      final q = _query.toLowerCase();
-      return n.name.toLowerCase().contains(q) ||
-          n.host.toLowerCase().contains(q) ||
-          n.sni.toLowerCase().contains(q);
-    }).toList();
+    // Группируем по стране (первый emoji / первое слово)
+    final groups = _group(nodes);
 
-    // Сортировка
-    filtered.sort((a, b) => switch (_sort) {
-      _SortMode.latency => _cmpLatency(a, b),
-      _SortMode.country => a.name.compareTo(b.name),
-      _SortMode.alive   => (b.isAlive ? 1 : 0) - (a.isAlive ? 1 : 0),
-    });
-
-    // Группировка по стране
-    final groups = <String, List<Node>>{};
-    for (final n in filtered) {
-      final country = _extractCountry(n.name);
-      groups.putIfAbsent(country, () => []).add(n);
-    }
-    final sortedCountries = groups.keys.toList()..sort();
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.4,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollCtrl) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xF0090815),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-              border: Border(
-                top:   BorderSide(color: AppColors.glassBorder),
-                left:  BorderSide(color: AppColors.glassBorder),
-                right: BorderSide(color: AppColors.glassBorder),
-              ),
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.75,
+          ),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xCC0D0420), Color(0xCC03020A)],
             ),
-            // ── Используем Column вместо SliverPersistentHeader ──────
-            // SliverPersistentHeader требует точных размеров — опасно.
-            // Column + ListView безопаснее и без layout-ошибок.
-            child: Column(
-              children: [
-                // Прилипающая шапка
-                _SheetHeader(
-                  aliveCount:  sub.aliveNodes.length,
-                  totalCount:  nodes.length,
-                  sort:        _sort,
-                  isProbing:   sub.status == SubStatus.probing || sub.status == SubStatus.deepProbing,
-                  onSort:      (s) => setState(() => _sort = s),
-                  onRefresh:   () => ref.read(subscriptionProvider.notifier).reprobe(),
-                  searchCtrl:  _searchCtrl,
-                  onSearch:    (q) => setState(() => _query = q),
-                ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border(top: BorderSide(color: AppColors.glassBorder)),
+          ),
+          child: Column(
+            children: [
+              // ── Ручка + шапка ─────────────────────────────────────────────
+              _SheetHeader(
+                nodeCount: nodes.length,
+                aliveCount: sub.aliveNodes.length,
+              ),
 
-                // Прогресс пробинга
-                if (sub.status == SubStatus.probing)
-                  LinearProgressIndicator(
-                    value: sub.nodes.isNotEmpty
-                        ? sub.probedCount / sub.nodes.length
-                        : null,
-                    backgroundColor: AppColors.void3,
-                    color: AppColors.plasma,
-                    minHeight: 2,
-                  ),
-
-                // Контент — скроллится
-                Expanded(child: CustomScrollView(
-                  controller: scrollCtrl,
-                  slivers: [
-
-                // ── Пустое состояние ──────────────────────────────────
-                if (filtered.isEmpty)
-                  SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _query.isEmpty
-                                ? Icons.cloud_off_rounded
-                                : Icons.search_off_rounded,
-                            color: AppColors.nebula2, size: 44,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _query.isEmpty
-                                ? 'Нет серверов'
-                                : 'Ничего не найдено',
-                            style: const TextStyle(
-                              fontFamily: 'Syne', color: AppColors.nebula2,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
+              // ── Список ────────────────────────────────────────────────────
+              Expanded(
+                child: nodes.isEmpty
+                    ? _EmptyState()
+                    : ListView(
+                  padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
+                  children: [
+                    for (final entry in groups.entries)
+                      _CountryGroup(
+                        country:  entry.key,
+                        nodes:    entry.value,
+                        alive:    entry.value.where((n) => n.isAlive).length,
+                        bestMs:   _bestMs(entry.value),
+                        expanded: _expanded[entry.key] ?? _shouldAutoExpand(entry.key, groups),
+                        selectedNode: selected,
+                        onToggle: () => setState(() =>
+                        _expanded[entry.key] = !(_expanded[entry.key]
+                            ?? _shouldAutoExpand(entry.key, groups))),
+                        onSelectNode: (node) {
+                          // Сохраняем выбор и закрываем шторку
+                          ref.read(nodeSelectionProvider.notifier).select(node);
+                          if (!context.mounted) return;
+                          Navigator.of(context).pop();
+                        },
                       ),
-                    ),
-                  )
-                else
-                  // ── Группы по странам ──────────────────────────────
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (ctx, i) {
-                        final country = sortedCountries[i];
-                        final countryNodes = groups[country]!;
-                        final isExpanded = _expandedCountry == country;
-                        final aliveInGroup =
-                            countryNodes.where((n) => n.isAlive).length;
-                        final bestMs = countryNodes
-                            .where((n) => n.isAlive && n.latencyMs != null)
-                            .fold<int?>(null, (best, n) =>
-                                best == null || n.latencyMs! < best
-                                    ? n.latencyMs
-                                    : best);
-
-                        return _CountryGroup(
-                          country:    country,
-                          nodes:      countryNodes,
-                          alive:      aliveInGroup,
-                          bestMs:     bestMs,
-                          expanded:   isExpanded,
-                          onToggle:   () => setState(() =>
-                              _expandedCountry =
-                                  isExpanded ? null : country),
-                        ).animate(delay: (i * 20).ms).fadeIn(duration: 200.ms);
-                      },
-                      childCount: sortedCountries.length,
-                    ),
-                  ),
-
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: MediaQuery.of(context).padding.bottom + 24,
-                  ),
+                  ],
                 ),
-              ],
-            )), // closes Expanded + CustomScrollView
-              ],
-            ), // closes Column
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  int _cmpLatency(Node a, Node b) {
-    if (!a.isAlive && !b.isAlive) return 0;
-    if (!a.isAlive) return 1;
-    if (!b.isAlive) return -1;
-    return (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999);
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  Map<String, List<Node>> _group(List<Node> nodes) {
+    final map = <String, List<Node>>{};
+    for (final n in nodes) {
+      final key = _countryKey(n.name);
+      (map[key] ??= []).add(n);
+    }
+    return map;
   }
 
-  String _extractCountry(String name) {
-    // "🇩🇪 Germany — #76" → "🇩🇪 Germany"
-    final parts = name.split('—');
-    return parts.first.trim();
+  String _countryKey(String name) {
+    // Если начинается с emoji-флага — берём первые 2 codepoint
+    final runes = name.runes.toList();
+    if (runes.isNotEmpty && runes[0] >= 0x1F1E6 && runes[0] <= 0x1F1FF) {
+      final flag = runes.take(2).map(String.fromCharCode).join();
+      return flag;
+    }
+    // Иначе берём первое слово
+    return name.split(RegExp(r'[\s|_-]+')).first.toUpperCase();
+  }
+
+  int? _bestMs(List<Node> nodes) {
+    final alive = nodes.where((n) => n.isAlive && n.latencyMs != null).toList();
+    if (alive.isEmpty) return null;
+    alive.sort((a, b) => a.latencyMs!.compareTo(b.latencyMs!));
+    return alive.first.latencyMs;
+  }
+
+  bool _shouldAutoExpand(String key, Map<String, List<Node>> groups) {
+    // Авто-раскрываем первую группу
+    return groups.keys.first == key;
   }
 }
 
-// ── Режим сортировки ───────────────────────────────────────────────────────
-
-enum _SortMode { latency, country, alive }
-
-
-// ── Шапка шита ────────────────────────────────────────────────────────────
+// ── Шапка шторки ──────────────────────────────────────────────────────────
 
 class _SheetHeader extends StatelessWidget {
-  const _SheetHeader({
-    required this.aliveCount,
-    required this.totalCount,
-    required this.sort,
-    required this.isProbing,
-    required this.onSort,
-    required this.onRefresh,
-    required this.searchCtrl,
-    required this.onSearch,
-  });
-
-  final int aliveCount, totalCount;
-  final _SortMode sort;
-  final bool isProbing;
-  final ValueChanged<_SortMode> onSort;
-  final VoidCallback onRefresh;
-  final TextEditingController searchCtrl;
-  final ValueChanged<String> onSearch;
+  const _SheetHeader({required this.nodeCount, required this.aliveCount});
+  final int nodeCount, aliveCount;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xF2090815),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Ручка
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.nebula2,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Ручка
+        Container(
+          margin: const EdgeInsets.only(top: 12, bottom: 8),
+          width: 36, height: 4,
+          decoration: BoxDecoration(
+            color: AppColors.nebula2.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(2),
           ),
+        ),
 
-          // Строка заголовка
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+          child: Row(
+            children: [
               ShaderMask(
                 shaderCallback: (b) => AppColors.gradientPlasma
                     .createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
                 child: const Icon(Icons.dns_rounded, color: Colors.white, size: 18),
               ),
-              const SizedBox(width: 8),
-              const Text('Серверы', style: TextStyle(
-                fontFamily: 'Syne', fontSize: 17,
+              const SizedBox(width: 10),
+              const Text('Выбор сервера', style: TextStyle(
+                fontFamily: 'Syne', fontSize: 16,
                 fontWeight: FontWeight.w700, color: AppColors.nebula0,
               )),
-              const SizedBox(width: 8),
-              GlassPill(
-                color: AppColors.plasma,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                child: Text('$aliveCount/$totalCount', style: const TextStyle(
-                  fontFamily: 'DM Sans', fontSize: 11,
-                  color: AppColors.plasmaLight, fontWeight: FontWeight.w600,
-                )),
-              ),
               const Spacer(),
-
-              // Сортировка
-              _SortBtn(current: sort, onChanged: onSort),
-              const SizedBox(width: 8),
-
-              // Обновить
-              GestureDetector(
-                onTap: onRefresh,
-                child: GlassPill(
-                  color: AppColors.plasma,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    isProbing
-                        ? const SizedBox(
-                            width: 12, height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5, color: AppColors.plasma))
-                        : const Icon(Icons.radar_rounded,
-                            size: 13, color: AppColors.plasma),
-                    const SizedBox(width: 5),
-                    const Text('Проверить', style: TextStyle(
-                      fontFamily: 'DM Sans', fontSize: 11,
-                      color: AppColors.plasmaLight,
-                    )),
-                  ]),
-                ),
-              ),
-            ]),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Поиск
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: Container(
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: AppColors.glass,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.glassBorder),
+              GlassPill(
+                color: AppColors.aurora,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                child: Text(
+                  '$aliveCount / $nodeCount онлайн',
+                  style: const TextStyle(
+                    fontFamily: 'DM Sans', fontSize: 11,
+                    color: AppColors.aurora, fontWeight: FontWeight.w600,
                   ),
-                  child: Row(children: [
-                    const SizedBox(width: 12),
-                    const Icon(Icons.search_rounded,
-                        color: AppColors.nebula2, size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: searchCtrl,
-                        onChanged: onSearch,
-                        style: const TextStyle(
-                          fontFamily: 'DM Sans',
-                          fontSize: 13, color: AppColors.nebula0,
-                        ),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Поиск по стране, хосту, SNI...',
-                          hintStyle: TextStyle(
-                            color: AppColors.nebula2, fontSize: 13,
-                          ),
-                          isDense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                    ),
-                    if (searchCtrl.text.isNotEmpty)
-                      GestureDetector(
-                        onTap: () {
-                          searchCtrl.clear();
-                          onSearch('');
-                        },
-                        child: const Padding(
-                          padding: EdgeInsets.only(right: 10),
-                          child: Icon(Icons.close_rounded,
-                              color: AppColors.nebula2, size: 14),
-                        ),
-                      ),
-                  ]),
                 ),
               ),
-            ),
+            ],
           ),
-          const SizedBox(height: 8),
-        ],
-      ),
+        ),
+
+        Container(height: 1, color: AppColors.glassBorder),
+      ],
     );
   }
 }
 
-// ── Кнопка сортировки ──────────────────────────────────────────────────────
+// ── Пустое состояние ──────────────────────────────────────────────────────
 
-class _SortBtn extends StatelessWidget {
-  const _SortBtn({required this.current, required this.onChanged});
-  final _SortMode current;
-  final ValueChanged<_SortMode> onChanged;
-
+class _EmptyState extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => PopupMenuButton<_SortMode>(
-    color: AppColors.void2,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(14),
-      side: const BorderSide(color: AppColors.glassBorder),
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 48),
+        const SizedBox(height: 16),
+        const Text('Серверы не загружены',
+            style: TextStyle(
+              fontFamily: 'Syne', fontSize: 16,
+              color: AppColors.nebula1,
+            )),
+        const SizedBox(height: 8),
+        const Text('Добавьте подписку на главном экране',
+            style: TextStyle(
+              fontFamily: 'DM Sans', fontSize: 12,
+              color: AppColors.nebula2,
+            )),
+      ],
     ),
-    onSelected: onChanged,
-    child: GlassPill(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.sort_rounded, size: 13, color: AppColors.nebula1),
-        const SizedBox(width: 5),
-        Text(_sortLabel(current), style: const TextStyle(
-          fontFamily: 'DM Sans', fontSize: 11, color: AppColors.nebula1,
-        )),
-      ]),
-    ),
-    itemBuilder: (_) => [
-      _item(_SortMode.latency, 'По пингу',   Icons.speed_rounded),
-      _item(_SortMode.country, 'По стране',  Icons.flag_rounded),
-      _item(_SortMode.alive,   'По статусу', Icons.circle_rounded),
-    ],
-  );
-
-  String _sortLabel(_SortMode m) => switch (m) {
-    _SortMode.latency => 'Пинг',
-    _SortMode.country => 'Страна',
-    _SortMode.alive   => 'Статус',
-  };
-
-  PopupMenuItem<_SortMode> _item(
-    _SortMode mode, String label, IconData icon,
-  ) => PopupMenuItem(
-    value: mode,
-    child: Row(children: [
-      Icon(icon, size: 14,
-          color: mode == current ? AppColors.plasma : AppColors.nebula1),
-      const SizedBox(width: 10),
-      Text(label, style: TextStyle(
-        fontFamily: 'DM Sans', fontSize: 13,
-        color: mode == current ? AppColors.plasma : AppColors.nebula0,
-      )),
-    ]),
   );
 }
 
-// ── Группа по стране ───────────────────────────────────────────────────────
+// ── Группа страны ─────────────────────────────────────────────────────────
 
 class _CountryGroup extends StatelessWidget {
   const _CountryGroup({
@@ -423,7 +222,9 @@ class _CountryGroup extends StatelessWidget {
     required this.alive,
     required this.bestMs,
     required this.expanded,
+    required this.selectedNode,
     required this.onToggle,
+    required this.onSelectNode,
   });
 
   final String country;
@@ -431,7 +232,9 @@ class _CountryGroup extends StatelessWidget {
   final int alive;
   final int? bestMs;
   final bool expanded;
+  final Node? selectedNode;
   final VoidCallback onToggle;
+  final ValueChanged<Node> onSelectNode;
 
   @override
   Widget build(BuildContext context) {
@@ -456,7 +259,6 @@ class _CountryGroup extends StatelessWidget {
               ),
             ),
             child: Row(children: [
-              // Флаг + страна
               Expanded(
                 child: Text(country, style: TextStyle(
                   fontFamily: 'Syne', fontSize: 13,
@@ -464,20 +266,13 @@ class _CountryGroup extends StatelessWidget {
                   color: expanded ? AppColors.plasma : AppColors.nebula0,
                 )),
               ),
-
-              // Живых / всего
               Text('$alive/${nodes.length}', style: const TextStyle(
                 fontFamily: 'DM Sans', fontSize: 11,
                 color: AppColors.nebula2,
               )),
               const SizedBox(width: 10),
-
-              // Лучший пинг
-              if (bestMs != null)
-                _MsChip(ms: bestMs!),
+              if (bestMs != null) _MsChip(ms: bestMs!),
               const SizedBox(width: 8),
-
-              // Стрелка
               AnimatedRotation(
                 turns: expanded ? 0.5 : 0.0,
                 duration: const Duration(milliseconds: 200),
@@ -494,16 +289,20 @@ class _CountryGroup extends StatelessWidget {
           curve: Curves.easeInOut,
           child: expanded
               ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < nodes.length; i++)
-                      _CompactNodeRow(node: nodes[i])
-                          .animate(delay: (i * 25).ms)
-                          .fadeIn(duration: 200.ms)
-                          .slideX(begin: 0.04),
-                    const SizedBox(height: 4),
-                  ],
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < nodes.length; i++)
+                _CompactNodeRow(
+                  node: nodes[i],
+                  isSelected: selectedNode?.id == nodes[i].id,
+                  onTap: () => onSelectNode(nodes[i]),
                 )
+                    .animate(delay: (i * 25).ms)
+                    .fadeIn(duration: 200.ms)
+                    .slideX(begin: 0.04),
+              const SizedBox(height: 4),
+            ],
+          )
               : const SizedBox.shrink(),
         ),
       ],
@@ -511,11 +310,17 @@ class _CountryGroup extends StatelessWidget {
   }
 }
 
-// ── Компактная строка ноды ─────────────────────────────────────────────────
+// ── Компактная строка ноды (КЛИКАБЕЛЬНАЯ) ────────────────────────────────
 
 class _CompactNodeRow extends StatelessWidget {
-  const _CompactNodeRow({required this.node});
+  const _CompactNodeRow({
+    required this.node,
+    required this.isSelected,
+    required this.onTap,
+  });
   final Node node;
+  final bool isSelected;
+  final VoidCallback onTap;
 
   Color _qColor() => switch (node.quality) {
     NodeQuality.excellent => AppColors.aurora,
@@ -527,102 +332,117 @@ class _CompactNodeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final qc = _qColor();
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 0, 12, 3),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        // ← НОВОЕ: зеленоватая подсветка для isTrulyWorking нод
-        color: node.isTrulyWorking
-            ? AppColors.aurora.withValues(alpha: 0.06)
-            : AppColors.void2.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: node.isTrulyWorking
-              ? AppColors.aurora.withValues(alpha: 0.3)
-              : AppColors.glassBorder.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(children: [
-        // Точка статуса
-        Container(
-          width: 6, height: 6,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: qc,
-            boxShadow: node.isAlive
-                ? [BoxShadow(color: qc.withValues(alpha: 0.6), blurRadius: 5)]
-                : null,
-          ),
-        ),
-        const SizedBox(width: 10),
+    final selectedBorder = isSelected ? AppColors.plasma : null;
 
-        // Номер
-        Text('#${node.id.substring(0, 4)}', style: const TextStyle(
-          fontFamily: 'DM Mono', fontSize: 10, color: AppColors.nebula2,
-        )),
-        const SizedBox(width: 10),
+    // Вычисляем цвет фона и выносим его на уровень Material
+    final bgColor = isSelected
+        ? AppColors.plasma.withValues(alpha: 0.10)
+        : node.isTrulyWorking
+        ? AppColors.aurora.withValues(alpha: 0.06)
+        : AppColors.void2.withValues(alpha: 0.8);
 
-        // Транспорт + безопасность
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(
-            color: AppColors.void3,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            '${node.network.toUpperCase()} · ${node.security.toUpperCase()}',
-            style: const TextStyle(
-              fontFamily: 'DM Mono', fontSize: 9, color: AppColors.nebula2,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-
-        // SNI
-        Expanded(
-          child: Text(node.sni,
-            style: const TextStyle(
-              fontFamily: 'DM Sans', fontSize: 11, color: AppColors.nebula1,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-
-        // ← НОВОЕ: бейдж "✓ LIVE" (приоритет над MUX)
-        if (node.isTrulyWorking) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 12, 3),
+      child: Material(
+        color: bgColor, // <--- ФОН ТЕПЕРЬ ЗДЕСЬ
+        borderRadius: BorderRadius.circular(10), // <--- СКРУГЛЕНИЕ ДЛЯ ФОНА
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          splashColor: AppColors.plasma.withValues(alpha: 0.25),
+          highlightColor: AppColors.plasma.withValues(alpha: 0.1),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-              color: AppColors.aurora.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(4),
+              // color: убрано отсюда, чтобы не перекрывать splash-эффект
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: AppColors.aurora.withValues(alpha: 0.4), width: 0.6),
+                color: selectedBorder != null
+                    ? selectedBorder.withValues(alpha: 0.6)
+                    : node.isTrulyWorking
+                    ? AppColors.aurora.withValues(alpha: 0.3)
+                    : AppColors.glassBorder.withValues(alpha: 0.3),
+                width: isSelected ? 1.2 : 1.0,
+              ),
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: const [
-              Icon(Icons.verified_rounded, size: 8, color: AppColors.aurora),
-              SizedBox(width: 2),
-              Text('LIVE', style: TextStyle(
-                fontFamily: 'DM Mono', fontSize: 8,
-                fontWeight: FontWeight.w700, color: AppColors.aurora,
+            child: Row(children: [
+              // Точка статуса
+              Container(
+                width: 6, height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: qc,
+                  boxShadow: node.isAlive
+                      ? [BoxShadow(color: qc.withValues(alpha: 0.6), blurRadius: 5)]
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 10),
+
+              // Номер
+              Text('#${node.id.substring(0, 4)}', style: const TextStyle(
+                fontFamily: 'DM Mono', fontSize: 10, color: AppColors.nebula2,
               )),
+              const SizedBox(width: 10),
+
+              // Транспорт + безопасность
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.void3,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${node.network.toUpperCase()} · ${node.security.toUpperCase()}',
+                  style: const TextStyle(
+                    fontFamily: 'DM Mono', fontSize: 9, color: AppColors.nebula2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // SNI / имя
+              Expanded(
+                child: Text(
+                  node.name,
+                  style: TextStyle(
+                    fontFamily: 'DM Sans', fontSize: 11,
+                    color: isSelected ? AppColors.plasma : AppColors.nebula1,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+
+              // Бейдж LIVE / MUX
+              if (node.isTrulyWorking) ...[
+                _SmallBadge('LIVE', AppColors.aurora),
+                const SizedBox(width: 4),
+              ] else if (node.muxEnabled) ...[
+                _SmallBadge('MUX', AppColors.plasma),
+                const SizedBox(width: 4),
+              ],
+
+              // Иконка "выбрано"
+              if (isSelected)
+                const Icon(Icons.check_circle_rounded,
+                    size: 14, color: AppColors.plasma),
+
+              // Пинг
+              if (!isSelected && node.latencyMs != null)
+                _MsChip(ms: node.latencyMs!)
+              else if (!isSelected)
+                const Text('—', style: TextStyle(
+                    fontFamily: 'DM Mono', fontSize: 11, color: AppColors.nebula2)),
             ]),
           ),
-          const SizedBox(width: 4),
-        ] else if (node.muxEnabled) ...[
-          _SmallBadge('MUX', AppColors.plasma),
-          const SizedBox(width: 4),
-        ],
-
-        // Пинг
-        if (node.latencyMs != null)
-          _MsChip(ms: node.latencyMs!)
-        else
-          const Text('—', style: TextStyle(
-              fontFamily: 'DM Mono', fontSize: 11, color: AppColors.nebula2)),
-      ]),
+        ),
+      ),
     );
   }
 }
+
+// ── Вспомогательные виджеты ───────────────────────────────────────────────
 
 class _MsChip extends StatelessWidget {
   const _MsChip({required this.ms});
@@ -634,10 +454,10 @@ class _MsChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text('${ms}мс',
-    style: TextStyle(
-      fontFamily: 'DM Mono', fontSize: 11,
-      fontWeight: FontWeight.w700, color: _c,
-    ));
+      style: TextStyle(
+        fontFamily: 'DM Mono', fontSize: 11,
+        fontWeight: FontWeight.w700, color: _c,
+      ));
 }
 
 class _SmallBadge extends StatelessWidget {

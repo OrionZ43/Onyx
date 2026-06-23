@@ -36,6 +36,8 @@ dependencies:
   google_fonts: ^6.2.1
   flutter_animate: ^4.5.0
 
+  # ── НОВОЕ: открытие ссылок (брендинг by Orion_Z43) ──────────────────────
+  url_launcher: ^6.3.0
 
   # Platform / Process
   flutter_background_service: ^5.0.5
