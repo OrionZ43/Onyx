@@ -57,28 +57,37 @@ void main() async {
   runApp(const ProviderScope(child: OnyxApp()));
 }
 
-class TrayHandler with WindowListener, TrayListener {
-  TrayHandler() {
+class OnyxApp extends StatefulWidget {
+  const OnyxApp({super.key});
+
+  @override
+  State<OnyxApp> createState() => _OnyxAppState();
+}
+
+class _OnyxAppState extends State<OnyxApp> with WindowListener, TrayListener {
+  bool _setupDone = false;
+  bool _isVisible = true;
+
+  @override
+  void initState() {
+    super.initState();
     if (Platform.isWindows) {
       windowManager.addListener(this);
       trayManager.addListener(this);
       _initTray();
     }
+    // Если бинарники уже есть — пропускаем SetupScreen
+    _setupDone = !Platform.isWindows || BinaryManager.instance.isReady;
+    log.i('Бинарники готовы: $_setupDone', tag: 'MAIN');
   }
 
   Future<void> _initTray() async {
     await trayManager.setIcon('windows/runner/resources/app_icon.ico');
     Menu menu = Menu(
       items: [
-        MenuItem(
-          key: 'show_window',
-          label: 'Развернуть',
-        ),
+        MenuItem(key: 'show_window', label: 'Развернуть'),
         MenuItem.separator(),
-        MenuItem(
-          key: 'exit_app',
-          label: 'Выход',
-        ),
+        MenuItem(key: 'exit_app', label: 'Выход'),
       ],
     );
     await trayManager.setContextMenu(menu);
@@ -86,6 +95,7 @@ class TrayHandler with WindowListener, TrayListener {
 
   @override
   void onWindowMinimize() async {
+    setState(() => _isVisible = false);
     await windowManager.hide();
     LocalNotification notification = LocalNotification(
       title: 'Onyx VPN',
@@ -95,15 +105,24 @@ class TrayHandler with WindowListener, TrayListener {
   }
 
   @override
+  void onWindowRestore() {
+    setState(() => _isVisible = true);
+  }
+
+  @override
   void onTrayIconMouseDown() async {
+    setState(() => _isVisible = true);
     await windowManager.show();
+    await windowManager.restore();
     await windowManager.focus();
   }
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) async {
     if (menuItem.key == 'show_window') {
+      setState(() => _isVisible = true);
       await windowManager.show();
+      await windowManager.restore();
       await windowManager.focus();
     } else if (menuItem.key == 'exit_app') {
       await windowManager.destroy();
@@ -111,37 +130,12 @@ class TrayHandler with WindowListener, TrayListener {
     }
   }
 
+  @override
   void dispose() {
     if (Platform.isWindows) {
       windowManager.removeListener(this);
       trayManager.removeListener(this);
     }
-  }
-}
-
-class OnyxApp extends StatefulWidget {
-  const OnyxApp({super.key});
-
-  @override
-  State<OnyxApp> createState() => _OnyxAppState();
-}
-
-class _OnyxAppState extends State<OnyxApp> {
-  bool _setupDone = false;
-  late final TrayHandler _trayHandler;
-
-  @override
-  void initState() {
-    super.initState();
-    _trayHandler = TrayHandler();
-    // Если бинарники уже есть — пропускаем SetupScreen
-    _setupDone = !Platform.isWindows || BinaryManager.instance.isReady;
-    log.i('Бинарники готовы: $_setupDone', tag: 'MAIN');
-  }
-
-  @override
-  void dispose() {
-    _trayHandler.dispose();
     super.dispose();
   }
 
@@ -151,6 +145,11 @@ class _OnyxAppState extends State<OnyxApp> {
       title: 'Onyx',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
+      // МАГИЯ ОПТИМИЗАЦИИ ЗДЕСЬ: TickerMode ставит на паузу все AnimationController'ы
+      builder: (context, child) => TickerMode(
+        enabled: _isVisible,
+        child: child!,
+      ),
       home: _setupDone
           ? const OnboardingScreen()
           : SetupScreen(onComplete: () => setState(() => _setupDone = true)),
