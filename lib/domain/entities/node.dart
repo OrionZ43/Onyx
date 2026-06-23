@@ -95,6 +95,52 @@ class Node {
     return NodeQuality.poor;
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'host': host,
+        'port': port,
+        'uuid': uuid,
+        'flow': flow,
+        'security': security,
+        'fingerprint': fingerprint,
+        'sni': sni,
+        'path': path,
+        'network': network,
+        'realityPbk': realityPbk,
+        'realitySid': realitySid,
+        'latencyMs': latencyMs,
+        'udpSupported': udpSupported,
+        'isAlive': isAlive,
+        'isTrulyWorking': isTrulyWorking,
+        'muxEnabled': muxEnabled,
+        'muxProtocol': muxProtocol,
+        'muxMaxStreams': muxMaxStreams,
+      };
+
+  factory Node.fromJson(Map<String, dynamic> json) => Node(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        host: json['host'] as String? ?? '',
+        port: json['port'] as int? ?? 443,
+        uuid: json['uuid'] as String? ?? '',
+        flow: json['flow'] as String? ?? '',
+        security: json['security'] as String? ?? '',
+        fingerprint: json['fingerprint'] as String? ?? '',
+        sni: json['sni'] as String? ?? '',
+        path: json['path'] as String? ?? '',
+        network: json['network'] as String? ?? '',
+        realityPbk: json['realityPbk'] as String? ?? '',
+        realitySid: json['realitySid'] as String? ?? '',
+        latencyMs: json['latencyMs'] as int?,
+        udpSupported: json['udpSupported'] as bool? ?? false,
+        isAlive: json['isAlive'] as bool? ?? false,
+        isTrulyWorking: json['isTrulyWorking'] as bool? ?? false,
+        muxEnabled: json['muxEnabled'] as bool? ?? false,
+        muxProtocol: json['muxProtocol'] as String? ?? 'smux',
+        muxMaxStreams: json['muxMaxStreams'] as int? ?? 32,
+      );
+
   @override
   String toString() => 'Node($name, $host:$port, ${latencyMs}ms, sni=$sni, '
       'working=$isTrulyWorking)';
