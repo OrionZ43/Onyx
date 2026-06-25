@@ -107,9 +107,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          RepaintBoundary(
-            child: CosmicBackground(animation: _bgCtrl),
-          ),
+          RepaintBoundary(child: CosmicBackground(animation: _bgCtrl)),
           SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -355,8 +353,8 @@ class _UrlInputState extends State<_UrlInput> {
     final borderColor = hasError
         ? AppColors.nova
         : _focused
-            ? AppColors.plasma
-            : AppColors.glassBorder;
+        ? AppColors.plasma
+        : AppColors.glassBorder;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,7 +497,8 @@ class _ProgressBlock extends StatelessWidget {
     final double? progress;
 
     if (isDeepProbing) {
-      label = 'Глубокая проверка топ-${state.deepProbeTotal} нод... '
+      label =
+          'Глубокая проверка топ-${state.deepProbeTotal} нод... '
           '${state.deepProbedCount}/${state.deepProbeTotal}';
       progress = state.deepProbeTotal > 0
           ? state.deepProbedCount / state.deepProbeTotal

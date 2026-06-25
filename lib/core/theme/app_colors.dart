@@ -69,14 +69,14 @@ abstract final class AppColors {
 
   /// Стекло — карточки
   static LinearGradient gradientGlass({double opacity = 1.0}) => LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          // ИСПРАВЛЕНО: добавлен const к конструкторам Color
-          const Color(0x18FFFFFF).withValues(alpha: 0.09 * opacity),
-          const Color(0x06FFFFFF).withValues(alpha: 0.03 * opacity),
-        ],
-      );
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      // ИСПРАВЛЕНО: добавлен const к конструкторам Color
+      const Color(0x18FFFFFF).withValues(alpha: 0.09 * opacity),
+      const Color(0x06FFFFFF).withValues(alpha: 0.03 * opacity),
+    ],
+  );
 
   /// Туманность — фоновые пятна
   static const gradientNebula = RadialGradient(

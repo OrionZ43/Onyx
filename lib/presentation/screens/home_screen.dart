@@ -26,6 +26,7 @@ import '../providers/node_provider.dart';
 import '../widgets/node_list_sheet.dart';
 import 'log_screen.dart';
 import 'subscription_manager_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -148,12 +149,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
                           // Главная кнопка
                           _OrbitalButton(
-                            state: vpn,
-                            pulseCtrl: _pulseCtrl,
-                            orbitCtrl: _orbitCtrl,
-                            connectedCtrl: _connectedCtrl,
-                            onTap: () => _handleTap(vpn, sub),
-                          )
+                                state: vpn,
+                                pulseCtrl: _pulseCtrl,
+                                orbitCtrl: _orbitCtrl,
+                                connectedCtrl: _connectedCtrl,
+                                onTap: () => _handleTap(vpn, sub),
+                              )
                               .animate()
                               .fadeIn(duration: 900.ms, delay: 100.ms)
                               .scale(begin: const Offset(0.85, 0.85)),
@@ -266,6 +267,15 @@ class _TopBar extends StatelessWidget {
           const Spacer(),
 
           // ── Кнопки управления ──────────────────────────────────────────
+          _GlassIconBtn(
+            icon: Icons.settings_rounded,
+            onTap: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            },
+          ),
+          const SizedBox(width: 8),
           _GlassIconBtn(icon: Icons.terminal_rounded, onTap: onLogTap),
           const SizedBox(width: 8),
           _GlassIconBtn(icon: Icons.tune_rounded, onTap: onSubTap),
@@ -282,24 +292,24 @@ class _GlassIconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.glass,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.glassBorder, width: 1),
-              ),
-              child: Icon(icon, size: 18, color: AppColors.nebula1),
-            ),
+    onTap: onTap,
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: AppColors.glass,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.glassBorder, width: 1),
           ),
+          child: Icon(icon, size: 18, color: AppColors.nebula1),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 // ── Статусный чип ──────────────────────────────────────────────────────────
@@ -313,16 +323,16 @@ class _StatusChip extends StatelessWidget {
     final (label, sub, color) = switch (state) {
       VpnDisconnected() => ('Не защищён', 'Трафик открыт', AppColors.nova),
       VpnConnecting() => (
-          'Подключение...',
-          'Устанавливаем туннель',
-          AppColors.ember,
-        ),
+        'Подключение...',
+        'Устанавливаем туннель',
+        AppColors.ember,
+      ),
       VpnConnected() => ('Защищён', 'Трафик зашифрован', AppColors.aurora),
       VpnDisconnecting() => (
-          'Отключение...',
-          'Закрываем туннель',
-          AppColors.ember,
-        ),
+        'Отключение...',
+        'Закрываем туннель',
+        AppColors.ember,
+      ),
       VpnError(message: final msg) => ('Ошибка', msg, AppColors.nova),
     };
 
@@ -418,8 +428,8 @@ class _OrbitalButton extends StatelessWidget {
     final color = isConnected
         ? AppColors.aurora
         : isConnecting
-            ? AppColors.ember
-            : AppColors.plasma;
+        ? AppColors.ember
+        : AppColors.plasma;
 
     return AnimatedBuilder(
       animation: Listenable.merge([pulseCtrl, orbitCtrl, connectedCtrl]),
@@ -468,13 +478,10 @@ class _OrbitalButton extends StatelessWidget {
                         gradient: isConnected
                             ? AppColors.gradientAurora
                             : isConnecting
-                                ? const LinearGradient(
-                                    colors: [
-                                      AppColors.ember,
-                                      Color(0xFFFF7B00)
-                                    ],
-                                  )
-                                : AppColors.gradientPlasma,
+                            ? const LinearGradient(
+                                colors: [AppColors.ember, Color(0xFFFF7B00)],
+                              )
+                            : AppColors.gradientPlasma,
                         boxShadow: [
                           BoxShadow(
                             color: color.withValues(alpha: 0.45 + 0.15 * pulse),
@@ -630,8 +637,8 @@ class _ServerCard extends ConsumerWidget {
           glowColor: best?.isTrulyWorking == true
               ? AppColors.aurora.withValues(alpha: 0.25)
               : best != null
-                  ? AppColors.plasma.withValues(alpha: 0.15)
-                  : null,
+              ? AppColors.plasma.withValues(alpha: 0.15)
+              : null,
           child: Row(
             children: [
               // Индикатор
@@ -644,8 +651,8 @@ class _ServerCard extends ConsumerWidget {
                   color: best?.isTrulyWorking == true
                       ? AppColors.aurora
                       : best != null
-                          ? AppColors.aurora
-                          : AppColors.nebula2,
+                      ? AppColors.aurora
+                      : AppColors.nebula2,
                   boxShadow: best != null
                       ? [
                           BoxShadow(
@@ -721,59 +728,59 @@ class _DeepProbeProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 10,
-            height: 10,
-            child: CircularProgressIndicator(
-              strokeWidth: 1.5,
-              color: AppColors.aurora,
-              value: total > 0 ? done / total : null,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            'Глубокая проверка $done/$total...',
-            style: const TextStyle(
-              fontFamily: 'DM Sans',
-              fontSize: 11,
-              color: AppColors.aurora,
-            ),
-          ),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SizedBox(
+        width: 10,
+        height: 10,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.5,
+          color: AppColors.aurora,
+          value: total > 0 ? done / total : null,
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text(
+        'Глубокая проверка $done/$total...',
+        style: const TextStyle(
+          fontFamily: 'DM Sans',
+          fontSize: 11,
+          color: AppColors.aurora,
+        ),
+      ),
+    ],
+  );
 }
 
 class _LiveBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(
-          color: AppColors.aurora.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: AppColors.aurora.withValues(alpha: 0.4),
-            width: 0.8,
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(
+      color: AppColors.aurora.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(
+        color: AppColors.aurora.withValues(alpha: 0.4),
+        width: 0.8,
+      ),
+    ),
+    child: const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.verified_rounded, size: 10, color: AppColors.aurora),
+        SizedBox(width: 3),
+        Text(
+          'LIVE',
+          style: TextStyle(
+            fontFamily: 'DM Mono',
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: AppColors.aurora,
           ),
         ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.verified_rounded, size: 10, color: AppColors.aurora),
-            SizedBox(width: 3),
-            Text(
-              'LIVE',
-              style: TextStyle(
-                fontFamily: 'DM Mono',
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: AppColors.aurora,
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 }
 
 class _LatencyBadge extends StatelessWidget {
@@ -783,27 +790,27 @@ class _LatencyBadge extends StatelessWidget {
   Color get _color => ms < 150
       ? AppColors.aurora
       : ms < 400
-          ? AppColors.ember
-          : AppColors.nova;
+      ? AppColors.ember
+      : AppColors.nova;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: _color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _color.withValues(alpha: 0.3), width: 0.8),
-        ),
-        child: Text(
-          '$msмс',
-          style: TextStyle(
-            fontFamily: 'DM Sans',
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: _color,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: _color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: _color.withValues(alpha: 0.3), width: 0.8),
+    ),
+    child: Text(
+      '$msмс',
+      style: TextStyle(
+        fontFamily: 'DM Sans',
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: _color,
+      ),
+    ),
+  );
 }
 
 // ── Панель трафика ─────────────────────────────────────────────────────────
@@ -820,7 +827,8 @@ class _TrafficPanel extends StatelessWidget {
     return '${(b / (1024 * 1024 * 1024)).toStringAsFixed(2)}ГБ';
   }
 
-  String _time(Duration d) => '${d.inHours.toString().padLeft(2, '0')}:'
+  String _time(Duration d) =>
+      '${d.inHours.toString().padLeft(2, '0')}:'
       '${(d.inMinutes % 60).toString().padLeft(2, '0')}:'
       '${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 
@@ -874,32 +882,32 @@ class _Stat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Expanded(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 15),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: TextStyle(
-                fontFamily: 'Syne',
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.nebula0,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'DM Sans',
-                fontSize: 10,
-                color: AppColors.nebula2,
-              ),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 15),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontFamily: 'Syne',
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.nebula0,
+          ),
         ),
-      );
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 10,
+            color: AppColors.nebula2,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _Divider extends StatelessWidget {

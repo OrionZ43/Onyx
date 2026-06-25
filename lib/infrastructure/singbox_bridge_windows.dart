@@ -60,7 +60,7 @@ class SingboxBridgeWindows {
   bool get binariesReady => _binMgr.isReady;
 
   /// Запускает VPN-туннель для [node].
-  Future<BridgeResult> start(Node node) async {
+  Future<BridgeResult> start(Node node, {bool smartRouting = true}) async {
     if (_state == BridgeState.running || _state == BridgeState.starting) {
       return const BridgeResult(success: false, error: 'Уже запущен');
     }
@@ -96,6 +96,7 @@ class SingboxBridgeWindows {
         node,
         socksPort: 2080,
         resolvedServerIp: resolvedServerIp,
+        smartRouting: smartRouting,
       );
 
       // ИСПРАВЛЕНО: мержим experimental вместо полной перезаписи,
@@ -147,7 +148,9 @@ class SingboxBridgeWindows {
           .transform(const SystemEncoding().decoder)
           .listen(_parseSingboxOutput);
 
-      _process!.stderr.transform(const SystemEncoding().decoder).listen(
+      _process!.stderr
+          .transform(const SystemEncoding().decoder)
+          .listen(
             _parseSingboxOutput,
           ); // sing-box пишет сюда ВСЁ, не только ошибки
 
@@ -381,14 +384,11 @@ class SingboxBridgeWindows {
 
   Future<void> _killExisting() async {
     try {
-      await Process.run(
-          'taskkill',
-          [
-            '/F',
-            '/IM',
-            'sing-box.exe',
-          ],
-          runInShell: true);
+      await Process.run('taskkill', [
+        '/F',
+        '/IM',
+        'sing-box.exe',
+      ], runInShell: true);
       log.d('Завершены старые процессы sing-box', tag: 'BRIDGE');
     } catch (_) {}
   }

@@ -20,14 +20,15 @@ class SubscriptionResult {
 
 class SubscriptionService {
   SubscriptionService({Dio? dio})
-      : _dio = dio ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 10),
-                receiveTimeout: const Duration(seconds: 15),
-                headers: {'User-Agent': 'Mozilla/5.0'},
-              ),
-            );
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 10),
+              receiveTimeout: const Duration(seconds: 15),
+              headers: {'User-Agent': 'Mozilla/5.0'},
+            ),
+          );
 
   final Dio _dio;
   final _parser = const SubscriptionParser();
@@ -133,10 +134,10 @@ class SubscriptionService {
   }
 
   String _humanizeDioError(DioException e) => switch (e.type) {
-        DioExceptionType.connectionTimeout => 'Таймаут подключения (10с)',
-        DioExceptionType.receiveTimeout => 'Сервер не ответил (15с)',
-        DioExceptionType.badResponse => 'HTTP ${e.response?.statusCode}',
-        DioExceptionType.connectionError => 'Нет соединения с интернетом',
-        _ => e.message ?? 'Неизвестная ошибка сети',
-      };
+    DioExceptionType.connectionTimeout => 'Таймаут подключения (10с)',
+    DioExceptionType.receiveTimeout => 'Сервер не ответил (15с)',
+    DioExceptionType.badResponse => 'HTTP ${e.response?.statusCode}',
+    DioExceptionType.connectionError => 'Нет соединения с интернетом',
+    _ => e.message ?? 'Неизвестная ошибка сети',
+  };
 }

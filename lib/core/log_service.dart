@@ -17,11 +17,11 @@ class LogEntry {
   final String tag;
 
   String get levelLabel => switch (level) {
-        LogLevel.debug => 'DBG',
-        LogLevel.info => 'INF',
-        LogLevel.warn => 'WRN',
-        LogLevel.error => 'ERR',
-      };
+    LogLevel.debug => 'DBG',
+    LogLevel.info => 'INF',
+    LogLevel.warn => 'WRN',
+    LogLevel.error => 'ERR',
+  };
 
   String get timeStr {
     final t = timestamp;

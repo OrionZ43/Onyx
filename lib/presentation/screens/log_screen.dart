@@ -119,8 +119,8 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               ShaderMask(
                                 shaderCallback: (b) =>
                                     AppColors.gradientPlasma.createShader(
-                                  Rect.fromLTWH(0, 0, b.width, b.height),
-                                ),
+                                      Rect.fromLTWH(0, 0, b.width, b.height),
+                                    ),
                                 child: const Icon(
                                   Icons.terminal_rounded,
                                   color: Colors.white,
@@ -277,21 +277,21 @@ class _HeaderBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Tooltip(
-          message: tooltip,
-          child: Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppColors.glass,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.glassBorder),
-            ),
-            child: Icon(icon, size: 15, color: AppColors.nebula1),
-          ),
+    onTap: onTap,
+    child: Tooltip(
+      message: tooltip,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: AppColors.glass,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.glassBorder),
         ),
-      );
+        child: Icon(icon, size: 15, color: AppColors.nebula1),
+      ),
+    ),
+  );
 }
 
 // ── Filter button ──────────────────────────────────────────────────────────
@@ -303,43 +303,43 @@ class _FilterBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => PopupMenuButton<LogLevel?>(
-        color: AppColors.void2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.glassBorder),
+    color: AppColors.void2,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: const BorderSide(color: AppColors.glassBorder),
+    ),
+    onSelected: onChanged,
+    child: Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: current != null ? AppColors.plasmaTrace : AppColors.glass,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: current != null
+              ? AppColors.horizonGlow
+              : AppColors.glassBorder,
         ),
-        onSelected: onChanged,
-        child: Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: current != null ? AppColors.plasmaTrace : AppColors.glass,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: current != null
-                  ? AppColors.horizonGlow
-                  : AppColors.glassBorder,
-            ),
-          ),
-          child: Icon(
-            Icons.filter_list_rounded,
-            size: 16,
-            color: current != null ? AppColors.plasma : AppColors.nebula1,
+      ),
+      child: Icon(
+        Icons.filter_list_rounded,
+        size: 16,
+        color: current != null ? AppColors.plasma : AppColors.nebula1,
+      ),
+    ),
+    itemBuilder: (_) => [
+      const PopupMenuItem(value: null, child: Text('Все')),
+      ...LogLevel.values.map(
+        (l) => PopupMenuItem(
+          value: l,
+          child: Text(
+            l.name.toUpperCase(),
+            style: const TextStyle(fontFamily: 'DM Mono', fontSize: 12),
           ),
         ),
-        itemBuilder: (_) => [
-          const PopupMenuItem(value: null, child: Text('Все')),
-          ...LogLevel.values.map(
-            (l) => PopupMenuItem(
-              value: l,
-              child: Text(
-                l.name.toUpperCase(),
-                style: const TextStyle(fontFamily: 'DM Mono', fontSize: 12),
-              ),
-            ),
-          ),
-        ],
-      );
+      ),
+    ],
+  );
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────
@@ -349,31 +349,31 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.terminal_rounded, color: AppColors.nebula2, size: 48),
-            const SizedBox(height: 16),
-            const Text(
-              'Логов нет',
-              style: TextStyle(
-                fontFamily: 'Syne',
-                fontSize: 18,
-                color: AppColors.nebula1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'События появятся при подключении',
-              style: TextStyle(
-                fontFamily: 'DM Sans',
-                fontSize: 12,
-                color: AppColors.nebula2,
-              ),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.terminal_rounded, color: AppColors.nebula2, size: 48),
+        const SizedBox(height: 16),
+        const Text(
+          'Логов нет',
+          style: TextStyle(
+            fontFamily: 'Syne',
+            fontSize: 18,
+            color: AppColors.nebula1,
+          ),
         ),
-      );
+        const SizedBox(height: 8),
+        const Text(
+          'События появятся при подключении',
+          style: TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 12,
+            color: AppColors.nebula2,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 // ── Log row ───────────────────────────────────────────────────────────────
@@ -383,17 +383,17 @@ class _LogRow extends StatelessWidget {
   final LogEntry entry;
 
   Color get _levelColor => switch (entry.level) {
-        LogLevel.debug => AppColors.nebula1,
-        LogLevel.info => AppColors.plasma,
-        LogLevel.warn => AppColors.ember,
-        LogLevel.error => AppColors.nova,
-      };
+    LogLevel.debug => AppColors.nebula1,
+    LogLevel.info => AppColors.plasma,
+    LogLevel.warn => AppColors.ember,
+    LogLevel.error => AppColors.nova,
+  };
 
   Color get _bg => switch (entry.level) {
-        LogLevel.error => AppColors.nova.withValues(alpha: 0.04),
-        LogLevel.warn => AppColors.ember.withValues(alpha: 0.03),
-        _ => Colors.transparent,
-      };
+    LogLevel.error => AppColors.nova.withValues(alpha: 0.04),
+    LogLevel.warn => AppColors.ember.withValues(alpha: 0.03),
+    _ => Colors.transparent,
+  };
 
   @override
   Widget build(BuildContext context) {

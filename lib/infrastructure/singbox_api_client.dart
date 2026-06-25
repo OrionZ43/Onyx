@@ -104,7 +104,7 @@ class TrafficStats {
   final int downBytes;
 
   factory TrafficStats.fromJson(Map<String, dynamic> json) => TrafficStats(
-        upBytes: (json['up'] as num?)?.toInt() ?? 0,
-        downBytes: (json['down'] as num?)?.toInt() ?? 0,
-      );
+    upBytes: (json['up'] as num?)?.toInt() ?? 0,
+    downBytes: (json['down'] as num?)?.toInt() ?? 0,
+  );
 }

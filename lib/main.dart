@@ -146,10 +146,8 @@ class _OnyxAppState extends State<OnyxApp> with WindowListener, TrayListener {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       // МАГИЯ ОПТИМИЗАЦИИ ЗДЕСЬ: TickerMode ставит на паузу все AnimationController'ы
-      builder: (context, child) => TickerMode(
-        enabled: _isVisible,
-        child: child!,
-      ),
+      builder: (context, child) =>
+          TickerMode(enabled: _isVisible, child: child!),
       home: _setupDone
           ? const OnboardingScreen()
           : SetupScreen(onComplete: () => setState(() => _setupDone = true)),

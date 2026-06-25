@@ -255,9 +255,11 @@ class DeepProbe {
 
     int done = 0;
 
-    for (var batchStart = 0;
-        batchStart < candidates.length;
-        batchStart += _batchSize) {
+    for (
+      var batchStart = 0;
+      batchStart < candidates.length;
+      batchStart += _batchSize
+    ) {
       final batchEnd = min(batchStart + _batchSize, candidates.length);
       final batch = candidates.sublist(batchStart, batchEnd);
 
@@ -385,14 +387,11 @@ class DeepProbe {
       await _writeProbeConfig(node, port, configPath);
       if (cancelled[0]) return;
 
-      process = await Process.start(
-          singboxExePath,
-          [
-            'run',
-            '-c',
-            configPath,
-          ],
-          mode: ProcessStartMode.detached);
+      process = await Process.start(singboxExePath, [
+        'run',
+        '-c',
+        configPath,
+      ], mode: ProcessStartMode.detached);
       activeProcs[port] = process;
       log.d(
         '[${node.name}] PID=${process.pid}, SOCKS5 порт=$port',
