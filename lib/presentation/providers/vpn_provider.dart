@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:dio/dio.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/log_service.dart';
 import '../../domain/entities/vpn_state.dart';
@@ -18,7 +18,6 @@ class VpnController extends StateNotifier<VpnState> {
   final Ref ref;
   final _sanitizer = const NodeSanitizer();
   final _bridge = SingboxBridgeWindows.instance;
-  final _dio = Dio();
 
   StreamSubscription? _statsSub;
   StreamSubscription? _errorSub;
@@ -95,14 +94,17 @@ class VpnController extends StateNotifier<VpnState> {
       final current = state;
       if (current is! VpnConnected) return;
 
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 5);
+      // Пускаем пинг через наш локальный SOCKS5, чтобы обойти баги TUN-маршрутизации
+      client.findProxy = (uri) => 'PROXY 127.0.0.1:2080';
+      client.badCertificateCallback = (cert, host, port) => true;
+
       try {
-        final response = await _dio.get(
-          'http://cp.cloudflare.com/generate_204',
-          options: Options(
-            receiveTimeout: const Duration(seconds: 5),
-            sendTimeout: const Duration(seconds: 5),
-          ),
-        );
+        final request = await client
+            .getUrl(Uri.parse('http://cp.cloudflare.com/generate_204'));
+        final response =
+            await request.close().timeout(const Duration(seconds: 5));
 
         if (response.statusCode == 204 || response.statusCode == 200) {
           _failedPings = 0;
@@ -110,7 +112,10 @@ class VpnController extends StateNotifier<VpnState> {
           _failedPings++;
         }
       } catch (e) {
+        log.d('Health Monitor пинг не прошел: $e', tag: 'VPN');
         _failedPings++;
+      } finally {
+        client.close(force: true);
       }
 
       if (_failedPings >= 2) {
