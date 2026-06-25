@@ -58,25 +58,25 @@ class SingboxConfigBuilder {
   // ── Inbounds ───────────────────────────────────────────────────────────────
 
   Map<String, dynamic> _buildTun() => {
-    'type': 'tun',
-    'tag': 'tun-in',
-    'inet4_address': '172.19.0.1/30',
-    'inet6_address': 'fdfe:dcba:9876::1/126',
-    'mtu': 1400,
-    'auto_route': true,
-    'strict_route': true,
-    'stack': 'system',
-    'sniff': true,
-    'sniff_override_destination': true,
-  };
+        'type': 'tun',
+        'tag': 'tun-in',
+        'inet4_address': '172.19.0.1/30',
+        'inet6_address': 'fdfe:dcba:9876::1/126',
+        'mtu': 1400,
+        'auto_route': true,
+        'strict_route': true,
+        'stack': 'system',
+        'sniff': true,
+        'sniff_override_destination': true,
+      };
 
   Map<String, dynamic> _buildSocks(int port) => {
-    'type': 'socks',
-    'tag': 'socks-in',
-    'listen': '127.0.0.1',
-    'listen_port': port,
-    'sniff': true,
-  };
+        'type': 'mixed', // <--- ИЗМЕНЕНО: теперь принимает и HTTP, и SOCKS
+        'tag': 'mixed-in',
+        'listen': '127.0.0.1',
+        'listen_port': port,
+        'sniff': true,
+      };
 
   // ── Outbound ───────────────────────────────────────────────────────────────
 
@@ -129,16 +129,16 @@ class SingboxConfigBuilder {
   Map<String, dynamic>? _buildTransport(Node node) {
     return switch (node.network) {
       'ws' => {
-        'type': 'ws',
-        'path': node.path,
-        'headers': {'Host': node.sni},
-      },
+          'type': 'ws',
+          'path': node.path,
+          'headers': {'Host': node.sni},
+        },
       'grpc' => {'type': 'grpc', 'service_name': node.path.replaceAll('/', '')},
       'h2' => {
-        'type': 'http',
-        'host': [node.sni],
-        'path': node.path,
-      },
+          'type': 'http',
+          'host': [node.sni],
+          'path': node.path,
+        },
       _ => null,
     };
   }
@@ -179,35 +179,35 @@ class SingboxConfigBuilder {
   ///     sing-box сам: DNS для outbound → dns-local (direct/физ.NIC)     ✓
   /// ──────────────────────────────────────────────────────────────────────────
   Map<String, dynamic> _buildDns() => {
-    'servers': [
-      {
-        // Основной: DoH через зашифрованный прокси — ТСПУ не видит запросы
-        'tag': 'dns-remote',
-        'address': 'https://8.8.8.8/dns-query',
-        'detour': 'proxy',
-      },
-      {
-        // Служебный: plaintext DNS только для разрешения адресов outbound-ов
-        // самого sing-box (см. rules ниже). Биндится к физическому NIC через
-        // auto_detect_interface, поэтому ТСПУ его не перехватывает.
-        'tag': 'dns-local',
-        'address': '8.8.8.8',
-        'detour': 'direct',
-      },
-    ],
-    'rules': [
-      {
-        // Когда sing-box резолвит адрес для своего outbound-соединения
-        // (например, IP VLESS-сервера), использовать прямой DNS, а не прокси.
-        // Предотвращает бесконечную рекурсию: прокси → DNS → прокси → ...
-        'outbound': 'any',
-        'server': 'dns-local',
-      },
-    ],
-    // Весь остальной DNS (запросы клиентских приложений) → DoH через прокси
-    'final': 'dns-remote',
-    'independent_cache': true,
-  };
+        'servers': [
+          {
+            // Основной: DoH через зашифрованный прокси — ТСПУ не видит запросы
+            'tag': 'dns-remote',
+            'address': 'https://8.8.8.8/dns-query',
+            'detour': 'proxy',
+          },
+          {
+            // Служебный: plaintext DNS только для разрешения адресов outbound-ов
+            // самого sing-box (см. rules ниже). Биндится к физическому NIC через
+            // auto_detect_interface, поэтому ТСПУ его не перехватывает.
+            'tag': 'dns-local',
+            'address': '8.8.8.8',
+            'detour': 'direct',
+          },
+        ],
+        'rules': [
+          {
+            // Когда sing-box резолвит адрес для своего outbound-соединения
+            // (например, IP VLESS-сервера), использовать прямой DNS, а не прокси.
+            // Предотвращает бесконечную рекурсию: прокси → DNS → прокси → ...
+            'outbound': 'any',
+            'server': 'dns-local',
+          },
+        ],
+        // Весь остальной DNS (запросы клиентских приложений) → DoH через прокси
+        'final': 'dns-remote',
+        'independent_cache': true,
+      };
 
   // ── Route ──────────────────────────────────────────────────────────────────
 
@@ -262,7 +262,7 @@ class SingboxConfigBuilder {
   }
 
   Map<String, dynamic> _buildExperimental() => {
-    'clash_api': {'external_controller': '127.0.0.1:9090', 'secret': ''},
-    'cache_file': {'enabled': true},
-  };
+        'clash_api': {'external_controller': '127.0.0.1:9090', 'secret': ''},
+        'cache_file': {'enabled': true},
+      };
 }
