@@ -30,11 +30,11 @@ final class VpnConnected extends VpnState {
   Duration get uptime => DateTime.now().difference(connectedAt);
 
   VpnConnected withTraffic({required int rx, required int tx}) => VpnConnected(
-        node: node,
-        connectedAt: connectedAt,
-        rxBytes: rx,
-        txBytes: tx,
-      );
+    node: node,
+    connectedAt: connectedAt,
+    rxBytes: rx,
+    txBytes: tx,
+  );
 }
 
 final class VpnDisconnecting extends VpnState {

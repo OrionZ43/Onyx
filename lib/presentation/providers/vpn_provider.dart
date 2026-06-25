@@ -8,6 +8,7 @@ import '../../domain/node_sanitizer.dart';
 import '../../infrastructure/singbox_bridge_windows.dart';
 import 'subscription_provider.dart';
 import 'node_provider.dart';
+import 'settings_provider.dart';
 
 class VpnController extends StateNotifier<VpnState> {
   VpnController(this.ref) : super(const VpnDisconnected()) {
@@ -42,7 +43,8 @@ class VpnController extends StateNotifier<VpnState> {
 
     state = VpnConnecting(node: node);
 
-    final result = await _bridge.start(node);
+    final isSmartRouting = ref.read(settingsProvider).smartRouting;
+    final result = await _bridge.start(node, smartRouting: isSmartRouting);
 
     if (!result.success) {
       log.e('Не удалось подключиться: ${result.error}', tag: 'VPN');

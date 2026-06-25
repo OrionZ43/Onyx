@@ -62,29 +62,29 @@ class _SetupScreenState extends State<SetupScreen>
                 children: [
                   // Иконка
                   AnimatedBuilder(
-                    animation: _pulseCtrl,
-                    builder: (_, __) => Container(
-                      width: 96,
-                      height: 96,
-                      decoration: BoxDecoration(
-                        gradient: AppColors.gradientPlasma,
-                        borderRadius: BorderRadius.circular(28),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.plasma.withValues(
-                              alpha: 0.3 + 0.2 * _pulseCtrl.value,
-                            ),
-                            blurRadius: 32 + 16 * _pulseCtrl.value,
+                        animation: _pulseCtrl,
+                        builder: (_, __) => Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(
+                            gradient: AppColors.gradientPlasma,
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.plasma.withValues(
+                                  alpha: 0.3 + 0.2 * _pulseCtrl.value,
+                                ),
+                                blurRadius: 32 + 16 * _pulseCtrl.value,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.download_rounded,
-                        color: Colors.white,
-                        size: 48,
-                      ),
-                    ),
-                  )
+                          child: const Icon(
+                            Icons.download_rounded,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                        ),
+                      )
                       .animate()
                       .fadeIn(duration: 600.ms)
                       .scale(begin: const Offset(0.8, 0.8)),

@@ -207,7 +207,7 @@ class _SubscriptionManagerScreenState
                               sub.status == SubStatus.fetching
                                   ? 'Загружаем серверы...'
                                   : 'Проверяем серверы... '
-                                      '${sub.probedCount}/${sub.nodes.length}',
+                                        '${sub.probedCount}/${sub.nodes.length}',
                               style: const TextStyle(
                                 fontFamily: 'DM Sans',
                                 fontSize: 12,
@@ -227,29 +227,30 @@ class _SubscriptionManagerScreenState
                               ),
                             )
                           : _entries.isEmpty
-                              ? _EmptyState(onAdd: _showAddDialog)
-                              : ListView.separated(
-                                  padding: const EdgeInsets.all(16),
-                                  itemCount: _entries.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 10),
-                                  itemBuilder: (_, i) => _SubCard(
-                                    entry: _entries[i],
-                                    isActive: sub.url == _entries[i].url,
-                                    nodeCount: sub.url == _entries[i].url
-                                        ? sub.nodes.length
-                                        : null,
-                                    aliveCount: sub.url == _entries[i].url
-                                        ? sub.aliveNodes.length
-                                        : null,
-                                    onLoad: () => _loadSub(_entries[i]),
-                                    onDelete: () => _deleteSub(i),
-                                    onEdit: () => _showEditDialog(i),
-                                  )
+                          ? _EmptyState(onAdd: _showAddDialog)
+                          : ListView.separated(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _entries.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (_, i) =>
+                                  _SubCard(
+                                        entry: _entries[i],
+                                        isActive: sub.url == _entries[i].url,
+                                        nodeCount: sub.url == _entries[i].url
+                                            ? sub.nodes.length
+                                            : null,
+                                        aliveCount: sub.url == _entries[i].url
+                                            ? sub.aliveNodes.length
+                                            : null,
+                                        onLoad: () => _loadSub(_entries[i]),
+                                        onDelete: () => _deleteSub(i),
+                                        onEdit: () => _showEditDialog(i),
+                                      )
                                       .animate(delay: (i * 60).ms)
                                       .fadeIn(duration: 300.ms)
                                       .slideY(begin: 0.15),
-                                ),
+                            ),
                     ),
 
                     // ── Подсказка ──────────────────────────────────────────
@@ -423,55 +424,55 @@ class _DialogField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontFamily: 'DM Sans',
-              fontSize: 12,
-              color: AppColors.nebula1,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.void3,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.glassBorder),
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 12),
-                Icon(icon, size: 16, color: AppColors.nebula2),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    keyboardType: keyboardType,
-                    autocorrect: false,
-                    style: const TextStyle(
-                      fontFamily: 'DM Sans',
-                      fontSize: 13,
-                      color: AppColors.nebula0,
-                    ),
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      hintText: hint,
-                      hintStyle: const TextStyle(
-                        color: AppColors.nebula2,
-                        fontSize: 13,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: const TextStyle(
+          fontFamily: 'DM Sans',
+          fontSize: 12,
+          color: AppColors.nebula1,
+        ),
+      ),
+      const SizedBox(height: 6),
+      Container(
+        decoration: BoxDecoration(
+          color: AppColors.void3,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 12),
+            Icon(icon, size: 16, color: AppColors.nebula2),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                keyboardType: keyboardType,
+                autocorrect: false,
+                style: const TextStyle(
+                  fontFamily: 'DM Sans',
+                  fontSize: 13,
+                  color: AppColors.nebula0,
                 ),
-                const SizedBox(width: 8),
-              ],
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: hint,
+                  hintStyle: const TextStyle(
+                    color: AppColors.nebula2,
+                    fontSize: 13,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
             ),
-          ),
-        ],
-      );
+            const SizedBox(width: 8),
+          ],
+        ),
+      ),
+    ],
+  );
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────
@@ -482,68 +483,67 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 64),
-            const SizedBox(height: 20),
-            const Text(
-              'Нет подписок',
-              style: TextStyle(
-                fontFamily: 'Syne',
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.nebula1,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Добавьте ссылку на VLESS-подписку\nчтобы начать',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'DM Sans',
-                fontSize: 13,
-                color: AppColors.nebula2,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 28),
-            GestureDetector(
-              onTap: onAdd,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                decoration: BoxDecoration(
-                  gradient: AppColors.gradientPlasma,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.plasma.withValues(alpha: 0.35),
-                      blurRadius: 20,
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.add_rounded, color: Colors.white, size: 18),
-                    SizedBox(width: 8),
-                    Text(
-                      'Добавить подписку',
-                      style: TextStyle(
-                        fontFamily: 'Syne',
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 64),
+        const SizedBox(height: 20),
+        const Text(
+          'Нет подписок',
+          style: TextStyle(
+            fontFamily: 'Syne',
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: AppColors.nebula1,
+          ),
         ),
-      );
+        const SizedBox(height: 10),
+        const Text(
+          'Добавьте ссылку на VLESS-подписку\nчтобы начать',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 13,
+            color: AppColors.nebula2,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 28),
+        GestureDetector(
+          onTap: onAdd,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: AppColors.gradientPlasma,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.plasma.withValues(alpha: 0.35),
+                  blurRadius: 20,
+                ),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text(
+                  'Добавить подписку',
+                  style: TextStyle(
+                    fontFamily: 'Syne',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 // ── Sub card ──────────────────────────────────────────────────────────────
@@ -728,18 +728,18 @@ class _ActionBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withValues(alpha: 0.2)),
-          ),
-          child: Icon(icon, size: 16, color: color),
-        ),
-      );
+    onTap: onTap,
+    child: Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Icon(icon, size: 16, color: color),
+    ),
+  );
 }
 
 // ── Data class ────────────────────────────────────────────────────────────
