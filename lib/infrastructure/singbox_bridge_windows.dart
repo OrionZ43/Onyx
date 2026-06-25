@@ -148,9 +148,7 @@ class SingboxBridgeWindows {
           .transform(const SystemEncoding().decoder)
           .listen(_parseSingboxOutput);
 
-      _process!.stderr
-          .transform(const SystemEncoding().decoder)
-          .listen(
+      _process!.stderr.transform(const SystemEncoding().decoder).listen(
             _parseSingboxOutput,
           ); // sing-box пишет сюда ВСЁ, не только ошибки
 
@@ -384,11 +382,14 @@ class SingboxBridgeWindows {
 
   Future<void> _killExisting() async {
     try {
-      await Process.run('taskkill', [
-        '/F',
-        '/IM',
-        'sing-box.exe',
-      ], runInShell: true);
+      await Process.run(
+          'taskkill',
+          [
+            '/F',
+            '/IM',
+            'sing-box.exe',
+          ],
+          runInShell: true);
       log.d('Завершены старые процессы sing-box', tag: 'BRIDGE');
     } catch (_) {}
   }

@@ -96,17 +96,18 @@ class VpnController extends StateNotifier<VpnState> {
 
       final client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 5);
-      // Пускаем пинг через наш локальный SOCKS5, чтобы обойти баги TUN-маршрутизации
+      // Пускаем через наш локальный mixed-порт (HTTP/SOCKS)
       client.findProxy = (uri) => 'PROXY 127.0.0.1:2080';
       client.badCertificateCallback = (cert, host, port) => true;
 
       try {
-        final request = await client
-            .getUrl(Uri.parse('http://cp.cloudflare.com/generate_204'));
+        // Пингуем IP напрямую (1.1.1.1), чтобы избежать багов DNS-сниффинга
+        final request = await client.getUrl(Uri.parse('http://1.1.1.1/'));
         final response =
             await request.close().timeout(const Duration(seconds: 5));
 
-        if (response.statusCode == 204 || response.statusCode == 200) {
+        // Любой ответ от сервера (даже 301 редирект) означает, что интернет есть
+        if (response.statusCode >= 200 && response.statusCode < 400) {
           _failedPings = 0;
         } else {
           _failedPings++;
