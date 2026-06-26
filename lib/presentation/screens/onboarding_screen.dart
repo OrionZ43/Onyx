@@ -20,6 +20,7 @@ import '../../core/glass_widget.dart';
 import '../../core/cosmic_background.dart';
 import '../providers/subscription_provider.dart';
 import 'home_screen.dart';
+import 'faq_screen.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -108,6 +109,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       body: Stack(
         children: [
           RepaintBoundary(child: CosmicBackground(animation: _bgCtrl)),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: GlassIconBtn(
+                  icon: Icons.help_outline_rounded,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const FaqScreen()),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
           SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -353,8 +370,8 @@ class _UrlInputState extends State<_UrlInput> {
     final borderColor = hasError
         ? AppColors.nova
         : _focused
-            ? AppColors.plasma
-            : AppColors.glassBorder;
+        ? AppColors.plasma
+        : AppColors.glassBorder;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -477,6 +494,17 @@ class _UrlInputState extends State<_UrlInput> {
             ],
           ),
         ),
+        const SizedBox(height: 16),
+        Center(
+          child: Text(
+            '🤍 Спасибо zieng2 за тестовые серверы',
+            style: TextStyle(
+              fontFamily: 'DM Sans',
+              fontSize: 11,
+              color: AppColors.nebula2.withValues(alpha: 0.7),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -497,7 +525,8 @@ class _ProgressBlock extends StatelessWidget {
     final double? progress;
 
     if (isDeepProbing) {
-      label = 'Глубокая проверка топ-${state.deepProbeTotal} нод... '
+      label =
+          'Глубокая проверка топ-${state.deepProbeTotal} нод... '
           '${state.deepProbedCount}/${state.deepProbeTotal}';
       progress = state.deepProbeTotal > 0
           ? state.deepProbedCount / state.deepProbeTotal
