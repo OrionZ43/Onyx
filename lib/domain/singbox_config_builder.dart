@@ -15,7 +15,7 @@ class SingboxConfigBuilder {
   }) {
     return {
       'log': {'level': 'info', 'timestamp': true},
-      'dns': _buildDns(),
+      'dns': _buildDns(smartRouting: smartRouting),
       'inbounds': [_buildTun(), _buildSocks(socksPort)],
       'outbounds': [
         _buildVless(node),
@@ -178,7 +178,7 @@ class SingboxConfigBuilder {
   ///     Пользователь: DNS → TUN → sing-box DNS → dns-remote (DoH/proxy) ✓
   ///     sing-box сам: DNS для outbound → dns-local (direct/физ.NIC)     ✓
   /// ──────────────────────────────────────────────────────────────────────────
-  Map<String, dynamic> _buildDns() => {
+  Map<String, dynamic> _buildDns({bool smartRouting = false}) => {
         'servers': [
           {
             // Основной: DoH через зашифрованный прокси — ТСПУ не видит запросы
@@ -203,6 +203,26 @@ class SingboxConfigBuilder {
             'outbound': 'any',
             'server': 'dns-local',
           },
+          // RU-домены резолвятся напрямую, не через proxy
+          if (smartRouting)
+            {
+              'domain_suffix': [
+                '.ru',
+                '.su',
+                '.xn--p1ai', // .рф
+                'vk.com',
+                'vk.ru',
+                'yandex.ru',
+                'ya.ru',
+                'mail.ru',
+                'gosuslugi.ru',
+                'mos.ru',
+                'sberbank.ru',
+                'tbank.ru',
+                'avito.ru'
+              ],
+              'server': 'dns-local',
+            },
         ],
         // Весь остальной DNS (запросы клиентских приложений) → DoH через прокси
         'final': 'dns-remote',
