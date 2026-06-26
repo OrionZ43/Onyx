@@ -62,18 +62,24 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
 
               // ── Список ────────────────────────────────────────────────────
               Expanded(
-                child: (sub.status == SubStatus.probing ||
-                        sub.status == SubStatus.deepProbing)
+                child:
+                    (sub.status == SubStatus.probing ||
+                        sub.status == SubStatus.deepProbing ||
+                        sub.status == SubStatus.fetching)
                     ? Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const CircularProgressIndicator(
-                              color: AppColors.plasma,
+                              color: AppColors.ember,
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'Проверяем серверы... ${sub.probedCount}/${sub.nodes.length}',
+                              sub.status == SubStatus.fetching
+                                  ? 'Загружаем свежий список...'
+                                  : sub.status == SubStatus.deepProbing
+                                  ? 'Глубокая проверка... ${sub.deepProbedCount}/${sub.deepProbeTotal}'
+                                  : 'TCP Пинг... ${sub.probedCount}/${sub.nodes.length}',
                               style: const TextStyle(
                                 color: AppColors.nebula1,
                                 fontFamily: 'DM Sans',
@@ -83,38 +89,36 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
                         ),
                       )
                     : nodes.isEmpty
-                        ? _EmptyState()
-                        : ListView(
-                            padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
-                            children: [
-                              for (final entry in groups.entries)
-                                _CountryGroup(
-                                  country: entry.key,
-                                  nodes: entry.value,
-                                  alive: entry.value
-                                      .where((n) => n.isAlive)
-                                      .length,
-                                  bestMs: _bestMs(entry.value),
-                                  expanded: _expanded[entry.key] ??
-                                      _shouldAutoExpand(entry.key, groups),
-                                  selectedNode: selected,
-                                  onToggle: () => setState(
-                                    () => _expanded[entry.key] =
-                                        !(_expanded[entry.key] ??
-                                            _shouldAutoExpand(
-                                                entry.key, groups)),
-                                  ),
-                                  onSelectNode: (node) {
-                                    // Сохраняем выбор и закрываем шторку
-                                    ref
-                                        .read(nodeSelectionProvider.notifier)
-                                        .select(node);
-                                    if (!context.mounted) return;
-                                    Navigator.of(context).pop();
-                                  },
-                                ),
-                            ],
-                          ),
+                    ? _EmptyState()
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
+                        children: [
+                          for (final entry in groups.entries)
+                            _CountryGroup(
+                              country: entry.key,
+                              nodes: entry.value,
+                              alive: entry.value.where((n) => n.isAlive).length,
+                              bestMs: _bestMs(entry.value),
+                              expanded:
+                                  _expanded[entry.key] ??
+                                  _shouldAutoExpand(entry.key, groups),
+                              selectedNode: selected,
+                              onToggle: () => setState(
+                                () => _expanded[entry.key] =
+                                    !(_expanded[entry.key] ??
+                                        _shouldAutoExpand(entry.key, groups)),
+                              ),
+                              onSelectNode: (node) {
+                                // Сохраняем выбор и закрываем шторку
+                                ref
+                                    .read(nodeSelectionProvider.notifier)
+                                    .select(node);
+                                if (!context.mounted) return;
+                                Navigator.of(context).pop();
+                              },
+                            ),
+                        ],
+                      ),
               ),
             ],
           ),
@@ -224,7 +228,12 @@ class _SheetHeader extends ConsumerWidget {
               const SizedBox(width: 8),
               // Кнопка обновления
               GestureDetector(
-                onTap: () => ref.read(subscriptionProvider.notifier).reprobe(),
+                onTap: () {
+                  final url = ref.read(subscriptionProvider).url;
+                  if (url.isNotEmpty) {
+                    ref.read(subscriptionProvider.notifier).loadFromUrl(url);
+                  }
+                },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -274,31 +283,31 @@ class _SheetHeader extends ConsumerWidget {
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 48),
-            const SizedBox(height: 16),
-            const Text(
-              'Серверы не загружены',
-              style: TextStyle(
-                fontFamily: 'Syne',
-                fontSize: 16,
-                color: AppColors.nebula1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Добавьте подписку на главном экране',
-              style: TextStyle(
-                fontFamily: 'DM Sans',
-                fontSize: 12,
-                color: AppColors.nebula2,
-              ),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 48),
+        const SizedBox(height: 16),
+        const Text(
+          'Серверы не загружены',
+          style: TextStyle(
+            fontFamily: 'Syne',
+            fontSize: 16,
+            color: AppColors.nebula1,
+          ),
         ),
-      );
+        const SizedBox(height: 8),
+        const Text(
+          'Добавьте подписку на главном экране',
+          style: TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 12,
+            color: AppColors.nebula2,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 // ── Группа страны ─────────────────────────────────────────────────────────
@@ -394,10 +403,10 @@ class _CountryGroup extends StatelessWidget {
                   children: [
                     for (var i = 0; i < nodes.length; i++)
                       _CompactNodeRow(
-                        node: nodes[i],
-                        isSelected: selectedNode?.id == nodes[i].id,
-                        onTap: () => onSelectNode(nodes[i]),
-                      )
+                            node: nodes[i],
+                            isSelected: selectedNode?.id == nodes[i].id,
+                            onTap: () => onSelectNode(nodes[i]),
+                          )
                           .animate(delay: (i * 25).ms)
                           .fadeIn(duration: 200.ms)
                           .slideX(begin: 0.04),
@@ -424,11 +433,11 @@ class _CompactNodeRow extends StatelessWidget {
   final VoidCallback onTap;
 
   Color _qColor() => switch (node.quality) {
-        NodeQuality.excellent => AppColors.aurora,
-        NodeQuality.good => const Color(0xFF80E8B0),
-        NodeQuality.poor => AppColors.ember,
-        NodeQuality.dead => AppColors.nebula2,
-      };
+    NodeQuality.excellent => AppColors.aurora,
+    NodeQuality.good => const Color(0xFF80E8B0),
+    NodeQuality.poor => AppColors.ember,
+    NodeQuality.dead => AppColors.nebula2,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -439,8 +448,8 @@ class _CompactNodeRow extends StatelessWidget {
     final bgColor = isSelected
         ? AppColors.plasma.withValues(alpha: 0.10)
         : node.isTrulyWorking
-            ? AppColors.aurora.withValues(alpha: 0.06)
-            : AppColors.void2.withValues(alpha: 0.8);
+        ? AppColors.aurora.withValues(alpha: 0.06)
+        : AppColors.void2.withValues(alpha: 0.8);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 12, 3),
@@ -461,8 +470,8 @@ class _CompactNodeRow extends StatelessWidget {
                 color: selectedBorder != null
                     ? selectedBorder.withValues(alpha: 0.6)
                     : node.isTrulyWorking
-                        ? AppColors.aurora.withValues(alpha: 0.3)
-                        : AppColors.glassBorder.withValues(alpha: 0.3),
+                    ? AppColors.aurora.withValues(alpha: 0.3)
+                    : AppColors.glassBorder.withValues(alpha: 0.3),
                 width: isSelected ? 1.2 : 1.0,
               ),
             ),
@@ -527,8 +536,9 @@ class _CompactNodeRow extends StatelessWidget {
                       fontFamily: 'DM Sans',
                       fontSize: 11,
                       color: isSelected ? AppColors.plasma : AppColors.nebula1,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -581,19 +591,19 @@ class _MsChip extends StatelessWidget {
   Color get _c => ms < 150
       ? AppColors.aurora
       : ms < 400
-          ? AppColors.ember
-          : AppColors.nova;
+      ? AppColors.ember
+      : AppColors.nova;
 
   @override
   Widget build(BuildContext context) => Text(
-        '${ms}мс',
-        style: TextStyle(
-          fontFamily: 'DM Mono',
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: _c,
-        ),
-      );
+    '${ms}мс',
+    style: TextStyle(
+      fontFamily: 'DM Mono',
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      color: _c,
+    ),
+  );
 }
 
 class _SmallBadge extends StatelessWidget {
@@ -603,20 +613,20 @@ class _SmallBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: color.withValues(alpha: 0.3), width: 0.6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: 'DM Mono',
-            fontSize: 8,
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: color.withValues(alpha: 0.3), width: 0.6),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontFamily: 'DM Mono',
+        fontSize: 8,
+        fontWeight: FontWeight.w700,
+        color: color,
+      ),
+    ),
+  );
 }
