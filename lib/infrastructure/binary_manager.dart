@@ -14,12 +14,18 @@ class BinaryManager {
       'https://github.com/SagerNet/sing-box/releases/download/'
       'v$_singboxVersion/sing-box-$_singboxVersion-windows-amd64.zip';
   static const _wintunUrl = 'https://www.wintun.net/builds/wintun-0.14.1.zip';
+  static const _geositeUrl =
+      'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db';
+  static const _geoipUrl =
+      'https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip.db';
 
   late Directory _binDir;
   bool _initialized = false;
 
   File get singboxExe => File('${_binDir.path}\\sing-box.exe');
   File get wintunDll => File('${_binDir.path}\\wintun.dll');
+  File get geositeDb => File('${_binDir.path}\\geosite.db');
+  File get geoipDb => File('${_binDir.path}\\geoip.db');
   File get configFile => File('${_binDir.path}\\config.json');
   File get pidFile => File('${_binDir.path}\\sing-box.pid');
 
@@ -34,7 +40,11 @@ class BinaryManager {
   }
 
   /// Проверяет наличие всех необходимых файлов
-  bool get isReady => singboxExe.existsSync() && wintunDll.existsSync();
+  bool get isReady =>
+      singboxExe.existsSync() &&
+      wintunDll.existsSync() &&
+      geositeDb.existsSync() &&
+      geoipDb.existsSync();
 
   /// Скачивает sing-box и wintun если они отсутствуют
   Future<void> ensureBinaries({
@@ -52,6 +62,49 @@ class BinaryManager {
       await _downloadWintun(onStatus: onStatus);
     } else {
       log.i('wintun.dll уже есть', tag: 'BIN');
+    }
+
+    if (!geositeDb.existsSync()) {
+      await _downloadFile(_geositeUrl, geositeDb.path, 'geosite.db', onStatus);
+    } else {
+      log.i('geosite.db уже есть', tag: 'BIN');
+    }
+
+    if (!geoipDb.existsSync()) {
+      await _downloadFile(_geoipUrl, geoipDb.path, 'geoip.db', onStatus);
+    } else {
+      log.i('geoip.db уже есть', tag: 'BIN');
+    }
+  }
+
+  Future<void> _downloadFile(
+    String url,
+    String savePath,
+    String name,
+    void Function(String, double?)? onStatus,
+  ) async {
+    log.i('Скачиваем $name...', tag: 'BIN');
+    onStatus?.call('Скачиваем $name...', 0);
+    final dio = Dio();
+
+    try {
+      await dio.download(
+        url,
+        savePath,
+        onReceiveProgress: (got, total) {
+          if (total > 0) {
+            final pct = got / total;
+            onStatus?.call(
+              'Скачиваем $name... ${(pct * 100).toInt()}%',
+              pct,
+            );
+          }
+        },
+      );
+      log.i('$name скачан', tag: 'BIN');
+    } catch (e) {
+      log.e('Ошибка скачивания $name: $e', tag: 'BIN');
+      rethrow;
     }
   }
 

@@ -206,21 +206,7 @@ class SingboxConfigBuilder {
           // RU-домены резолвятся напрямую, не через proxy
           if (smartRouting)
             {
-              'domain_suffix': [
-                '.ru',
-                '.su',
-                '.xn--p1ai', // .рф
-                'vk.com',
-                'vk.ru',
-                'yandex.ru',
-                'ya.ru',
-                'mail.ru',
-                'gosuslugi.ru',
-                'mos.ru',
-                'sberbank.ru',
-                'tbank.ru',
-                'avito.ru'
-              ],
+              'geosite': ['ru', 'yandex', 'vk', 'mailru'],
               'server': 'dns-local',
             },
         ],
@@ -251,15 +237,16 @@ class SingboxConfigBuilder {
         // Локальные адреса никогда не идут через прокси
         {'ip_is_private': true, 'outbound': 'direct'},
         // Обход VPN для RU-доменов и популярных сервисов
-        if (smartRouting)
+        if (smartRouting) ...[
           {
-            'domain_suffix': [
-              '.ru', '.su', '.xn--p1ai', // .рф
-              'vk.com', 'vk.ru', 'yandex.ru', 'ya.ru', 'mail.ru',
-              'gosuslugi.ru', 'mos.ru', 'sberbank.ru', 'tbank.ru', 'avito.ru',
-            ],
+            'geosite': ['ru', 'yandex', 'vk', 'mailru'],
             'outbound': 'direct',
           },
+          {
+            'geoip': ['ru', 'by'],
+            'outbound': 'direct',
+          },
+        ],
         // Bypass сервера: ip_cidr работает с сырыми L3-пакетами TUN
         if (serverIp != null)
           {
