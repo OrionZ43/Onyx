@@ -103,22 +103,22 @@ class GlassIconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: AppColors.glass,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.glassBorder, width: 1),
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.glass,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.glassBorder, width: 1),
+              ),
+              child: Icon(icon, size: 18, color: AppColors.nebula1),
+            ),
           ),
-          child: Icon(icon, size: 18, color: AppColors.nebula1),
         ),
-      ),
-    ),
-  );
+      );
 }
