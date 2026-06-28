@@ -77,7 +77,7 @@ class _OnyxAppState extends State<OnyxApp> with WindowListener, TrayListener {
       _initTray();
     }
     // Если бинарники уже есть — пропускаем SetupScreen
-    _setupDone = !Platform.isWindows || BinaryManager.instance.isReady;
+    _setupDone = BinaryManager.instance.isReady;
     log.i('Бинарники готовы: $_setupDone', tag: 'MAIN');
   }
 
