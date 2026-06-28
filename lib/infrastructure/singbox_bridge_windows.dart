@@ -1,3 +1,5 @@
+export 'singbox_bridge.dart';
+import 'singbox_bridge.dart';
 import 'dart:async';
 import 'dart:io';
 import '../core/log_service.dart';
@@ -6,14 +8,8 @@ import '../domain/singbox_config_builder.dart';
 import 'binary_manager.dart';
 import 'singbox_api_client.dart';
 
-enum BridgeState { idle, starting, running, stopping, error }
 
 /// Результат операции моста
-class BridgeResult {
-  const BridgeResult({required this.success, this.error});
-  final bool success;
-  final String? error;
-}
 
 /// Windows-реализация sing-box моста.
 ///
@@ -23,7 +19,7 @@ class BridgeResult {
 ///   stop()  → [SIGTERM sing-box.exe] → idle
 ///
 /// Трафик-статистика берётся из Clash API (9090).
-class SingboxBridgeWindows {
+class SingboxBridgeWindows implements SingboxBridge {
   SingboxBridgeWindows._();
   static final instance = SingboxBridgeWindows._();
 
@@ -43,23 +39,30 @@ class SingboxBridgeWindows {
   final _statsCtrl = StreamController<(int rx, int tx)>.broadcast();
   final _errorCtrl = StreamController<String>.broadcast();
 
+  @override
   Stream<BridgeState> get stateStream => _stateCtrl.stream;
+  @override
   Stream<(int rx, int tx)> get statsStream => _statsCtrl.stream;
+  @override
   Stream<String> get errorStream => _errorCtrl.stream;
+  @override
   BridgeState get state => _state;
 
   // ── Публичный API ──────────────────────────────────────────────────────
 
   /// Скачивает бинарники если нужно. Вызывать при старте приложения.
+  @override
   Future<void> ensureBinaries({
     void Function(String status, double? progress)? onStatus,
   }) async {
     await _binMgr.ensureBinaries(onStatus: onStatus);
   }
 
+  @override
   bool get binariesReady => _binMgr.isReady;
 
   /// Запускает VPN-туннель для [node].
+  @override
   Future<BridgeResult> start(Node node, {bool smartRouting = true}) async {
     if (_state == BridgeState.running || _state == BridgeState.starting) {
       return const BridgeResult(success: false, error: 'Уже запущен');
@@ -204,6 +207,7 @@ class SingboxBridgeWindows {
   }
 
   /// Останавливает VPN-туннель.
+  @override
   Future<void> stop() async {
     if (_state == BridgeState.idle) return;
     _setState(BridgeState.stopping);

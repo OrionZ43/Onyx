@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'package:archive/archive.dart';
 import '../core/log_service.dart';
 
 /// Управляет бинарниками sing-box и wintun.
@@ -10,9 +12,13 @@ class BinaryManager {
   static final instance = BinaryManager._();
 
   static const _singboxVersion = '1.10.1';
-  static const _singboxUrl =
+  static const _singboxUrlWindows =
       'https://github.com/SagerNet/sing-box/releases/download/'
       'v$_singboxVersion/sing-box-$_singboxVersion-windows-amd64.zip';
+  static const _singboxUrlAndroid =
+      'https://github.com/SagerNet/sing-box/releases/download/'
+      'v$_singboxVersion/sing-box-$_singboxVersion-android-arm64.tar.gz';
+
   static const _wintunUrl = 'https://www.wintun.net/builds/wintun-0.14.1.zip';
   static const _geositeUrl =
       'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db';
@@ -22,29 +28,38 @@ class BinaryManager {
   late Directory _binDir;
   bool _initialized = false;
 
-  File get singboxExe => File('${_binDir.path}\\sing-box.exe');
-  File get wintunDll => File('${_binDir.path}\\wintun.dll');
-  File get geositeDb => File('${_binDir.path}\\geosite.db');
-  File get geoipDb => File('${_binDir.path}\\geoip.db');
-  File get configFile => File('${_binDir.path}\\config.json');
-  File get pidFile => File('${_binDir.path}\\sing-box.pid');
+  File get singboxExe => Platform.isWindows
+      ? File(path.join(_binDir.path, 'sing-box.exe'))
+      : File(path.join(_binDir.path, 'sing-box'));
+
+  File get wintunDll => File(path.join(_binDir.path, 'wintun.dll'));
+  File get geositeDb => File(path.join(_binDir.path, 'geosite.db'));
+  File get geoipDb => File(path.join(_binDir.path, 'geoip.db'));
+  File get configFile => File(path.join(_binDir.path, 'config.json'));
+  File get pidFile => File(path.join(_binDir.path, 'sing-box.pid'));
 
   /// Инициализация — создаём папку для бинарников
   Future<void> init() async {
     if (_initialized) return;
     final appDir = await getApplicationSupportDirectory();
-    _binDir = Directory('${appDir.path}\\singbox');
+    _binDir = Directory(path.join(appDir.path, 'singbox'));
     await _binDir.create(recursive: true);
     _initialized = true;
     log.i('Директория бинарников: ${_binDir.path}', tag: 'BIN');
   }
 
   /// Проверяет наличие всех необходимых файлов
-  bool get isReady =>
-      singboxExe.existsSync() &&
-      wintunDll.existsSync() &&
-      geositeDb.existsSync() &&
-      geoipDb.existsSync();
+  bool get isReady {
+    if (Platform.isWindows) {
+      return singboxExe.existsSync() &&
+          wintunDll.existsSync() &&
+          geositeDb.existsSync() &&
+          geoipDb.existsSync();
+    }
+    return singboxExe.existsSync() &&
+        geositeDb.existsSync() &&
+        geoipDb.existsSync();
+  }
 
   /// Скачивает sing-box и wintun если они отсутствуют
   Future<void> ensureBinaries({
@@ -55,13 +70,15 @@ class BinaryManager {
     if (!singboxExe.existsSync()) {
       await _downloadSingbox(onStatus: onStatus);
     } else {
-      log.i('sing-box.exe уже есть: ${singboxExe.path}', tag: 'BIN');
+      log.i('sing-box уже есть: ${singboxExe.path}', tag: 'BIN');
     }
 
-    if (!wintunDll.existsSync()) {
-      await _downloadWintun(onStatus: onStatus);
-    } else {
-      log.i('wintun.dll уже есть', tag: 'BIN');
+    if (Platform.isWindows) {
+      if (!wintunDll.existsSync()) {
+        await _downloadWintun(onStatus: onStatus);
+      } else {
+        log.i('wintun.dll уже есть', tag: 'BIN');
+      }
     }
 
     if (!geositeDb.existsSync()) {
@@ -114,13 +131,15 @@ class BinaryManager {
     log.i('Скачиваем sing-box v$_singboxVersion...', tag: 'BIN');
     onStatus?.call('Скачиваем sing-box $_singboxVersion...', 0);
 
-    final zipPath = '${_binDir.path}\\sing-box.zip';
+    final url = Platform.isAndroid ? _singboxUrlAndroid : _singboxUrlWindows;
+    final extension = Platform.isAndroid ? '.tar.gz' : '.zip';
+    final archivePath = path.join(_binDir.path, 'sing-box$extension');
     final dio = Dio();
 
     try {
       await dio.download(
-        _singboxUrl,
-        zipPath,
+        url,
+        archivePath,
         onReceiveProgress: (got, total) {
           if (total > 0) {
             final pct = got / total;
@@ -134,9 +153,16 @@ class BinaryManager {
 
       log.i('Распаковываем sing-box...', tag: 'BIN');
       onStatus?.call('Распаковываем...', null);
-      await _extractExeFromZip(zipPath, 'sing-box.exe', singboxExe.path);
-      await File(zipPath).delete();
-      log.i('sing-box.exe готов', tag: 'BIN');
+
+      final entryName = Platform.isWindows ? 'sing-box.exe' : 'sing-box';
+      if (Platform.isAndroid) {
+        await _extractFromTarGz(archivePath, entryName, singboxExe.path);
+      } else {
+        await _extractFromZip(archivePath, entryName, singboxExe.path);
+      }
+
+      await File(archivePath).delete();
+      log.i('sing-box готов', tag: 'BIN');
     } catch (e) {
       log.e('Ошибка загрузки sing-box: $e', tag: 'BIN');
       rethrow;
@@ -149,7 +175,7 @@ class BinaryManager {
     log.i('Скачиваем wintun...', tag: 'BIN');
     onStatus?.call('Скачиваем WinTUN драйвер...', 0);
 
-    final zipPath = '${_binDir.path}\\wintun.zip';
+    final zipPath = path.join(_binDir.path, 'wintun.zip');
     final dio = Dio();
 
     try {
@@ -167,8 +193,7 @@ class BinaryManager {
       );
 
       log.i('Распаковываем wintun.dll...', tag: 'BIN');
-      // wintun.dll находится в wintun/bin/amd64/wintun.dll
-      await _extractFileFromZip(
+      await _extractFromZip(
         zipPath,
         'wintun/bin/amd64/wintun.dll',
         wintunDll.path,
@@ -181,63 +206,34 @@ class BinaryManager {
     }
   }
 
-  /// Извлекает конкретный EXE из ZIP через PowerShell
-  Future<void> _extractExeFromZip(
-    String zipPath,
-    String exeName,
-    String destPath,
-  ) async {
-    final result = await Process.run('powershell', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      '''
-      Add-Type -AssemblyName System.IO.Compression.FileSystem
-      \$zip = [System.IO.Compression.ZipFile]::OpenRead('$zipPath')
-      \$entry = \$zip.Entries | Where-Object { \$_.Name -eq '$exeName' } | Select-Object -First 1
-      if (\$entry) {
-        [System.IO.Compression.ZipFileExtensions]::ExtractToFile(\$entry, '$destPath', \$true)
-        Write-Output "OK"
-      } else {
-        Write-Error "Entry $exeName not found"
-        exit 1
+  Future<void> _extractFromZip(String zipPath, String entryName, String destPath) async {
+    final bytes = await File(zipPath).readAsBytes();
+    final archive = ZipDecoder().decodeBytes(bytes);
+    for (final file in archive) {
+      if (file.name.endsWith(entryName) && file.isFile) {
+        final data = file.content as List<int>;
+        await File(destPath).writeAsBytes(data);
+        return;
       }
-      \$zip.Dispose()
-      ''',
-    ]);
-
-    if (result.exitCode != 0) {
-      throw Exception('Не удалось извлечь $exeName: ${result.stderr}');
     }
+    throw Exception('Entry $entryName not found in ZIP');
   }
 
-  Future<void> _extractFileFromZip(
-    String zipPath,
-    String entryPath,
-    String destPath,
-  ) async {
-    final result = await Process.run('powershell', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      '''
-      Add-Type -AssemblyName System.IO.Compression.FileSystem
-      \$zip = [System.IO.Compression.ZipFile]::OpenRead('$zipPath')
-      \$entry = \$zip.Entries | Where-Object { \$_.FullName -eq '$entryPath' } | Select-Object -First 1
-      if (\$entry) {
-        [System.IO.Compression.ZipFileExtensions]::ExtractToFile(\$entry, '$destPath', \$true)
-        Write-Output "OK"
-      } else {
-        Write-Error "Entry $entryPath not found"
-        exit 1
+  Future<void> _extractFromTarGz(String tgzPath, String entryName, String destPath) async {
+    final bytes = await File(tgzPath).readAsBytes();
+    final gzDecoded = GZipDecoder().decodeBytes(bytes);
+    final archive = TarDecoder().decodeBytes(gzDecoded);
+    for (final file in archive) {
+      if (file.name.endsWith(entryName) && file.isFile) {
+        final data = file.content as List<int>;
+        await File(destPath).writeAsBytes(data);
+        if (Platform.isAndroid) {
+          await Process.run('chmod', ['+x', destPath]);
+        }
+        return;
       }
-      \$zip.Dispose()
-      ''',
-    ]);
-
-    if (result.exitCode != 0) {
-      throw Exception('Не удалось извлечь $entryPath: ${result.stderr}');
     }
+    throw Exception('Entry $entryName not found in tar.gz');
   }
 
   /// Пишет конфиг sing-box в файл

@@ -6,6 +6,7 @@ import '../../domain/entities/vpn_state.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/node_sanitizer.dart';
 import '../../infrastructure/singbox_bridge_windows.dart';
+import '../../infrastructure/singbox_bridge_android.dart';
 import 'subscription_provider.dart';
 import 'node_provider.dart';
 import 'settings_provider.dart';
@@ -17,7 +18,7 @@ class VpnController extends StateNotifier<VpnState> {
 
   final Ref ref;
   final _sanitizer = const NodeSanitizer();
-  final _bridge = SingboxBridgeWindows.instance;
+  final _bridge = Platform.isAndroid ? SingboxBridgeAndroid.instance : SingboxBridgeWindows.instance;
 
   StreamSubscription? _statsSub;
   StreamSubscription? _errorSub;
