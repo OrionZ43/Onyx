@@ -1,3 +1,5 @@
+import 'package:path/path.dart' as path;
+import '../infrastructure/binary_manager.dart';
 import 'dart:convert';
 import 'entities/node.dart';
 
@@ -12,11 +14,12 @@ class SingboxConfigBuilder {
         int socksPort = 2080,
         String? resolvedServerIp,
         bool smartRouting = true,
+        bool isAndroid = false,
       }) {
     return {
       'log': {'level': 'warn', 'timestamp': true},
-      'dns': _buildDns(smartRouting: smartRouting),
-      'inbounds': [_buildTun(), _buildSocks(socksPort)],
+      'dns': _buildDns(smartRouting: smartRouting, isAndroid: isAndroid),
+      'inbounds': [_buildTun(isAndroid: isAndroid), _buildSocks(socksPort)],
       'outbounds': [
         _buildVless(node),
         {'type': 'direct', 'tag': 'direct'},
@@ -27,6 +30,7 @@ class SingboxConfigBuilder {
         node,
         resolvedServerIp: resolvedServerIp,
         smartRouting: smartRouting,
+        isAndroid: isAndroid,
       ),
       'experimental': _buildExperimental(),
     };
@@ -57,14 +61,14 @@ class SingboxConfigBuilder {
 
   // ── Inbounds ───────────────────────────────────────────────────────────────
 
-  Map<String, dynamic> _buildTun() => {
+  Map<String, dynamic> _buildTun({bool isAndroid = false}) => {
     'type': 'tun',
     'tag': 'tun-in',
     'inet4_address': '172.19.0.1/30',
     'inet6_address': 'fdfe:dcba:9876::1/126',
-    'mtu': 1400,
+    'mtu': isAndroid ? 9000 : 1400,
     'auto_route': true,
-    'strict_route': true,
+    'strict_route': isAndroid ? false : true,
     'stack': 'system',
     'sniff': true,
     'sniff_override_destination': true,
@@ -178,7 +182,7 @@ class SingboxConfigBuilder {
   ///     Пользователь: DNS → TUN → sing-box DNS → dns-remote (DoH/proxy) ✓
   ///     sing-box сам: DNS для outbound → dns-local (Яндекс/direct/NIC)   ✓
   /// ──────────────────────────────────────────────────────────────────────────
-  Map<String, dynamic> _buildDns({bool smartRouting = false}) => {
+  Map<String, dynamic> _buildDns({bool smartRouting = false, bool isAndroid = false}) => {
     'servers': [
       {
         // Основной: DoH через зашифрованный прокси — ТСПУ не видит запросы
@@ -196,7 +200,7 @@ class SingboxConfigBuilder {
         // ответы для RU-доменов подменяются. Яндекс.DNS работает корректно
         // и не блокируется на уровне BGP.
         'tag': 'dns-local',
-        'address': '77.88.8.8',
+        'address': isAndroid ? 'local' : '77.88.8.8',
         'detour': 'direct',
       },
     ],
@@ -250,6 +254,7 @@ class SingboxConfigBuilder {
       Node node, {
         String? resolvedServerIp,
         bool smartRouting = true,
+        bool isAndroid = false,
       }) {
     final serverIp =
         resolvedServerIp ?? (_isIpAddress(node.host) ? node.host : null);
@@ -269,13 +274,13 @@ class SingboxConfigBuilder {
       //   {'geosite': ['ru', 'yandex'], 'outbound': 'direct'}
       // молча игнорируются — sing-box не знает, где лежит база.
       'geoip': {
-        'path': 'geoip.db',
+        'path': isAndroid ? path.join(BinaryManager.instance.singboxExe.parent.path, 'geoip.db') : 'geoip.db',
         'download_url':
         'https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip.db',
         'download_detour': 'direct',
       },
       'geosite': {
-        'path': 'geosite.db',
+        'path': isAndroid ? path.join(BinaryManager.instance.singboxExe.parent.path, 'geosite.db') : 'geosite.db',
         'download_url':
         'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db',
         'download_detour': 'direct',
@@ -317,7 +322,7 @@ class SingboxConfigBuilder {
       // На Windows ОБЯЗАТЕЛЕН: привязывает исходящие сокеты sing-box
       // (VLESS outbound, dns-local) к физическому адаптеру (Wi-Fi/Ethernet),
       // исключая их из захвата WinTUN.
-      'auto_detect_interface': true,
+      if (!isAndroid) 'auto_detect_interface': true,
       'final': 'proxy',
     };
   }
