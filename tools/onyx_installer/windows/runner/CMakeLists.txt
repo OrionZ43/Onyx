@@ -13,7 +13,6 @@ add_executable(${BINARY_NAME} WIN32
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
-  "onyx_installer.exe.manifest"
 )
 
 # Apply the standard set of build settings. This can be removed for applications
@@ -38,3 +37,8 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# Disable auto-manifest embedding, we handle it manually
+set_target_properties(${BINARY_NAME} PROPERTIES
+        LINK_FLAGS "/MANIFEST:NO"
+)

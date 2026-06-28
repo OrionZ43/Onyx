@@ -4,10 +4,19 @@ import 'package:archive/archive_io.dart';
 
 class InstallLogic {
   static Future<void> install(void Function(double, String) onProgress) async {
+    final logFile = File('C:\\Users\\Public\\onyx_install_log.txt');
+    void log(String msg) {
+      logFile.writeAsStringSync('${DateTime.now()}: $msg\n',
+          mode: FileMode.append);
+    }
+
     try {
+      log('=== Install started ===');
+
       final appData = Platform.environment['LOCALAPPDATA'];
       final roamingAppData = Platform.environment['APPDATA'];
       final userProfile = Platform.environment['USERPROFILE'];
+      log('LOCALAPPDATA=$appData');
 
       if (appData == null || roamingAppData == null || userProfile == null) {
         throw Exception('Could not resolve environment variables.');
@@ -15,19 +24,20 @@ class InstallLogic {
 
       final installDir = '$appData\\Onyx';
       final serviceExePath = '$installDir\\OnyxService.exe';
-      final appExePath = '$installDir\\Onyx.exe';
+      final appExePath = '$installDir\\onyx.exe';
 
-      // Step 2: Extract ZIP
       onProgress(0.1, 'Extracting files...');
       final exeDir = File(Platform.resolvedExecutable).parent.path;
       final payloadZip = File('$exeDir\\Onyx_v0.1.0_payload.zip');
+      log('ZIP path: ${payloadZip.path}, exists: ${payloadZip.existsSync()}');
 
       if (!payloadZip.existsSync()) {
-        throw Exception('Payload ZIP not found at ${payloadZip.path}');
+        throw Exception('ZIP not found at: ${payloadZip.path}');
       }
 
       final bytes = payloadZip.readAsBytesSync();
       final archive = ZipDecoder().decodeBytes(bytes);
+      log('Archive entries: ${archive.length}');
 
       for (var i = 0; i < archive.length; i++) {
         final file = archive[i];
@@ -42,137 +52,94 @@ class InstallLogic {
           Directory(path).createSync(recursive: true);
         }
       }
+      log('Extraction done');
 
-      // Step 2.5: Verify Extracted files
       onProgress(0.4, 'Verifying files...');
+      final files = Directory(installDir)
+          .listSync()
+          .map((e) => e.path.split('\\').last)
+          .join(', ');
+      log('Files in installDir: $files');
+
       if (!File(appExePath).existsSync()) {
-        throw Exception('Extraction failed: Onyx.exe not found at $appExePath');
+        throw Exception('onyx.exe not found. Files: $files');
       }
       if (!File(serviceExePath).existsSync()) {
-        throw Exception(
-          'Extraction failed: OnyxService.exe not found at $serviceExePath',
-        );
+        throw Exception('OnyxService.exe not found. Files: $files');
       }
+      log('Verification OK');
 
-      // Step 3: Register Service
-      onProgress(0.5, 'Registering service...');
-      await _runCommand('sc', [
-        'stop',
-        'OnyxService',
-      ]); // Ignore errors if it doesn't exist
-      await Future.delayed(const Duration(seconds: 1));
-      await _runCommand('sc', ['delete', 'OnyxService']);
-      await Future.delayed(const Duration(seconds: 1));
+      onProgress(0.5, 'Registering autostart task...');
+      final taskScript = '''
+\$action = New-ScheduledTaskAction -Execute "$serviceExePath"
+\$trigger = New-ScheduledTaskTrigger -AtLogOn
+\$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+\$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName "OnyxVpnService" -Action \$action -Trigger \$trigger -Principal \$principal -Settings \$settings -Force
+''';
+      final taskResult = await _runPowerShellWithResult(taskScript);
+      log('Task register result: $taskResult');
 
-      final scCreate = await Process.run('sc', [
-        'create',
-        'OnyxService',
-        'binPath=',
-        serviceExePath,
-        'start=',
-        'auto',
-        'displayname=',
-        'Onyx VPN Service',
-      ]);
-      if (scCreate.exitCode != 0 &&
-          !scCreate.stdout.toString().contains('1073')) {
-        // 1073 is "service already exists"
-        throw Exception('Failed to create service: ${scCreate.stderr}');
-      }
-
-      // Step 4: Start Service
       onProgress(0.7, 'Starting service...');
-      final scStart = await Process.run('sc', ['start', 'OnyxService']);
-      if (scStart.exitCode != 0 &&
-          !scStart.stdout.toString().contains('1056')) {
-        // 1056 is "service is already running"
-        print('Warning: Service start error: ${scStart.stderr}');
-      }
+      final startResult = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-Command', 'Start-ScheduledTask -TaskName "OnyxVpnService"'
+      ]);
+      log('Task start exit: ${startResult.exitCode}, out: ${startResult.stdout}, err: ${startResult.stderr}');
 
-      // Step 4.5: Wait for Named Pipe to be ready
-      onProgress(0.75, 'Waiting for service to initialize...');
-      bool pipeReady = false;
-      for (int i = 0; i < 20; i++) {
-        try {
-          final testFile = File(r'\\.\pipe\OnyxVpnService');
-          if (testFile.existsSync()) {
-            pipeReady = true;
-            break;
-          }
-        } catch (_) {}
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
-      if (!pipeReady) {
-        throw Exception(
-          'Service started but Named Pipe did not initialize within 10 seconds.',
-        );
-      }
-
-      // Step 5 & 6: Shortcuts
       onProgress(0.8, 'Creating shortcuts...');
       final startMenuPath =
           '$roamingAppData\\Microsoft\\Windows\\Start Menu\\Programs\\Onyx.lnk';
       final desktopPath = '$userProfile\\Desktop\\Onyx.lnk';
-
       await _createShortcut(appExePath, startMenuPath);
       await _createShortcut(appExePath, desktopPath);
+      log('Shortcuts created');
 
-      // Step 7: Registry Uninstaller (Optional, simplify for now by ignoring or adding via reg)
       onProgress(0.9, 'Registering uninstaller...');
       final regScript = '''
-        \$registryPath = "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Onyx"
-        New-Item -Path \$registryPath -Force | Out-Null
-        New-ItemProperty -Path \$registryPath -Name "DisplayName" -Value "Onyx VPN" -PropertyType String -Force | Out-Null
-        New-ItemProperty -Path \$registryPath -Name "DisplayVersion" -Value "0.1.0" -PropertyType String -Force | Out-Null
-        New-ItemProperty -Path \$registryPath -Name "Publisher" -Value "Onyx" -PropertyType String -Force | Out-Null
-      ''';
-      await _runPowerShell(regScript);
+\$p = "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Onyx"
+New-Item -Path \$p -Force | Out-Null
+New-ItemProperty -Path \$p -Name "DisplayName" -Value "Onyx VPN" -PropertyType String -Force | Out-Null
+New-ItemProperty -Path \$p -Name "DisplayVersion" -Value "0.1.0" -PropertyType String -Force | Out-Null
+New-ItemProperty -Path \$p -Name "Publisher" -Value "Z43 Studios" -PropertyType String -Force | Out-Null
+''';
+      await _runPowerShellWithResult(regScript);
+      log('Registry done');
 
-      // Step 8: Launch
-      onProgress(1.0, 'Installation complete! Launching...');
+      onProgress(1.0, 'Done! Launching Onyx...');
+      log('Launching $appExePath');
       await Future.delayed(const Duration(seconds: 1));
-
-      Process.start(appExePath, []);
+      await Process.start(appExePath, []);
       exit(0);
-    } catch (e) {
-      onProgress(-1.0, 'Error: $e');
+    } catch (e, stack) {
+      logFile.writeAsStringSync('ERROR: $e\nSTACK: $stack\n',
+          mode: FileMode.append);
+      onProgress(-1.0, 'ERROR: $e');
     }
   }
 
-  static Future<void> _runCommand(String exe, List<String> args) async {
-    try {
-      await Process.run(exe, args);
-    } catch (_) {}
+  static Future<String> _runPowerShellWithResult(String script) async {
+    final tempFile =
+    File('${Directory.systemTemp.path}\\onyx_setup_script.ps1');
+    await tempFile.writeAsString(script);
+    final result = await Process.run('powershell', [
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', tempFile.path,
+    ]);
+    try { await tempFile.delete(); } catch (_) {}
+    return 'exit=${result.exitCode} out=${result.stdout} err=${result.stderr}';
   }
 
   static Future<void> _createShortcut(
-    String targetPath,
-    String shortcutPath,
-  ) async {
-    final script =
-        '''
-      \$WshShell = New-Object -comObject WScript.Shell
-      \$Shortcut = \$WshShell.CreateShortcut("$shortcutPath")
-      \$Shortcut.TargetPath = "$targetPath"
-      \$Shortcut.Save()
-    ''';
-    await _runPowerShell(script);
-  }
-
-  static Future<void> _runPowerShell(String script) async {
-    final tempFile = File(
-      '\${Directory.systemTemp.path}\\onyx_setup_script.ps1',
-    );
-    await tempFile.writeAsString(script);
-    await Process.run('powershell', [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      tempFile.path,
-    ]);
-    try {
-      await tempFile.delete();
-    } catch (_) {}
+      String targetPath, String shortcutPath) async {
+    final script = '''
+\$WshShell = New-Object -comObject WScript.Shell
+\$Shortcut = \$WshShell.CreateShortcut("$shortcutPath")
+\$Shortcut.TargetPath = "$targetPath"
+\$Shortcut.Save()
+''';
+    await _runPowerShellWithResult(script);
   }
 }

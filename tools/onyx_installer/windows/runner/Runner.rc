@@ -116,6 +116,6 @@ END
 // Generated from the TEXTINCLUDE 3 resource.
 //
 
-
+1 RT_MANIFEST "runner.exe.manifest"
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED

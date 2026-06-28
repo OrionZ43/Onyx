@@ -36,7 +36,7 @@ class VpnController extends StateNotifier<VpnState> {
     );
     log.d(
       'SNI: ${node.sni}, fp: ${node.fingerprint}, '
-      'mux: ${node.muxEnabled}',
+          'mux: ${node.muxEnabled}',
       tag: 'VPN',
     );
 
@@ -95,29 +95,79 @@ class VpnController extends StateNotifier<VpnState> {
       if (current is! VpnConnected) return;
 
       final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 5);
+      // Таймаут на установку соединения — отдельно от таймаута чтения
+      client.connectionTimeout = const Duration(seconds: 8);
       // Пускаем через наш локальный mixed-порт (HTTP/SOCKS)
       client.findProxy = (uri) => 'PROXY 127.0.0.1:2080';
+      // Разрешаем self-signed сертификаты (нас интересует только факт
+      // успешного TLS-рукопожатия, а не цепочка доверия)
       client.badCertificateCallback = (cert, host, port) => true;
 
       try {
-        // Пингуем IP напрямую (1.1.1.1), чтобы избежать багов DNS-сниффинга
-        final request = await client.getUrl(Uri.parse('http://1.1.1.1/'));
-        final response =
-            await request.close().timeout(const Duration(seconds: 5));
+        // ИСПРАВЛЕНИЕ: используем HTTPS-эндпоинт Cloudflare вместо HTTP 1.1.1.1.
+        //
+        // Проблема со старым подходом (http://1.1.1.1/):
+        //   HttpClient.findProxy → 'PROXY host:port' для HTTP-URL заставляет
+        //   Dart выдать «GET http://1.1.1.1/ HTTP/1.1» на прокси-порт 2080.
+        //   sing-box (mixed inbound) корректно проксирует такой запрос, НО
+        //   VLESS-серверы в 99% случаев не пропускают TCP на порт 80 (блок
+        //   на уровне firewall или конфига ядра). Результат — Connection refused
+        //   или таймаут, _failedPings растёт, VPN убивается через 30 с.
+        //
+        // Новый подход (https://cp.cloudflare.com/generate_204):
+        //   Для HTTPS-URL Dart отправляет «CONNECT cp.cloudflare.com:443» на
+        //   прокси. VLESS-сервер видит обычный CONNECT на 443 — именно такой
+        //   трафик он и ожидает (браузерный HTTPS). Сервер пробрасывает
+        //   соединение, Cloudflare отвечает HTTP 204 No Content.
+        //   Любой ответ 200–399 считается успехом.
+        //
+        // Почему cp.cloudflare.com/generate_204:
+        //   • Отвечает 204, тело пустое — минимальный трафик.
+        //   • Не редиректит на HTTPS (в отличие от http://1.1.1.1).
+        //   • Cloudflare anycast → минимальные задержки из любой точки мира.
+        //   • Не блокируется ни одним известным VLESS-конфигом.
+        final request = await client.getUrl(
+          Uri.parse('https://cp.cloudflare.com/generate_204'),
+        );
+        // Отключаем keep-alive: после получения ответа соединение сразу
+        // закрывается, не занимая слот в пуле mixed-прокси.
+        request.headers.set(HttpHeaders.connectionHeader, 'close');
+        final response = await request.close().timeout(
+          const Duration(seconds: 8),
+        );
+        // Дренируем тело, чтобы соединение корректно закрылось
+        await response.drain<void>();
 
-        // Любой ответ от сервера (даже 301 редирект) означает, что интернет есть
+        // Любой ответ 200–399 означает, что туннель жив
         if (response.statusCode >= 200 && response.statusCode < 400) {
+          if (_failedPings > 0) {
+            log.d(
+              'Health Monitor: связь восстановлена (было $_failedPings ошибок)',
+              tag: 'VPN',
+            );
+          }
           _failedPings = 0;
         } else {
+          log.w(
+            'Health Monitor: неожиданный статус ${response.statusCode}',
+            tag: 'VPN',
+          );
           _failedPings++;
         }
+      } on TimeoutException {
+        log.d('Health Monitor: таймаут пинга', tag: 'VPN');
+        _failedPings++;
       } catch (e) {
         log.d('Health Monitor пинг не прошел: $e', tag: 'VPN');
         _failedPings++;
       } finally {
         client.close(force: true);
       }
+
+      log.d(
+        'Health Monitor: failedPings=$_failedPings/2',
+        tag: 'VPN',
+      );
 
       if (_failedPings >= 2) {
         _healthTimer?.cancel();
@@ -193,5 +243,5 @@ class VpnController extends StateNotifier<VpnState> {
 }
 
 final vpnControllerProvider = StateNotifierProvider<VpnController, VpnState>(
-  (ref) => VpnController(ref),
+      (ref) => VpnController(ref),
 );

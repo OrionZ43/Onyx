@@ -76,7 +76,6 @@ class _UpdateScreenState extends State<UpdateScreen> {
                 const SizedBox(height: 24),
                 GlassCard(
                   padding: const EdgeInsets.all(16),
-                  color: AppColors.void3,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 200),
                     child: SingleChildScrollView(
