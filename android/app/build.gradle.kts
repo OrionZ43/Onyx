@@ -6,6 +6,11 @@ plugins {
 }
 
 android {
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     namespace = "z43.studios.onyx"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
