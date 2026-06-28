@@ -2,12 +2,19 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:flutter/services.dart';
 import 'package:archive/archive.dart';
 import '../core/log_service.dart';
 
 /// Управляет бинарниками sing-box и wintun.
 /// При первом запуске скачивает их с GitHub.
 class BinaryManager {
+  static const _channel = MethodChannel('z43.studios.onyx/native');
+
+  Future<String> _getNativeLibraryDir() async {
+    final dir = await _channel.invokeMethod<String>('getNativeLibraryDir');
+    return dir!;
+  }
   BinaryManager._();
   static final instance = BinaryManager._();
 
@@ -27,10 +34,16 @@ class BinaryManager {
 
   late Directory _binDir;
   bool _initialized = false;
+  String? _androidNativeLibDir;
 
-  File get singboxExe => Platform.isWindows
-      ? File(path.join(_binDir.path, 'sing-box.exe'))
-      : File(path.join(_binDir.path, 'sing-box'));
+  File get singboxExe {
+    if (Platform.isAndroid && _androidNativeLibDir != null) {
+      return File(path.join(_androidNativeLibDir!, 'libsingbox.so'));
+    }
+    return Platform.isWindows
+        ? File(path.join(_binDir.path, 'sing-box.exe'))
+        : File(path.join(_binDir.path, 'sing-box'));
+  }
 
   File get wintunDll => File(path.join(_binDir.path, 'wintun.dll'));
   File get geositeDb => File(path.join(_binDir.path, 'geosite.db'));
@@ -44,6 +57,12 @@ class BinaryManager {
     final appDir = await getApplicationSupportDirectory();
     _binDir = Directory(path.join(appDir.path, 'singbox'));
     await _binDir.create(recursive: true);
+
+    if (Platform.isAndroid) {
+      final nativeDir = await _getNativeLibraryDir();
+      _androidNativeLibDir = nativeDir;
+    }
+
     _initialized = true;
     log.i('Директория бинарников: ${_binDir.path}', tag: 'BIN');
   }
@@ -52,13 +71,16 @@ class BinaryManager {
   bool get isReady {
     if (Platform.isWindows) {
       return singboxExe.existsSync() &&
-          wintunDll.existsSync() &&
-          geositeDb.existsSync() &&
-          geoipDb.existsSync();
+             wintunDll.existsSync() &&
+             geositeDb.existsSync() &&
+             geoipDb.existsSync();
+    }
+    if (Platform.isAndroid) {
+      return geositeDb.existsSync() && geoipDb.existsSync();
     }
     return singboxExe.existsSync() &&
-        geositeDb.existsSync() &&
-        geoipDb.existsSync();
+           geositeDb.existsSync() &&
+           geoipDb.existsSync();
   }
 
   /// Скачивает sing-box и wintun если они отсутствуют
@@ -67,30 +89,28 @@ class BinaryManager {
   }) async {
     await init();
 
-    if (!singboxExe.existsSync()) {
-      await _downloadSingbox(onStatus: onStatus);
-    } else {
-      log.i('sing-box уже есть: ${singboxExe.path}', tag: 'BIN');
-    }
-
-    if (Platform.isWindows) {
-      if (!wintunDll.existsSync()) {
-        await _downloadWintun(onStatus: onStatus);
-      } else {
-        log.i('wintun.dll уже есть', tag: 'BIN');
+    if (!Platform.isAndroid) {
+      if (!singboxExe.existsSync()) {
+        await _downloadSingbox(onStatus: onStatus);
       }
+      if (Platform.isWindows && !wintunDll.existsSync()) {
+        await _downloadWintun(onStatus: onStatus);
+      }
+    } else {
+      if (!singboxExe.existsSync()) {
+        throw Exception(
+          'libsingbox.so not found in nativeLibraryDir: ${singboxExe.path}. '
+          'Reinstall the app.'
+        );
+      }
+      log.i('sing-box (bundled): ${singboxExe.path}', tag: 'BIN');
     }
 
     if (!geositeDb.existsSync()) {
       await _downloadFile(_geositeUrl, geositeDb.path, 'geosite.db', onStatus);
-    } else {
-      log.i('geosite.db уже есть', tag: 'BIN');
     }
-
     if (!geoipDb.existsSync()) {
       await _downloadFile(_geoipUrl, geoipDb.path, 'geoip.db', onStatus);
-    } else {
-      log.i('geoip.db уже есть', tag: 'BIN');
     }
   }
 

@@ -28,6 +28,7 @@ class SubscriptionState {
     this.probedCount = 0,
     this.deepProbedCount = 0,
     this.deepProbeTotal = 0,
+    this.lastFetchedAt,
   });
 
   final SubStatus status;
@@ -43,6 +44,7 @@ class SubscriptionState {
 
   /// Сколько нод всего проверяется на Этапе 2 (топ-10).
   final int deepProbeTotal;
+  final DateTime? lastFetchedAt;
 
   List<Node> get aliveNodes => nodes.where((n) => n.isAlive).toList();
 
@@ -51,6 +53,12 @@ class SubscriptionState {
   /// Приоритет:
   ///   1. Первая нода с isTrulyWorking = true (прошла HTTP-проверку).
   ///   2. Если Deep Probe ещё не завершён — нода с минимальным TCP-пингом.
+  bool get isSubscriptionStale {
+    final lastFetched = lastFetchedAt;
+    if (lastFetched == null) return false;
+    return DateTime.now().difference(lastFetched) > const Duration(minutes: 30);
+  }
+
   Node? get bestNode {
     // Приоритет: реально проверенная нода
     final verified = nodes.where((n) => n.isTrulyWorking).toList();
@@ -75,6 +83,7 @@ class SubscriptionState {
     int? probedCount,
     int? deepProbedCount,
     int? deepProbeTotal,
+    DateTime? lastFetchedAt,
   }) =>
       SubscriptionState(
         status: status ?? this.status,
@@ -84,6 +93,7 @@ class SubscriptionState {
         probedCount: probedCount ?? this.probedCount,
         deepProbedCount: deepProbedCount ?? this.deepProbedCount,
         deepProbeTotal: deepProbeTotal ?? this.deepProbeTotal,
+        lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
       );
 }
 
@@ -140,6 +150,9 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     // Сохраняем URL сразу после TCP-пинга — пользователь уже видит серверы
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_urlKey, url);
+    final fetchTime = DateTime.now();
+    await prefs.setInt(
+        'subscription_last_fetched', fetchTime.millisecondsSinceEpoch);
 
     _saveCache(probed);
 
@@ -148,6 +161,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       status: SubStatus.ready, // UI показывает результаты Этапа 1
       nodes: probed,
       probedCount: probed.length,
+      lastFetchedAt: fetchTime,
     );
 
     // ─── Этап 2: Deep Probe (реальный HTTP) для топ-10 нод ───────────────
@@ -174,12 +188,16 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     );
 
     _saveCache(probed);
+    final prefs = await SharedPreferences.getInstance();
+    final fetchTime = DateTime.now();
+    await prefs.setInt('subscription_last_fetched', fetchTime.millisecondsSinceEpoch);
 
     if (!mounted) return;
     state = state.copyWith(
       status: SubStatus.ready,
       nodes: probed,
       probedCount: probed.length,
+      lastFetchedAt: fetchTime,
     );
 
     await _runDeepProbe(probed);
@@ -258,6 +276,10 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_urlKey);
     final cached = prefs.getStringList('cached_nodes');
+    final lastFetchedMs = prefs.getInt('subscription_last_fetched');
+    final lastFetched = lastFetchedMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(lastFetchedMs)
+        : null;
 
     if (saved != null && saved.isNotEmpty) {
       if (cached != null && cached.isNotEmpty) {
@@ -268,6 +290,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
             url: saved,
             nodes: nodes,
             status: SubStatus.ready,
+            lastFetchedAt: lastFetched,
           );
         } catch (_) {
           state = state.copyWith(url: saved);
