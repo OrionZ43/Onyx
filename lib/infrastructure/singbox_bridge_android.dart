@@ -3,7 +3,7 @@ import 'dart:io';
 
 import '../core/log_service.dart';
 import '../domain/entities/node.dart';
-import '../domain/singbox_config_builder.dart';
+
 import 'binary_manager.dart';
 import 'singbox_api_client.dart';
 import 'singbox_bridge.dart';
@@ -16,7 +16,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
 
   final _binMgr = BinaryManager.instance;
   final _apiClient = SingboxApiClient(port: _apiPort);
-  final _builder = const SingboxConfigBuilder();
+
 
   Process? _process;
   Timer? _statsTimer;
