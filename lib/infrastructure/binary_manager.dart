@@ -69,14 +69,12 @@ class BinaryManager {
 
   /// Проверяет наличие всех необходимых файлов
   bool get isReady {
+    if (Platform.isAndroid) return true;
     if (Platform.isWindows) {
       return singboxExe.existsSync() &&
              wintunDll.existsSync() &&
              geositeDb.existsSync() &&
              geoipDb.existsSync();
-    }
-    if (Platform.isAndroid) {
-      return geositeDb.existsSync() && geoipDb.existsSync();
     }
     return singboxExe.existsSync() &&
            geositeDb.existsSync() &&
@@ -87,6 +85,10 @@ class BinaryManager {
   Future<void> ensureBinaries({
     void Function(String status, double? progress)? onStatus,
   }) async {
+    if (Platform.isAndroid) {
+      onStatus?.call('Готово', 1.0);
+      return;
+    }
     await init();
 
     if (!Platform.isAndroid) {
