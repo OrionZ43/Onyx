@@ -1,31 +1,141 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter_v2ray/flutter_v2ray.dart';
+
 import '../core/log_service.dart';
 import '../domain/entities/node.dart';
-
-import 'binary_manager.dart';
-import 'singbox_api_client.dart';
 import 'singbox_bridge.dart';
 
 class SingboxBridgeAndroid implements SingboxBridge {
   SingboxBridgeAndroid._();
   static final instance = SingboxBridgeAndroid._();
 
-  static const _apiPort = 9090;
-
-  final _binMgr = BinaryManager.instance;
-  final _apiClient = SingboxApiClient(port: _apiPort);
-
-
-  Process? _process;
-  Timer? _statsTimer;
-  Timer? _trafficWatchdog;
   BridgeState _state = BridgeState.idle;
 
   final _stateCtrl = StreamController<BridgeState>.broadcast();
   final _statsCtrl = StreamController<(int rx, int tx)>.broadcast();
   final _errorCtrl = StreamController<String>.broadcast();
+
+  bool _initialized = false;
+
+
+  late final FlutterV2ray _v2ray = FlutterV2ray(
+    onStatusChanged: (V2RayStatus status) {
+
+      log.i('[V2RAY] state=${status.state} '
+            'duration=${status.duration} '
+            'upload=${status.upload} '
+            'download=${status.download}', tag: 'BRIDGE');
+
+      switch (status.state) {
+        case 'CONNECTED':
+          _setState(BridgeState.running);
+        case 'CONNECTING':
+          _setState(BridgeState.starting);
+        case 'DISCONNECTED':
+          if (_state != BridgeState.idle) {
+            _setState(BridgeState.idle);
+          }
+        case 'ERROR':
+          _setState(BridgeState.error);
+          _errorCtrl.add('V2Ray connection error');
+      }
+
+      // Emit traffic stats on every status update
+      if (status.state == 'CONNECTED') {
+        _statsCtrl.add((
+          status.download.toInt(),
+          status.upload.toInt(),
+        ));
+      }
+    },
+  );
+
+  @override
+  Future<void> ensureBinaries({
+    void Function(String, double?)? onStatus,
+  }) async {
+    if (!_initialized) {
+      await _v2ray.initializeV2Ray(
+        notificationIconResourceType: 'mipmap',
+        notificationIconResourceName: 'ic_launcher',
+      );
+      _initialized = true;
+    }
+    onStatus?.call('Готово', 1.0);
+  }
+
+  @override
+  bool get binariesReady => true;
+
+  @override
+  Future<BridgeResult> start(Node node, {bool smartRouting = true}) async {
+    if (_state == BridgeState.running || _state == BridgeState.starting) {
+      return const BridgeResult(success: false, error: 'Уже запущен');
+    }
+
+    _setState(BridgeState.starting);
+    log.i('Запускаем V2Ray для ${node.name} (Android)', tag: 'BRIDGE');
+
+    try {
+      if (!_initialized) await ensureBinaries();
+
+      final allowed = await _v2ray.requestPermission();
+      if (!allowed) {
+        _setState(BridgeState.idle);
+        return const BridgeResult(
+          success: false,
+          error: 'VPN permission denied by user',
+        );
+      }
+
+      // Resolve server IP before VPN starts to prevent routing loop
+      final resolvedIp = await _resolveServerIp(node.host);
+      log.i('Resolved ${node.host} → $resolvedIp', tag: 'BRIDGE');
+
+      // Build vless:// share link from Node and parse it
+      final shareLink = node.toShareLink();
+      log.d('Share link: $shareLink', tag: 'BRIDGE');
+
+      final V2RayURL parsed = FlutterV2ray.parseFromURL(shareLink);
+
+      // Inject smart routing DNS
+      parsed.dns = _buildDns(smartRouting: smartRouting);
+
+      // Inject routing rules
+      parsed.routing = _buildRouting(
+        resolvedServerIp: resolvedIp,
+        smartRouting: smartRouting,
+      );
+
+      final config = parsed.getFullConfiguration();
+      log.d('V2Ray config: $config', tag: 'BRIDGE');
+
+      await _v2ray.startV2Ray(
+        remark: node.name,
+        config: config,
+        blockedApps: null,
+        bypassSubnets: smartRouting ? _ruSubnets : null,
+        proxyOnly: false,
+      );
+
+      log.i('V2Ray started for ${node.name}', tag: 'BRIDGE');
+      return const BridgeResult(success: true);
+    } catch (e, stack) {
+      log.e('Start error: $e', tag: 'BRIDGE');
+      log.d('Stack: $stack', tag: 'BRIDGE');
+      _setState(BridgeState.error);
+      return BridgeResult(success: false, error: e.toString());
+    }
+  }
+
+  @override
+  Future<void> stop() async {
+    log.i('Stopping V2Ray...', tag: 'BRIDGE');
+    await _v2ray.stopV2Ray();
+    _setState(BridgeState.idle);
+  }
 
   @override
   Stream<BridgeState> get stateStream => _stateCtrl.stream;
@@ -36,132 +146,6 @@ class SingboxBridgeAndroid implements SingboxBridge {
   @override
   BridgeState get state => _state;
 
-  @override
-  Future<void> ensureBinaries({
-    void Function(String status, double? progress)? onStatus,
-  }) async {
-    await _binMgr.ensureBinaries(onStatus: onStatus);
-  }
-
-  @override
-  bool get binariesReady => _binMgr.isReady;
-
-  @override
-  Future<BridgeResult> start(Node node, {bool smartRouting = true}) async {
-    if (_state == BridgeState.running || _state == BridgeState.starting) {
-      return const BridgeResult(success: false, error: 'Уже запущен');
-    }
-
-    _setState(BridgeState.starting);
-    log.i('Запускаем sing-box для ${node.name} (Android)', tag: 'BRIDGE');
-
-    try {
-      // ФИКС: гарантируем инициализацию _binDir перед buildTunConfig.
-      // SingboxConfigBuilder обращается к BinaryManager.instance.singboxExe.parent.path
-      // для абсолютных путей geoip.db/geosite.db на Android.
-      // Без init() _binDir не инициализирован → LateInitializationError.
-      await _binMgr.init();
-
-      await _killExisting();
-
-      final resolvedIp = await _resolveServerIp(node.host);
-
-      final config = _builder.buildTunConfig(
-        node,
-        socksPort: 2080,
-        resolvedServerIp: resolvedIp,
-        smartRouting: smartRouting,
-        isAndroid: true,
-      );
-
-      final experimental = Map<String, dynamic>.from(
-        config['experimental'] as Map? ?? {},
-      );
-      experimental['clash_api'] = {
-        'external_controller': '127.0.0.1:$_apiPort',
-        'secret': '',
-      };
-      config['experimental'] = experimental;
-
-      final configJson = _builder.buildJson(config);
-
-      log.d('=== ПОЛНЫЙ КОНФИГ SING-BOX (Android) ===', tag: 'BRIDGE');
-      for (final line in configJson.split('\n')) {
-        log.d(line, tag: 'CFG');
-      }
-      log.d('=== КОНЕЦ КОНФИГА ===', tag: 'BRIDGE');
-
-      await _binMgr.writeConfig(configJson);
-
-      log.i('Запускаем: ${_binMgr.singboxExe.path}', tag: 'BRIDGE');
-      _process = await Process.start(
-        _binMgr.singboxExe.path,
-        ['run', '--config', _binMgr.configFile.path],
-        workingDirectory: _binMgr.singboxExe.parent.path,
-        mode: ProcessStartMode.normal,
-      );
-
-      log.i('sing-box PID: ${_process!.pid}', tag: 'BRIDGE');
-
-      _process!.stdout
-          .transform(const SystemEncoding().decoder)
-          .listen(_parseSingboxOutput);
-
-      _process!.stderr
-          .transform(const SystemEncoding().decoder)
-          .listen(_parseSingboxOutput);
-
-      _process!.exitCode.then((code) {
-        log.w('sing-box завершился с кодом: $code', tag: 'BRIDGE');
-        if (_state == BridgeState.running) {
-          _errorCtrl.add('sing-box неожиданно завершился (код $code)');
-          _setState(BridgeState.error);
-          _stopStats();
-          _stopTrafficWatchdog();
-        }
-      });
-
-      log.i('Ждём готовности API sing-box...', tag: 'BRIDGE');
-      final ready = await _apiClient.waitReady(
-        timeout: const Duration(seconds: 15),
-      );
-
-      if (!ready) {
-        await _killProcess();
-        throw Exception('sing-box не ответил за 15 секунд.');
-      }
-
-      final version = await _apiClient.getVersion();
-      log.i('sing-box готов! Версия: $version', tag: 'BRIDGE');
-
-      _startStats();
-      _startTrafficWatchdog();
-      _setState(BridgeState.running);
-
-      return const BridgeResult(success: true);
-    } catch (e, stack) {
-      log.e('Ошибка запуска: $e', tag: 'BRIDGE');
-      log.d('Stack: $stack', tag: 'BRIDGE');
-      await _killProcess();
-      _setState(BridgeState.error);
-      return BridgeResult(success: false, error: e.toString());
-    }
-  }
-
-  @override
-  Future<void> stop() async {
-    if (_state == BridgeState.idle) return;
-    _setState(BridgeState.stopping);
-    log.i('Останавливаем sing-box...', tag: 'BRIDGE');
-
-    _stopStats();
-    _stopTrafficWatchdog();
-    await _killProcess();
-
-    _setState(BridgeState.idle);
-    log.i('sing-box остановлен', tag: 'BRIDGE');
-  }
-
   void _setState(BridgeState s) {
     _state = s;
     _stateCtrl.add(s);
@@ -169,118 +153,101 @@ class SingboxBridgeAndroid implements SingboxBridge {
 
   Future<String?> _resolveServerIp(String host) async {
     if (_isIpAddress(host)) return null;
-
     try {
       final addresses = await InternetAddress.lookup(host)
           .timeout(const Duration(seconds: 5));
-
       final ipv4 = addresses
           .where((a) => a.type == InternetAddressType.IPv4)
           .firstOrNull;
       return ipv4?.address ?? addresses.firstOrNull?.address;
-    } catch (e) {
-      log.w('Не удалось резолвнуть $host: $e.', tag: 'BRIDGE');
+    } catch (_) {
       return null;
     }
   }
 
-  bool _isIpAddress(String host) {
-    if (RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host)) return true;
-    if (host.contains(':')) return true;
-    return false;
-  }
+  bool _isIpAddress(String host) =>
+      RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
+      host.contains(':');
 
-  void _parseSingboxOutput(String chunk) {
-    for (final rawLine in chunk.split('\n')) {
-      final line = rawLine.trim();
-      if (line.isEmpty) continue;
-
-      if (line.contains(' ERROR ') || line.contains(' FATAL ')) {
-        log.e('[sing-box] $line', tag: 'SBOX');
-      } else if (line.contains(' WARN ')) {
-        log.w('[sing-box] $line', tag: 'SBOX');
-      } else {
-        log.i('[sing-box] $line', tag: 'SBOX');
-      }
-    }
-  }
-
-  void _startStats() {
-    _statsTimer?.cancel();
-    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      try {
-        final (rx, tx) = await _apiClient.getTotalBytes();
-        _statsCtrl.add((rx, tx));
-      } catch (e) {
-        log.w('Ошибка получения статистики трафика: $e', tag: 'BRIDGE');
-      }
-    });
-  }
-
-  void _stopStats() {
-    _statsTimer?.cancel();
-    _statsTimer = null;
-  }
-
-  void _startTrafficWatchdog() {
-    _trafficWatchdog?.cancel();
-    _trafficWatchdog = Timer(const Duration(seconds: 8), () async {
-      if (_state != BridgeState.running) return;
-      try {
-        final (rx, tx) = await _apiClient.getTotalBytes();
-        final total = rx + tx;
-        if (total == 0) {
-          log.w('⚠ WATCHDOG: 8 секунд прошло, трафик = 0 байт!', tag: 'DIAG');
-          _errorCtrl.add('WATCHDOG_NO_TRAFFIC');
-        } else {
-          log.i(
-            '✓ WATCHDOG: трафик идёт — rx=${_fmtBytes(rx)}, tx=${_fmtBytes(tx)}.',
-            tag: 'DIAG',
-          );
-        }
-      } catch (e) {
-        log.w('WATCHDOG: не смог получить статистику: $e', tag: 'DIAG');
-      }
-    });
-  }
-
-  void _stopTrafficWatchdog() {
-    _trafficWatchdog?.cancel();
-    _trafficWatchdog = null;
-  }
-
-  String _fmtBytes(int b) {
-    if (b < 1024) return '${b}B';
-    if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)}KB';
-    return '${(b / (1024 * 1024)).toStringAsFixed(1)}MB';
-  }
-
-  Future<void> _killProcess() async {
-    if (_process == null) return;
-    try {
-      _process!.kill(ProcessSignal.sigterm);
-      await _process!.exitCode.timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          _process!.kill(ProcessSignal.sigkill);
-          return -1;
+  Map<String, dynamic> _buildDns({bool smartRouting = false}) => {
+    'servers': [
+      if (smartRouting)
+        {
+          'address': '77.88.8.8',
+          'domains': [
+            'geosite:ru',
+            'geosite:yandex',
+            'geosite:vk',
+            'geosite:mailru',
+          ],
         },
-      );
-    } catch (_) {}
-    _process = null;
+      {
+        'address': 'https://8.8.8.8/dns-query',
+      },
+      'localhost',
+    ],
+    'queryStrategy': 'UseIPv4',
+  };
+
+  Map<String, dynamic> _buildRouting({
+    String? resolvedServerIp,
+    bool smartRouting = true,
+  }) {
+    final rules = <Map<String, dynamic>>[
+      {
+        'type': 'field',
+        'ip': ['geoip:private'],
+        'outboundTag': 'direct',
+      },
+      if (resolvedServerIp != null)
+        {
+          'type': 'field',
+          'ip': ['$resolvedServerIp/32'],
+          'outboundTag': 'direct',
+        },
+      if (smartRouting) ...[
+        {
+          'type': 'field',
+          'domain': [
+            'geosite:ru',
+            'geosite:yandex',
+            'geosite:vk',
+            'geosite:mailru',
+          ],
+          'outboundTag': 'direct',
+        },
+        {
+          'type': 'field',
+          'ip': ['geoip:ru'],
+          'outboundTag': 'direct',
+        },
+      ],
+    ];
+
+    return {
+      'domainStrategy': 'IPIfNonMatch',
+      'rules': rules,
+    };
   }
 
-  Future<void> _killExisting() async {
-    try {
-      await Process.run('killall', ['sing-box']);
-    } catch (_) {}
-  }
-
-  void dispose() {
-    _stateCtrl.close();
-    _statsCtrl.close();
-    _errorCtrl.close();
-    _statsTimer?.cancel();
-    _trafficWatchdog?.cancel();
-  }
+  static const List<String> _ruSubnets = [
+    '2.56.168.0/21',
+    '5.8.0.0/21',
+    '5.16.0.0/14',
+    '5.45.192.0/18',
+    '5.53.32.0/19',
+    '5.101.192.0/18',
+    '37.9.0.0/20',
+    '37.18.16.0/21',
+    '46.8.0.0/15',
+    '77.88.0.0/18',
+    '84.201.128.0/17',
+    '87.228.0.0/14',
+    '91.108.4.0/22',
+    '91.108.56.0/22',
+    '149.154.160.0/20',
+    '185.76.144.0/22',
+    '188.72.96.0/20',
+    '195.209.80.0/22',
+  ];
 }

@@ -1,3 +1,4 @@
+import 'dart:io';
 // ИСПРАВЛЕНО: удалён ненужный 'import dart:ui' — все элементы из него
 // уже предоставляются через 'package:flutter/material.dart'
 import 'package:flutter/material.dart';
@@ -30,6 +31,25 @@ class _SetupScreenState extends State<SetupScreen>
   @override
   void initState() {
     super.initState();
+
+    // Android: flutter_v2ray is always ready — no setup needed
+    if (Platform.isAndroid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onComplete();
+      });
+      // Still init animation controllers to avoid LateInitializationError
+      _bgCtrl = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 20),
+      );
+      _pulseCtrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1800),
+      );
+      return;
+    }
+
+    // Windows: original animation setup
     _bgCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),

@@ -141,6 +141,47 @@ class Node {
         muxMaxStreams: json['muxMaxStreams'] as int? ?? 32,
       );
 
+
+  /// Generates a vless:// share link for use with flutter_v2ray
+  String toShareLink() {
+    final params = <String, String>{};
+    params['encryption'] = 'none';
+    params['type'] = network.isEmpty ? 'tcp' : network;
+    params['security'] = security.isEmpty ? 'none' : security;
+
+    if (security == 'tls' || security == 'reality') {
+      if (sni.isNotEmpty) params['sni'] = sni;
+      if (fingerprint.isNotEmpty) params['fp'] = fingerprint;
+    }
+
+    if (security == 'reality') {
+      if (realityPbk.isNotEmpty) params['pbk'] = realityPbk;
+      if (realitySid.isNotEmpty) params['sid'] = realitySid;
+    }
+
+    if (flow.isNotEmpty) params['flow'] = flow;
+
+    if (network == 'ws') {
+      if (path.isNotEmpty) params['path'] = path;
+      if (sni.isNotEmpty) params['host'] = sni;
+    } else if (network == 'grpc') {
+      if (path.isNotEmpty) {
+        params['serviceName'] = path.replaceAll('/', '');
+      }
+      params['mode'] = 'gun';
+    } else if (network == 'h2') {
+      if (path.isNotEmpty) params['path'] = path;
+      if (sni.isNotEmpty) params['host'] = sni;
+    }
+
+    final queryString = params.entries
+        .map((e) =>
+            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+
+    return 'vless://$uuid@$host:$port?$queryString#${Uri.encodeComponent(name)}';
+  }
+
   @override
   String toString() => 'Node($name, $host:$port, ${latencyMs}ms, sni=$sni, '
       'working=$isTrulyWorking)';
