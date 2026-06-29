@@ -1,0 +1,109 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Срабатывает когда пушишь тег типа v0.2.0
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: stable
+
+      - name: Download sing-box for Android ARM64
+        run: |
+          VERSION="1.10.1"
+          curl -L -o singbox.tar.gz \
+            "https://github.com/SagerNet/sing-box/releases/download/v${VERSION}/sing-box-${VERSION}-android-arm64.tar.gz"
+          tar -xzf singbox.tar.gz
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp sing-box-${VERSION}-android-arm64/sing-box \
+             android/app/src/main/jniLibs/arm64-v8a/libsingbox.so
+          echo "✓ libsingbox.so готов"
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
+          name: Onyx VPN ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: stable
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Windows app
+        run: flutter build windows --release
+
+      - name: Build OnyxService
+        run: |
+          cd tools/onyx_service
+          dart pub get
+          cd ../..
+          dart compile exe tools/onyx_service/bin/onyx_service.dart -o build/OnyxService.exe
+
+      - name: Build OnyxUpdater
+        run: |
+          cd tools/onyx_updater
+          dart pub get
+          cd ../..
+          dart compile exe tools/onyx_updater/bin/onyx_updater.dart -o build/OnyxUpdater.exe
+
+      - name: Package payload ZIP
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item "build\windows\x64\runner\Release\*" dist\ -Recurse -Force
+          Copy-Item build\OnyxService.exe dist\
+          Copy-Item build\OnyxUpdater.exe dist\
+          $tag = "${{ github.ref_name }}"
+          Compress-Archive -Path dist\* -DestinationPath "Onyx_${tag}_payload.zip" -Force
+
+      - name: Build Installer
+        run: |
+          cd tools/onyx_installer
+          dart pub get
+          New-Item -ItemType Directory -Force -Path build\native_assets\windows
+          flutter build windows --release
+          cd ../..
+
+      - name: Upload Windows artifacts to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Onyx_${{ github.ref_name }}_payload.zip
+            tools/onyx_installer/build/windows/x64/runner/Release/onyx_installer.exe
+          name: Onyx VPN ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -48,3 +48,7 @@ dist/
 *.zip
 repomix-output.xml
 query
+
+dist_release/
+singbox.tar.gz
+sing-box-1.10.1-android-arm64/

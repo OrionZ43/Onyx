@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'dart:io';
 
 import '../core/log_service.dart';
@@ -57,6 +56,12 @@ class SingboxBridgeAndroid implements SingboxBridge {
     log.i('Запускаем sing-box для ${node.name} (Android)', tag: 'BRIDGE');
 
     try {
+      // ФИКС: гарантируем инициализацию _binDir перед buildTunConfig.
+      // SingboxConfigBuilder обращается к BinaryManager.instance.singboxExe.parent.path
+      // для абсолютных путей geoip.db/geosite.db на Android.
+      // Без init() _binDir не инициализирован → LateInitializationError.
+      await _binMgr.init();
+
       await _killExisting();
 
       final resolvedIp = await _resolveServerIp(node.host);
@@ -102,9 +107,9 @@ class SingboxBridgeAndroid implements SingboxBridge {
           .transform(const SystemEncoding().decoder)
           .listen(_parseSingboxOutput);
 
-      _process!.stderr.transform(const SystemEncoding().decoder).listen(
-            _parseSingboxOutput,
-          );
+      _process!.stderr
+          .transform(const SystemEncoding().decoder)
+          .listen(_parseSingboxOutput);
 
       _process!.exitCode.then((code) {
         log.w('sing-box завершился с кодом: $code', tag: 'BRIDGE');
@@ -123,9 +128,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
 
       if (!ready) {
         await _killProcess();
-        throw Exception(
-          'sing-box не ответил за 15 секунд.',
-        );
+        throw Exception('sing-box не ответил за 15 секунд.');
       }
 
       final version = await _apiClient.getVersion();
@@ -168,9 +171,8 @@ class SingboxBridgeAndroid implements SingboxBridge {
     if (_isIpAddress(host)) return null;
 
     try {
-      final addresses = await InternetAddress.lookup(
-        host,
-      ).timeout(const Duration(seconds: 5));
+      final addresses = await InternetAddress.lookup(host)
+          .timeout(const Duration(seconds: 5));
 
       final ipv4 = addresses
           .where((a) => a.type == InternetAddressType.IPv4)
@@ -228,10 +230,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
         final (rx, tx) = await _apiClient.getTotalBytes();
         final total = rx + tx;
         if (total == 0) {
-          log.w(
-            '⚠ WATCHDOG: 8 секунд прошло, трафик = 0 байт!',
-            tag: 'DIAG',
-          );
+          log.w('⚠ WATCHDOG: 8 секунд прошло, трафик = 0 байт!', tag: 'DIAG');
           _errorCtrl.add('WATCHDOG_NO_TRAFFIC');
         } else {
           log.i(
