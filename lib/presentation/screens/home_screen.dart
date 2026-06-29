@@ -136,6 +136,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     // ── Топ-бар ─────────────────────────────────────────────
                     if (updateInfo != null)
                       UpdateBanner(updateInfo: updateInfo),
+                    if (sub.isSubscriptionStale &&
+                        sub.url.isNotEmpty &&
+                        !isConnected)
+                      _StaleSubBanner(
+                        onRefresh: () => ref
+                            .read(subscriptionProvider.notifier)
+                            .loadFromUrl(sub.url),
+                      ),
                     _TopBar(
                       onLogTap: () {
                         if (!context.mounted) return;
@@ -920,4 +928,59 @@ class _Divider extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       Container(width: 1, height: 36, color: AppColors.horizon);
+}
+
+class _StaleSubBanner extends StatelessWidget {
+  const _StaleSubBanner({required this.onRefresh});
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.update_rounded,
+              color: AppColors.aurora,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Серверы могли устареть — обновите подписку',
+                style: TextStyle(
+                  fontFamily: 'DM Sans',
+                  fontSize: 12,
+                  color: AppColors.nebula1,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: onRefresh,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.aurora,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Обновить',
+                style: TextStyle(
+                  fontFamily: 'DM Sans',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

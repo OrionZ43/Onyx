@@ -1,4 +1,4 @@
-import 'package:path/path.dart' as path;
+
 import '../infrastructure/binary_manager.dart';
 import 'dart:convert';
 import 'entities/node.dart';
@@ -274,13 +274,13 @@ class SingboxConfigBuilder {
       //   {'geosite': ['ru', 'yandex'], 'outbound': 'direct'}
       // молча игнорируются — sing-box не знает, где лежит база.
       'geoip': {
-        'path': isAndroid ? path.join(BinaryManager.instance.singboxExe.parent.path, 'geoip.db') : 'geoip.db',
+        'path': isAndroid ? BinaryManager.instance.geoipDb.path : 'geoip.db',
         'download_url':
         'https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip.db',
         'download_detour': 'direct',
       },
       'geosite': {
-        'path': isAndroid ? path.join(BinaryManager.instance.singboxExe.parent.path, 'geosite.db') : 'geosite.db',
+        'path': isAndroid ? BinaryManager.instance.geositeDb.path : 'geosite.db',
         'download_url':
         'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db',
         'download_detour': 'direct',
