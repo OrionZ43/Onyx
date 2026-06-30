@@ -175,8 +175,15 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
     String rawKey;
     // Если начинается с emoji-флага — берём первые 2 codepoint
     final runes = name.runes.toList();
-    if (runes.isNotEmpty && runes[0] >= 0x1F1E6 && runes[0] <= 0x1F1FF) {
-      rawKey = runes.take(2).map(String.fromCharCode).join();
+    if (runes.length >= 2 &&
+        runes[0] >= 0x1F1E6 &&
+        runes[0] <= 0x1F1FF &&
+        runes[1] >= 0x1F1E6 &&
+        runes[1] <= 0x1F1FF) {
+      // Получаем буквенный ISO-код из эмодзи-флага для поиска в словаре
+      final c1 = runes[0] - 0x1F1E6 + 0x41;
+      final c2 = runes[1] - 0x1F1E6 + 0x41;
+      rawKey = String.fromCharCode(c1) + String.fromCharCode(c2);
     } else {
       // Иначе берём первое слово
       rawKey = name.split(RegExp(r'[\s|_-]+')).first.toUpperCase();
