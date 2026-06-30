@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,12 +30,14 @@ class SubscriptionState {
     this.deepProbedCount = 0,
     this.deepProbeTotal = 0,
     this.lastFetchedAt,
+    this.isStale = false,
   });
 
   final SubStatus status;
   final List<Node> nodes;
   final String url;
   final String? error;
+  final bool isStale;
 
   /// Количество нод, прошедших TCP-пинг (для прогресс-бара Этапа 1).
   final int probedCount;
@@ -53,11 +56,7 @@ class SubscriptionState {
   /// Приоритет:
   ///   1. Первая нода с isTrulyWorking = true (прошла HTTP-проверку).
   ///   2. Если Deep Probe ещё не завершён — нода с минимальным TCP-пингом.
-  bool get isSubscriptionStale {
-    final lastFetched = lastFetchedAt;
-    if (lastFetched == null) return false;
-    return DateTime.now().difference(lastFetched) > const Duration(minutes: 30);
-  }
+  bool get isSubscriptionStale => isStale;
 
   Node? get bestNode {
     // Приоритет: реально проверенная нода
@@ -84,6 +83,7 @@ class SubscriptionState {
     int? deepProbedCount,
     int? deepProbeTotal,
     DateTime? lastFetchedAt,
+    bool? isStale,
   }) =>
       SubscriptionState(
         status: status ?? this.status,
@@ -94,6 +94,7 @@ class SubscriptionState {
         deepProbedCount: deepProbedCount ?? this.deepProbedCount,
         deepProbeTotal: deepProbeTotal ?? this.deepProbeTotal,
         lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
+        isStale: isStale ?? this.isStale,
       );
 }
 
@@ -107,17 +108,53 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   final _service = SubscriptionService();
   final _probe = const SmartProbe();
   static const _urlKey = 'sub_url';
+  Timer? _staleTimer;
+
+  @override
+  void dispose() {
+    _staleTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleStaleCheck(DateTime lastFetched) {
+    _staleTimer?.cancel();
+    final now = DateTime.now();
+    final staleTime = lastFetched.add(const Duration(minutes: 30));
+
+    if (now.isAfter(staleTime) || now.isAtSameMomentAs(staleTime)) {
+      if (!state.isStale && mounted) {
+        state = state.copyWith(isStale: true);
+      }
+    } else {
+      if (state.isStale && mounted) {
+        state = state.copyWith(isStale: false);
+      }
+      final duration = staleTime.difference(now);
+      _staleTimer = Timer(duration, () {
+        if (mounted) {
+          state = state.copyWith(isStale: true);
+        }
+      });
+    }
+  }
 
   // ── Публичный API ──────────────────────────────────────────────────────────
 
   /// Загрузить подписку по URL и запустить двухэтапную проверку.
   Future<void> loadFromUrl(String url) async {
+    if (state.status == SubStatus.fetching ||
+        state.status == SubStatus.probing ||
+        state.status == SubStatus.deepProbing) {
+      return;
+    }
+
     state = state.copyWith(
       status: SubStatus.fetching,
       url: url,
       probedCount: 0,
       deepProbedCount: 0,
       deepProbeTotal: 0,
+      isStale: false,
     );
 
     // ─── Этап 0: Загрузка и парсинг ──────────────────────────────────────
@@ -155,6 +192,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
         'subscription_last_fetched', fetchTime.millisecondsSinceEpoch);
 
     _saveCache(probed);
+    _scheduleStaleCheck(fetchTime);
 
     if (!mounted) return;
     state = state.copyWith(
@@ -171,11 +209,17 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   /// Повторная проверка уже загруженных нод.
   Future<void> reprobe() async {
     if (state.nodes.isEmpty) return;
+    if (state.status == SubStatus.fetching ||
+        state.status == SubStatus.probing ||
+        state.status == SubStatus.deepProbing) {
+      return;
+    }
     state = state.copyWith(
       status: SubStatus.probing,
       probedCount: 0,
       deepProbedCount: 0,
       deepProbeTotal: 0,
+      isStale: false,
     );
 
     final probed = await _probe.probeAll(
@@ -190,7 +234,10 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     _saveCache(probed);
     final prefs = await SharedPreferences.getInstance();
     final fetchTime = DateTime.now();
-    await prefs.setInt('subscription_last_fetched', fetchTime.millisecondsSinceEpoch);
+    await prefs.setInt(
+        'subscription_last_fetched', fetchTime.millisecondsSinceEpoch);
+
+    _scheduleStaleCheck(fetchTime);
 
     if (!mounted) return;
     state = state.copyWith(
@@ -292,6 +339,9 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
             status: SubStatus.ready,
             lastFetchedAt: lastFetched,
           );
+          if (lastFetched != null) {
+            _scheduleStaleCheck(lastFetched);
+          }
         } catch (_) {
           state = state.copyWith(url: saved);
         }
