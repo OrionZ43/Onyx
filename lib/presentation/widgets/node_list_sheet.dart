@@ -8,7 +8,6 @@
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/glass_widget.dart';
@@ -89,35 +88,60 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
                       )
                     : nodes.isEmpty
                         ? _EmptyState()
-                        : ListView(
-                            padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
-                            children: [
+                        : CustomScrollView(
+                            slivers: [
+                              const SliverPadding(
+                                  padding: EdgeInsets.only(top: 4)),
                               for (final entry in groups.entries)
-                                _CountryGroup(
-                                  country: entry.key,
-                                  nodes: entry.value,
-                                  alive: entry.value
-                                      .where((n) => n.isAlive)
-                                      .length,
-                                  bestMs: _bestMs(entry.value),
-                                  expanded: _expanded[entry.key] ??
-                                      _shouldAutoExpand(entry.key, groups),
-                                  selectedNode: selected,
-                                  onToggle: () => setState(
-                                    () => _expanded[entry.key] =
-                                        !(_expanded[entry.key] ??
+                                SliverMainAxisGroup(
+                                  slivers: [
+                                    SliverPersistentHeader(
+                                      pinned: true,
+                                      delegate: _CountryHeaderDelegate(
+                                        country: entry.key,
+                                        nodes: entry.value,
+                                        alive: entry.value
+                                            .where((n) => n.isAlive)
+                                            .length,
+                                        bestMs: _bestMs(entry.value),
+                                        expanded: _expanded[entry.key] ??
                                             _shouldAutoExpand(
-                                                entry.key, groups)),
-                                  ),
-                                  onSelectNode: (node) {
-                                    // Сохраняем выбор и закрываем шторку
-                                    ref
-                                        .read(nodeSelectionProvider.notifier)
-                                        .select(node);
-                                    if (!context.mounted) return;
-                                    Navigator.of(context).pop();
-                                  },
+                                                entry.key, groups),
+                                        hasSelectedNode: selected != null &&
+                                            entry.value.any(
+                                                (n) => n.id == selected.id),
+                                        onToggle: () => setState(
+                                          () => _expanded[entry.key] =
+                                              !(_expanded[entry.key] ??
+                                                  _shouldAutoExpand(
+                                                      entry.key, groups)),
+                                        ),
+                                      ),
+                                    ),
+                                    if (_expanded[entry.key] ??
+                                        _shouldAutoExpand(entry.key, groups))
+                                      SliverList(
+                                        delegate: SliverChildBuilderDelegate(
+                                          (context, i) => _CompactNodeRow(
+                                            node: entry.value[i],
+                                            isSelected: selected?.id ==
+                                                entry.value[i].id,
+                                            onTap: () {
+                                              ref
+                                                  .read(nodeSelectionProvider
+                                                      .notifier)
+                                                  .select(entry.value[i]);
+                                              if (!context.mounted) return;
+                                              Navigator.of(context).pop();
+                                            },
+                                          ),
+                                          childCount: entry.value.length,
+                                        ),
+                                      ),
+                                  ],
                                 ),
+                              const SliverPadding(
+                                  padding: EdgeInsets.only(bottom: 24)),
                             ],
                           ),
               ),
@@ -139,15 +163,53 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
     return map;
   }
 
+  static const _countryNames = <String, String>{
+    'DE': '🇩🇪 Германия',
+    'GERMANY': '🇩🇪 Германия',
+    'NL': '🇳🇱 Нидерланды',
+    'NETHERLANDS': '🇳🇱 Нидерланды',
+    'GB': '🇬🇧 Великобритания',
+    'UK': '🇬🇧 Великобритания',
+    'FI': '🇫🇮 Финляндия',
+    'FINLAND': '🇫🇮 Финляндия',
+    'RU': '🇷🇺 Россия',
+    'RUSSIA': '🇷🇺 Россия',
+    'SE': '🇸🇪 Швеция',
+    'SWEDEN': '🇸🇪 Швеция',
+    'LT': '🇱🇹 Литва',
+    'LITHUANIA': '🇱🇹 Литва',
+    'LV': '🇱🇻 Латвия',
+    'LATVIA': '🇱🇻 Латвия',
+    'CH': '🇨🇭 Швейцария',
+    'SWITZERLAND': '🇨🇭 Швейцария',
+    'US': '🇺🇸 США',
+    'USA': '🇺🇸 США',
+  };
+
   String _countryKey(String name) {
+    String rawKey;
     // Если начинается с emoji-флага — берём первые 2 codepoint
     final runes = name.runes.toList();
     if (runes.isNotEmpty && runes[0] >= 0x1F1E6 && runes[0] <= 0x1F1FF) {
-      final flag = runes.take(2).map(String.fromCharCode).join();
-      return flag;
+      rawKey = runes.take(2).map(String.fromCharCode).join();
+    } else {
+      // Иначе берём первое слово
+      rawKey = name.split(RegExp(r'[\s|_-]+')).first.toUpperCase();
     }
-    // Иначе берём первое слово
-    return name.split(RegExp(r'[\s|_-]+')).first.toUpperCase();
+
+    if (_countryNames.containsKey(rawKey)) {
+      return _countryNames[rawKey]!;
+    }
+
+    // Если не нашли в словаре, но это короткий код или слово - делаем с заглавной буквы
+    if (rawKey.length <= 2 && runes.isEmpty) {
+      // Если не emoji
+      return rawKey.toUpperCase();
+    } else if (rawKey.length > 2) {
+      return rawKey[0].toUpperCase() + rawKey.substring(1).toLowerCase();
+    }
+
+    return rawKey;
   }
 
   int? _bestMs(List<Node> nodes) {
@@ -313,16 +375,15 @@ class _EmptyState extends StatelessWidget {
 
 // ── Группа страны ─────────────────────────────────────────────────────────
 
-class _CountryGroup extends StatelessWidget {
-  const _CountryGroup({
+class _CountryHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _CountryHeaderDelegate({
     required this.country,
     required this.nodes,
     required this.alive,
     required this.bestMs,
     required this.expanded,
-    required this.selectedNode,
+    required this.hasSelectedNode,
     required this.onToggle,
-    required this.onSelectNode,
   });
 
   final String country;
@@ -330,94 +391,104 @@ class _CountryGroup extends StatelessWidget {
   final int alive;
   final int? bestMs;
   final bool expanded;
-  final Node? selectedNode;
+  final bool hasSelectedNode;
   final VoidCallback onToggle;
-  final ValueChanged<Node> onSelectNode;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Строка-заголовок страны
-        GestureDetector(
-          onTap: onToggle,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: expanded
-                  ? AppColors.plasma.withValues(alpha: 0.08)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: expanded
-                    ? AppColors.horizonGlow
-                    : AppColors.glassBorder.withValues(alpha: 0.4),
+  double get minExtent => 48; // Примерная высота заголовка
+
+  @override
+  double get maxExtent => 48;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    // Если внутри есть выбранная нода — подсвечиваем заголовок
+    final isHighlighted = hasSelectedNode;
+
+    return GestureDetector(
+      onTap: onToggle,
+      child: Container(
+        // Отрисовываем фон поверх контента под ним, чтобы не просвечивал скролл
+        color: const Color(
+            0xCC0D0420), // Цвет фона шторки, чтобы заголовок перекрывал список
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isHighlighted
+                ? AppColors.plasma.withValues(alpha: 0.15)
+                : expanded
+                    ? AppColors.plasma.withValues(alpha: 0.08)
+                    : AppColors.void2,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isHighlighted
+                  ? AppColors.plasma.withValues(alpha: 0.8)
+                  : expanded
+                      ? AppColors.horizonGlow
+                      : AppColors.glassBorder.withValues(alpha: 0.4),
+              width: isHighlighted ? 1.5 : 1.0,
+            ),
+            boxShadow: isHighlighted
+                ? [
+                    BoxShadow(
+                      color: AppColors.plasma.withValues(alpha: 0.2),
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                    )
+                  ]
+                : null,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  country,
+                  style: TextStyle(
+                    fontFamily: 'Syne',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isHighlighted || expanded
+                        ? AppColors.plasma
+                        : AppColors.nebula0,
+                  ),
+                ),
               ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    country,
-                    style: TextStyle(
-                      fontFamily: 'Syne',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: expanded ? AppColors.plasma : AppColors.nebula0,
-                    ),
-                  ),
+              Text(
+                '$alive/${nodes.length}',
+                style: const TextStyle(
+                  fontFamily: 'DM Sans',
+                  fontSize: 11,
+                  color: AppColors.nebula2,
                 ),
-                Text(
-                  '$alive/${nodes.length}',
-                  style: const TextStyle(
-                    fontFamily: 'DM Sans',
-                    fontSize: 11,
-                    color: AppColors.nebula2,
-                  ),
+              ),
+              const SizedBox(width: 10),
+              if (bestMs != null) _MsChip(ms: bestMs!),
+              const SizedBox(width: 8),
+              AnimatedRotation(
+                turns: expanded ? 0.5 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: AppColors.nebula2,
+                  size: 18,
                 ),
-                const SizedBox(width: 10),
-                if (bestMs != null) _MsChip(ms: bestMs!),
-                const SizedBox(width: 8),
-                AnimatedRotation(
-                  turns: expanded ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: AppColors.nebula2,
-                    size: 18,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-
-        // Список нод внутри группы
-        AnimatedSize(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          child: expanded
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < nodes.length; i++)
-                      _CompactNodeRow(
-                        node: nodes[i],
-                        isSelected: selectedNode?.id == nodes[i].id,
-                        onTap: () => onSelectNode(nodes[i]),
-                      )
-                          .animate(delay: (i * 25).ms)
-                          .fadeIn(duration: 200.ms)
-                          .slideX(begin: 0.04),
-                    const SizedBox(height: 4),
-                  ],
-                )
-              : const SizedBox.shrink(),
-        ),
-      ],
+      ),
     );
+  }
+
+  @override
+  bool shouldRebuild(covariant _CountryHeaderDelegate oldDelegate) {
+    return oldDelegate.country != country ||
+        oldDelegate.expanded != expanded ||
+        oldDelegate.hasSelectedNode != hasSelectedNode ||
+        oldDelegate.alive != alive ||
+        oldDelegate.bestMs != bestMs;
   }
 }
 
