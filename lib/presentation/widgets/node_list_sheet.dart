@@ -443,9 +443,9 @@ class _CountryGroupHeader extends StatelessWidget {
                 country,
                 style: TextStyle(
                   // Syne font missing some emoji rendering on Windows
-                  // We fall back to system fonts by removing fontFamily for text containing emojis
-                  // or keep it if we prefer. But using default font handles emojis better on Windows.
-                  fontFamily: country.runes.any((r) => r >= 0x1F1E6 && r <= 0x1F1FF) ? null : 'Syne',
+                  // We fallback to system emojis, specifically "Segoe UI Emoji" on Windows
+                  fontFamilyFallback: const ['Segoe UI Emoji', 'Apple Color Emoji'],
+                  fontFamily: 'Syne',
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: isHighlighted || expanded
