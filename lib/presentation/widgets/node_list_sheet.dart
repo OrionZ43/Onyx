@@ -169,6 +169,13 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
     'SWITZERLAND': '🇨🇭 Швейцария',
     'US': '🇺🇸 США',
     'USA': '🇺🇸 США',
+    'FR': '🇫🇷 Франция',
+    'FRANCE': '🇫🇷 Франция',
+    'CZ': '🇨🇿 Чехия',
+    'CZECHIA': '🇨🇿 Чехия',
+    'CZECH': '🇨🇿 Чехия',
+    'EE': '🇪🇪 Эстония',
+    'ESTONIA': '🇪🇪 Эстония',
   };
 
   String _countryKey(String name) {
@@ -435,7 +442,10 @@ class _CountryGroupHeader extends StatelessWidget {
               child: Text(
                 country,
                 style: TextStyle(
-                  fontFamily: 'Syne',
+                  // Syne font missing some emoji rendering on Windows
+                  // We fall back to system fonts by removing fontFamily for text containing emojis
+                  // or keep it if we prefer. But using default font handles emojis better on Windows.
+                  fontFamily: country.runes.any((r) => r >= 0x1F1E6 && r <= 0x1F1FF) ? null : 'Syne',
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: isHighlighted || expanded
