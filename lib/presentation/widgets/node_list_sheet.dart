@@ -61,7 +61,8 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
 
               // ── Список ────────────────────────────────────────────────────
               Expanded(
-                child: (sub.status == SubStatus.probing ||
+                child:
+                    (sub.status == SubStatus.probing ||
                         sub.status == SubStatus.deepProbing ||
                         sub.status == SubStatus.fetching)
                     ? Center(
@@ -76,8 +77,8 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
                               sub.status == SubStatus.fetching
                                   ? 'Загружаем свежий список...'
                                   : sub.status == SubStatus.deepProbing
-                                      ? 'Глубокая проверка... ${sub.deepProbedCount}/${sub.deepProbeTotal}'
-                                      : 'TCP Пинг... ${sub.probedCount}/${sub.nodes.length}',
+                                  ? 'Глубокая проверка... ${sub.deepProbedCount}/${sub.deepProbeTotal}'
+                                  : 'TCP Пинг... ${sub.probedCount}/${sub.nodes.length}',
                               style: const TextStyle(
                                 color: AppColors.nebula1,
                                 fontFamily: 'DM Sans',
@@ -87,41 +88,47 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
                         ),
                       )
                     : nodes.isEmpty
-                        ? _EmptyState()
-                        : ListView(
-                            padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
-                            children: [
-                              for (final entry in groups.entries)
-                                _CountryGroup(
-                                  country: entry.key,
-                                  nodes: entry.value,
-                                  alive: entry.value
-                                      .where((n) => n.isAlive)
-                                      .length,
-                                  bestMs: _bestMs(entry.value),
-                                  expanded: _expanded[entry.key] ??
-                                      _shouldAutoExpand(entry.key, groups),
-                                  hasSelectedNode: selected != null &&
-                                      entry.value
-                                          .any((n) => n.id == selected.id),
-                                  selectedNodeId: selected?.id,
-                                  onToggle: () => setState(
-                                    () => _expanded[entry.key] =
-                                        !(_expanded[entry.key] ??
-                                            _shouldAutoExpand(
-                                                entry.key, groups)),
-                                  ),
-                                  onSelectNode: (node) {
-                                    // Сохраняем выбор и закрываем шторку
+                    ? _EmptyState()
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
+                        children: [
+                          for (final entry in groups.entries) ...[
+                            _CountryGroupHeader(
+                              country: entry.key,
+                              nodesCount: entry.value.length,
+                              alive: entry.value.where((n) => n.isAlive).length,
+                              bestMs: _bestMs(entry.value),
+                              expanded:
+                                  _expanded[entry.key] ??
+                                  _shouldAutoExpand(entry.key, groups),
+                              hasSelectedNode:
+                                  selected != null &&
+                                  entry.value.any((n) => n.id == selected.id),
+                              onToggle: () => setState(
+                                () => _expanded[entry.key] =
+                                    !(_expanded[entry.key] ??
+                                        _shouldAutoExpand(entry.key, groups)),
+                              ),
+                            ),
+                            if (_expanded[entry.key] ??
+                                _shouldAutoExpand(entry.key, groups)) ...[
+                              for (var i = 0; i < entry.value.length; i++)
+                                _CompactNodeRow(
+                                  node: entry.value[i],
+                                  isSelected: selected?.id == entry.value[i].id,
+                                  onTap: () {
                                     ref
                                         .read(nodeSelectionProvider.notifier)
-                                        .select(node);
+                                        .select(entry.value[i]);
                                     if (!context.mounted) return;
                                     Navigator.of(context).pop();
                                   },
                                 ),
+                              const SizedBox(height: 4),
                             ],
-                          ),
+                          ],
+                        ],
+                      ),
               ),
             ],
           ),
@@ -180,9 +187,18 @@ class _NodeListSheetState extends ConsumerState<NodeListSheet> {
     }
 
     // Если не нашли в словаре, но это короткий код или слово - делаем с заглавной буквы
-    if (rawKey.length <= 2 && runes.isEmpty) {
-      // Если не emoji
-      return rawKey.toUpperCase();
+    if (rawKey.length == 2) {
+      // Генерация флага для неизвестного двухбуквенного кода (A-Z)
+      final c1 = rawKey.codeUnitAt(0);
+      final c2 = rawKey.codeUnitAt(1);
+      if (c1 >= 0x41 && c1 <= 0x5A && c2 >= 0x41 && c2 <= 0x5A) {
+        final int firstLetter = c1 - 0x41 + 0x1F1E6;
+        final int secondLetter = c2 - 0x41 + 0x1F1E6;
+        final flag =
+            String.fromCharCode(firstLetter) + String.fromCharCode(secondLetter);
+        return '$flag $rawKey';
+      }
+      return rawKey;
     } else if (rawKey.length > 2) {
       return rawKey[0].toUpperCase() + rawKey.substring(1).toLowerCase();
     }
@@ -324,151 +340,126 @@ class _SheetHeader extends ConsumerWidget {
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 48),
-            const SizedBox(height: 16),
-            const Text(
-              'Серверы не загружены',
-              style: TextStyle(
-                fontFamily: 'Syne',
-                fontSize: 16,
-                color: AppColors.nebula1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Добавьте подписку на главном экране',
-              style: TextStyle(
-                fontFamily: 'DM Sans',
-                fontSize: 12,
-                color: AppColors.nebula2,
-              ),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 48),
+        const SizedBox(height: 16),
+        const Text(
+          'Серверы не загружены',
+          style: TextStyle(
+            fontFamily: 'Syne',
+            fontSize: 16,
+            color: AppColors.nebula1,
+          ),
         ),
-      );
+        const SizedBox(height: 8),
+        const Text(
+          'Добавьте подписку на главном экране',
+          style: TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 12,
+            color: AppColors.nebula2,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
-// ── Группа страны ─────────────────────────────────────────────────────────
+// ── Заголовок группы страны ───────────────────────────────────────────────
 
-class _CountryGroup extends StatelessWidget {
-  const _CountryGroup({
+class _CountryGroupHeader extends StatelessWidget {
+  const _CountryGroupHeader({
     required this.country,
-    required this.nodes,
+    required this.nodesCount,
     required this.alive,
     required this.bestMs,
     required this.expanded,
     required this.hasSelectedNode,
-    required this.selectedNodeId,
     required this.onToggle,
-    required this.onSelectNode,
   });
 
   final String country;
-  final List<Node> nodes;
+  final int nodesCount;
   final int alive;
   final int? bestMs;
   final bool expanded;
   final bool hasSelectedNode;
-  final String? selectedNodeId;
   final VoidCallback onToggle;
-  final ValueChanged<Node> onSelectNode;
 
   @override
   Widget build(BuildContext context) {
     final isHighlighted = hasSelectedNode;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Строка-заголовок страны
-        GestureDetector(
-          onTap: onToggle,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isHighlighted
-                  ? AppColors.plasma.withValues(alpha: 0.15)
-                  : expanded
-                      ? AppColors.plasma.withValues(alpha: 0.08)
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isHighlighted
-                    ? AppColors.plasma.withValues(alpha: 0.8)
-                    : expanded
-                        ? AppColors.horizonGlow
-                        : AppColors.glassBorder.withValues(alpha: 0.4),
-                width: isHighlighted ? 1.5 : 1.0,
-              ),
-              boxShadow: isHighlighted
-                  ? [
-                      BoxShadow(
-                        color: AppColors.plasma.withValues(alpha: 0.2),
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      )
-                    ]
-                  : null,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    country,
-                    style: TextStyle(
-                      fontFamily: 'Syne',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isHighlighted || expanded
-                          ? AppColors.plasma
-                          : AppColors.nebula0,
-                    ),
-                  ),
-                ),
-                Text(
-                  '$alive/${nodes.length}',
-                  style: const TextStyle(
-                    fontFamily: 'DM Sans',
-                    fontSize: 11,
-                    color: AppColors.nebula2,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                if (bestMs != null) _MsChip(ms: bestMs!),
-                const SizedBox(width: 8),
-                AnimatedRotation(
-                  turns: expanded ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: AppColors.nebula2,
-                    size: 18,
-                  ),
-                ),
-              ],
-            ),
+    return GestureDetector(
+      onTap: onToggle,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isHighlighted
+              ? AppColors.plasma.withValues(alpha: 0.15)
+              : expanded
+              ? AppColors.plasma.withValues(alpha: 0.08)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isHighlighted
+                ? AppColors.plasma.withValues(alpha: 0.8)
+                : expanded
+                ? AppColors.horizonGlow
+                : AppColors.glassBorder.withValues(alpha: 0.4),
+            width: isHighlighted ? 1.5 : 1.0,
           ),
+          boxShadow: isHighlighted
+              ? [
+                  BoxShadow(
+                    color: AppColors.plasma.withValues(alpha: 0.2),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
         ),
-
-        // Список нод внутри группы (БЕЗ AnimatedSize для стабильности)
-        if (expanded)
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < nodes.length; i++)
-                _CompactNodeRow(
-                  node: nodes[i],
-                  isSelected: selectedNodeId == nodes[i].id,
-                  onTap: () => onSelectNode(nodes[i]),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                country,
+                style: TextStyle(
+                  fontFamily: 'Syne',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isHighlighted || expanded
+                      ? AppColors.plasma
+                      : AppColors.nebula0,
                 ),
-              const SizedBox(height: 4),
-            ],
-          ),
-      ],
+              ),
+            ),
+            Text(
+              '$alive/$nodesCount',
+              style: const TextStyle(
+                fontFamily: 'DM Sans',
+                fontSize: 11,
+                color: AppColors.nebula2,
+              ),
+            ),
+            const SizedBox(width: 10),
+            if (bestMs != null) _MsChip(ms: bestMs!),
+            const SizedBox(width: 8),
+            AnimatedRotation(
+              turns: expanded ? 0.5 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: AppColors.nebula2,
+                size: 18,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -486,11 +477,11 @@ class _CompactNodeRow extends StatelessWidget {
   final VoidCallback onTap;
 
   Color _qColor() => switch (node.quality) {
-        NodeQuality.excellent => AppColors.aurora,
-        NodeQuality.good => const Color(0xFF80E8B0),
-        NodeQuality.poor => AppColors.ember,
-        NodeQuality.dead => AppColors.nebula2,
-      };
+    NodeQuality.excellent => AppColors.aurora,
+    NodeQuality.good => const Color(0xFF80E8B0),
+    NodeQuality.poor => AppColors.ember,
+    NodeQuality.dead => AppColors.nebula2,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -501,8 +492,8 @@ class _CompactNodeRow extends StatelessWidget {
     final bgColor = isSelected
         ? AppColors.plasma.withValues(alpha: 0.10)
         : node.isTrulyWorking
-            ? AppColors.aurora.withValues(alpha: 0.06)
-            : AppColors.void2.withValues(alpha: 0.8);
+        ? AppColors.aurora.withValues(alpha: 0.06)
+        : AppColors.void2.withValues(alpha: 0.8);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 12, 3),
@@ -523,8 +514,8 @@ class _CompactNodeRow extends StatelessWidget {
                 color: selectedBorder != null
                     ? selectedBorder.withValues(alpha: 0.6)
                     : node.isTrulyWorking
-                        ? AppColors.aurora.withValues(alpha: 0.3)
-                        : AppColors.glassBorder.withValues(alpha: 0.3),
+                    ? AppColors.aurora.withValues(alpha: 0.3)
+                    : AppColors.glassBorder.withValues(alpha: 0.3),
                 width: isSelected ? 1.2 : 1.0,
               ),
             ),
@@ -589,8 +580,9 @@ class _CompactNodeRow extends StatelessWidget {
                       fontFamily: 'DM Sans',
                       fontSize: 11,
                       color: isSelected ? AppColors.plasma : AppColors.nebula1,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -643,19 +635,19 @@ class _MsChip extends StatelessWidget {
   Color get _c => ms < 150
       ? AppColors.aurora
       : ms < 400
-          ? AppColors.ember
-          : AppColors.nova;
+      ? AppColors.ember
+      : AppColors.nova;
 
   @override
   Widget build(BuildContext context) => Text(
-        '${ms}мс',
-        style: TextStyle(
-          fontFamily: 'DM Mono',
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: _c,
-        ),
-      );
+    '${ms}мс',
+    style: TextStyle(
+      fontFamily: 'DM Mono',
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      color: _c,
+    ),
+  );
 }
 
 class _SmallBadge extends StatelessWidget {
@@ -665,20 +657,20 @@ class _SmallBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: color.withValues(alpha: 0.3), width: 0.6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: 'DM Mono',
-            fontSize: 8,
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: color.withValues(alpha: 0.3), width: 0.6),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontFamily: 'DM Mono',
+        fontSize: 8,
+        fontWeight: FontWeight.w700,
+        color: color,
+      ),
+    ),
+  );
 }
