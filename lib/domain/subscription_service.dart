@@ -38,11 +38,49 @@ class SubscriptionService {
     log.i('Начинаем загрузку подписки', tag: 'SUB');
     log.d('URL: $cleanUrl', tag: 'SUB');
 
-    try {
-      log.i('Отправляем HTTP GET запрос...', tag: 'SUB');
-      final raw = await _fetchRaw(cleanUrl);
-      log.i('Получено ${raw.length} символов', tag: 'SUB');
+    final isZieng2 = cleanUrl.contains('raw.githubusercontent.com/zieng2');
+    final urlsToTry = [cleanUrl];
 
+    if (isZieng2) {
+      urlsToTry.addAll([
+        'https://hub.mos.ru/zieng2/wl/raw/main/list_universal.txt',
+        'https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt',
+      ]);
+    }
+
+    String? raw;
+    String? lastErrorMsg;
+
+    for (final currentUrl in urlsToTry) {
+      try {
+        log.i('Отправляем HTTP GET запрос к $currentUrl...', tag: 'SUB');
+        raw = await _fetchRaw(currentUrl);
+        log.i('Получено ${raw.length} символов', tag: 'SUB');
+        break; // Успешно загрузили
+      } on DioException catch (e) {
+        lastErrorMsg = _humanizeDioError(e);
+        log.e('DioException: $lastErrorMsg', tag: 'SUB');
+        log.d(
+          'Детали: type=${e.type}, status=${e.response?.statusCode}',
+          tag: 'SUB',
+        );
+      } catch (e, stack) {
+        lastErrorMsg = 'Ошибка: $e';
+        log.e('Неожиданная ошибка: $e', tag: 'SUB');
+        log.d('Stack: $stack', tag: 'SUB');
+      }
+    }
+
+    if (raw == null) {
+      return SubscriptionResult(
+        nodes: [],
+        rawUrl: cleanUrl,
+        fetchedAt: DateTime.now(),
+        error: lastErrorMsg ?? 'Не удалось загрузить подписку.',
+      );
+    }
+
+    try {
       final parsed = _parser.parse(raw);
       log.i('Распарсено узлов: ${parsed.length}', tag: 'SUB');
 
@@ -98,27 +136,14 @@ class SubscriptionService {
         rawUrl: cleanUrl,
         fetchedAt: DateTime.now(),
       );
-    } on DioException catch (e) {
-      final msg = _humanizeDioError(e);
-      log.e('DioException: $msg', tag: 'SUB');
-      log.d(
-        'Детали: type=${e.type}, status=${e.response?.statusCode}',
-        tag: 'SUB',
-      );
-      return SubscriptionResult(
-        nodes: [],
-        rawUrl: cleanUrl,
-        fetchedAt: DateTime.now(),
-        error: msg,
-      );
     } catch (e, stack) {
-      log.e('Неожиданная ошибка: $e', tag: 'SUB');
+      log.e('Ошибка при парсинге: $e', tag: 'SUB');
       log.d('Stack: $stack', tag: 'SUB');
       return SubscriptionResult(
         nodes: [],
         rawUrl: cleanUrl,
         fetchedAt: DateTime.now(),
-        error: 'Ошибка: $e',
+        error: 'Ошибка при обработке данных: $e',
       );
     }
   }

@@ -58,4 +58,5 @@ dependencies:
   tray_manager: ^0.2.2
   local_notifier: ^0.1.5
 
-  # Android VPN
+flutter:
+  uses-material-design: true

@@ -138,7 +138,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       UpdateBanner(updateInfo: updateInfo),
                     if (sub.isSubscriptionStale &&
                         sub.url.isNotEmpty &&
-                        !isConnected)
+                        !isConnected &&
+                        sub.status != SubStatus.fetching &&
+                        sub.status != SubStatus.probing &&
+                        sub.status != SubStatus.deepProbing)
                       _StaleSubBanner(
                         onRefresh: () => ref
                             .read(subscriptionProvider.notifier)
