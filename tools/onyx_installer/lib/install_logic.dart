@@ -28,12 +28,29 @@ class InstallLogic {
 
       onProgress(0.1, 'Extracting files...');
       final exeDir = File(Platform.resolvedExecutable).parent.path;
-      final payloadZip = File('$exeDir\\Onyx_v0.1.0_payload.zip');
+
+      // Ищем любой *_payload.zip рядом с инсталлятором — независимо от версии
+      final payloadFiles = Directory(exeDir)
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('_payload.zip'))
+          .toList();
+
+      if (payloadFiles.isEmpty) {
+        throw Exception('Payload ZIP не найден рядом с инсталлятором. '
+            'Убедитесь что файл *_payload.zip лежит в той же папке что и onyx_installer.exe');
+      }
+
+      final payloadZip = payloadFiles.first;
       log('ZIP path: ${payloadZip.path}, exists: ${payloadZip.existsSync()}');
 
-      if (!payloadZip.existsSync()) {
-        throw Exception('ZIP not found at: ${payloadZip.path}');
-      }
+      // Извлекаем версию из имени ZIP файла: Onyx_v0.2.0_payload.zip → 0.2.0
+      final zipName = payloadZip.uri.pathSegments.last;
+      final versionFromZip = zipName
+          .replaceAll('Onyx_', '')
+          .replaceAll('_payload.zip', '')
+          .replaceAll('v', '');
+      log('Detected version from ZIP: $versionFromZip');
 
       final bytes = payloadZip.readAsBytesSync();
       final archive = ZipDecoder().decodeBytes(bytes);
@@ -83,26 +100,31 @@ Register-ScheduledTask -TaskName "OnyxVpnService" -Action \$action -Trigger \$tr
       onProgress(0.7, 'Starting service...');
       final startResult = await Process.run('powershell', [
         '-NoProfile',
-        '-ExecutionPolicy', 'Bypass',
-        '-Command', 'Start-ScheduledTask -TaskName "OnyxVpnService"'
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        'Start-ScheduledTask -TaskName "OnyxVpnService"'
       ]);
-      log('Task start exit: ${startResult.exitCode}, out: ${startResult.stdout}, err: ${startResult.stderr}');
+      log('Task start exit: ${startResult.exitCode}, '
+          'out: ${startResult.stdout}, err: ${startResult.stderr}');
 
       onProgress(0.8, 'Creating shortcuts...');
-      final startMenuPath =
-          '$roamingAppData\\Microsoft\\Windows\\Start Menu\\Programs\\Onyx.lnk';
+      final startMenuPath = '$roamingAppData\\'
+          'Microsoft\\Windows\\Start Menu\\Programs\\Onyx.lnk';
       final desktopPath = '$userProfile\\Desktop\\Onyx.lnk';
       await _createShortcut(appExePath, startMenuPath);
       await _createShortcut(appExePath, desktopPath);
       log('Shortcuts created');
 
       onProgress(0.9, 'Registering uninstaller...');
+      // Версия берётся автоматически из имени ZIP — не захардкожена
       final regScript = '''
 \$p = "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Onyx"
 New-Item -Path \$p -Force | Out-Null
 New-ItemProperty -Path \$p -Name "DisplayName" -Value "Onyx VPN" -PropertyType String -Force | Out-Null
-New-ItemProperty -Path \$p -Name "DisplayVersion" -Value "0.1.0" -PropertyType String -Force | Out-Null
+New-ItemProperty -Path \$p -Name "DisplayVersion" -Value "$versionFromZip" -PropertyType String -Force | Out-Null
 New-ItemProperty -Path \$p -Name "Publisher" -Value "Z43 Studios" -PropertyType String -Force | Out-Null
+New-ItemProperty -Path \$p -Name "UninstallString" -Value "cmd /c rd /s /q \\"$installDir\\"" -PropertyType String -Force | Out-Null
 ''';
       await _runPowerShellWithResult(regScript);
       log('Registry done');
@@ -125,10 +147,14 @@ New-ItemProperty -Path \$p -Name "Publisher" -Value "Z43 Studios" -PropertyType 
     await tempFile.writeAsString(script);
     final result = await Process.run('powershell', [
       '-NoProfile',
-      '-ExecutionPolicy', 'Bypass',
-      '-File', tempFile.path,
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      tempFile.path,
     ]);
-    try { await tempFile.delete(); } catch (_) {}
+    try {
+      await tempFile.delete();
+    } catch (_) {}
     return 'exit=${result.exitCode} out=${result.stdout} err=${result.stderr}';
   }
 

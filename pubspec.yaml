@@ -43,7 +43,7 @@ dependencies:
   flutter_background_service: ^5.0.5
   permission_handler: ^11.3.1
 
-  # Android VPN
+
   flutter_v2ray: ^1.0.10
 
 

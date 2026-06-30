@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 
@@ -19,11 +18,20 @@ class UpdateInfo {
 class UpdateService {
   static const _githubApi =
       'https://api.github.com/repos/OrionZ43/Onyx/releases/latest';
-  static const _currentVersion = '0.1.0';
+
+  // Версия вшивается автоматически из git-тега при сборке через --dart-define.
+  // Локально (flutter run) = '0.0.0' чтобы всегда показывало обновление для отладки.
+  static const _currentVersion = String.fromEnvironment(
+    'APP_VERSION',
+    defaultValue: '0.0.0',
+  );
 
   final Dio _dio = Dio();
 
   Future<UpdateInfo?> checkForUpdate() async {
+    // На Android обновления не поддерживаются (APK обновляется через магазин)
+    if (Platform.isAndroid) return null;
+
     try {
       final response = await _dio.get(_githubApi);
       if (response.statusCode == 200) {
@@ -60,9 +68,9 @@ class UpdateService {
   }
 
   Future<String> downloadUpdate(
-    String downloadUrl, {
-    void Function(double progress)? onProgress,
-  }) async {
+      String downloadUrl, {
+        void Function(double progress)? onProgress,
+      }) async {
     final tempDir = Directory.systemTemp.path;
     final savePath = '$tempDir\\onyx_update\\Onyx_Update_Payload.zip';
 
@@ -90,13 +98,12 @@ class UpdateService {
 
     final installDir = '$appData\\Onyx';
     final updaterExe = '$installDir\\OnyxUpdater.exe';
-    final launchExe = '$installDir\\Onyx.exe';
+    final launchExe = '$installDir\\onyx.exe';
 
     if (!File(updaterExe).existsSync()) {
       throw Exception('Updater executable not found at $updaterExe');
     }
 
-    // Launch updater as a detached child process
     await Process.start(
       updaterExe,
       [zipPath, installDir, launchExe],
