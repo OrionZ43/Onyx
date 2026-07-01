@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../core/log_service.dart';
 import '../domain/entities/node.dart';
@@ -24,9 +25,9 @@ class SingboxBridgeAndroid implements SingboxBridge {
     onStatusChanged: (V2RayStatus status) {
 
       log.i('[V2RAY] state=${status.state} '
-            'duration=${status.duration} '
-            'upload=${status.upload} '
-            'download=${status.download}', tag: 'BRIDGE');
+          'duration=${status.duration} '
+          'upload=${status.upload} '
+          'download=${status.download}', tag: 'BRIDGE');
 
       switch (status.state) {
         case 'CONNECTED':
@@ -45,8 +46,8 @@ class SingboxBridgeAndroid implements SingboxBridge {
       // Emit traffic stats on every status update
       if (status.state == 'CONNECTED') {
         _statsCtrl.add((
-          status.download.toInt(),
-          status.upload.toInt(),
+        status.download.toInt(),
+        status.upload.toInt(),
         ));
       }
     },
@@ -80,6 +81,22 @@ class SingboxBridgeAndroid implements SingboxBridge {
 
     try {
       if (!_initialized) await ensureBinaries();
+
+      // Android 13+ (API 33) требует явного runtime-разрешения на показ
+      // ЛЮБЫХ уведомлений, включая foreground-уведомление активного
+      // VpnService. Без этого разрешения ни родное уведомление плагина,
+      // ни наше собственное (VpnNotificationService) не покажутся —
+      // без ошибки, просто молча. На более старых версиях Android
+      // Permission.notification.request() возвращает granted сразу,
+      // диалог не показывается.
+      //
+      // Намеренно не блокируем подключение, если пользователь отказал —
+      // VPN должен продолжать работать, просто без уведомления о статусе.
+      final notifStatus = await Permission.notification.status;
+      if (notifStatus.isDenied) {
+        final result = await Permission.notification.request();
+        log.i('Разрешение на уведомления: $result', tag: 'BRIDGE');
+      }
 
       final allowed = await _v2ray.requestPermission();
       if (!allowed) {
@@ -118,6 +135,13 @@ class SingboxBridgeAndroid implements SingboxBridge {
         blockedApps: null,
         bypassSubnets: smartRouting ? _ruSubnets : null,
         proxyOnly: false,
+        // Кнопка "Отключить" в родном уведомлении плагина (то самое
+        // системное foreground-уведомление, которое Android требует для
+        // любого активного VpnService и убрать нельзя). Эта кнопка
+        // останавливает VPN на нативном уровне и триггерит наш
+        // onStatusChanged → DISCONNECTED, так что состояние в Riverpod
+        // корректно обновится даже если приложение свёрнуто.
+        notificationDisconnectButtonName: 'ОТКЛЮЧИТЬ',
       );
 
       log.i('V2Ray started for ${node.name}', tag: 'BRIDGE');
@@ -167,7 +191,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
 
   bool _isIpAddress(String host) =>
       RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
-      host.contains(':');
+          host.contains(':');
 
   Map<String, dynamic> _buildDns({bool smartRouting = false}) => {
     'servers': [

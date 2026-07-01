@@ -111,19 +111,49 @@ class UpdateService {
     );
   }
 
+  /// ИСПРАВЛЕНО: терпимо к pre-release суффиксам вида "0.2.0-beta",
+  /// "0.3.0-rc1". Раньше `int.parse` на "0-beta" падал в catch и весь
+  /// метод молча возвращал false — обновление никогда не предлагалось,
+  /// если тег содержал суффикс.
+  ///
+  /// Стратегия: сначала сравниваем числовую часть (major.minor.patch).
+  /// Если она равна — pre-release считается МЕНЕЕ приоритетной, чем
+  /// релиз без суффикса (семверный принцип: 1.0.0-beta < 1.0.0).
   bool _isNewerVersion(String latest, String current) {
     try {
-      final latestParts = latest.split('.').map(int.parse).toList();
-      final currentParts = current.split('.').map(int.parse).toList();
+      final (latestNums, latestSuffix) = _splitVersion(latest);
+      final (currentNums, currentSuffix) = _splitVersion(current);
 
       for (int i = 0; i < 3; i++) {
-        final l = i < latestParts.length ? latestParts[i] : 0;
-        final c = i < currentParts.length ? currentParts[i] : 0;
-
+        final l = i < latestNums.length ? latestNums[i] : 0;
+        final c = i < currentNums.length ? currentNums[i] : 0;
         if (l > c) return true;
         if (l < c) return false;
       }
-    } catch (_) {}
-    return false;
+
+      // Числовая часть идентична — решает наличие suffix.
+      // "1.0.0" (без суффикса) новее чем "1.0.0-beta".
+      final latestIsPrerelease = latestSuffix.isNotEmpty;
+      final currentIsPrerelease = currentSuffix.isNotEmpty;
+
+      if (currentIsPrerelease && !latestIsPrerelease) return true;
+      if (!currentIsPrerelease && latestIsPrerelease) return false;
+
+      // Оба pre-release или оба релиз с одинаковыми числами — не новее.
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// "0.2.0-beta.1" → ([0, 2, 0], "beta.1")
+  /// "0.2.0"        → ([0, 2, 0], "")
+  (List<int>, String) _splitVersion(String version) {
+    final dashIndex = version.indexOf('-');
+    final numericPart =
+    dashIndex == -1 ? version : version.substring(0, dashIndex);
+    final suffix = dashIndex == -1 ? '' : version.substring(dashIndex + 1);
+    final nums = numericPart.split('.').map(int.parse).toList();
+    return (nums, suffix);
   }
 }

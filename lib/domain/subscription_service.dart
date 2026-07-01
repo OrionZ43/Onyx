@@ -21,32 +21,47 @@ class SubscriptionResult {
 class SubscriptionService {
   SubscriptionService({Dio? dio})
       : _dio = dio ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 10),
-                receiveTimeout: const Duration(seconds: 15),
-                headers: {'User-Agent': 'Mozilla/5.0'},
-              ),
-            );
+      Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 15),
+          headers: {'User-Agent': 'Mozilla/5.0'},
+        ),
+      );
 
   final Dio _dio;
   final _parser = const SubscriptionParser();
   final _sanitizer = const NodeSanitizer();
+
+  // ── Зеркала для тестовой подписки ────────────────────────────────────
+  //
+  // GitHub (raw.githubusercontent.com) периодически блокируется на уровне
+  // ТСПУ в РФ. Для БЕСПЛАТНОЙ ПУБЛИЧНОЙ тестовой подписки (репозиторий
+  // zieng2/wl) у нас есть договорённость о зеркалах на hub.mos.ru и
+  // gitverse.ru — эти домены раздают ТОТ ЖЕ файл list_universal.txt.
+  //
+  // ВАЖНО: фолбэк применяется ТОЛЬКО к этой конкретной публичной подписке.
+  // Если бы фолбэк срабатывал на любой неудачной загрузке, приватная
+  // платная подписка пользователя (например, https://my-vpn.com/sub) при
+  // временной недоступности сервера молча подменялась бы бесплатными
+  // публичными серверами zieng2 — это сломало бы ожидания пользователя
+  // и могло увести трафик через сервера, которым он не доверяет.
+  static const _testSubscriptionMarker = 'raw.githubusercontent.com/zieng2';
+  static const _testSubscriptionMirrors = [
+    'https://hub.mos.ru/zieng2/wl/raw/main/list_universal.txt',
+    'https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt',
+  ];
 
   Future<SubscriptionResult> fetch(String url) async {
     final cleanUrl = url.trim();
     log.i('Начинаем загрузку подписки', tag: 'SUB');
     log.d('URL: $cleanUrl', tag: 'SUB');
 
-    final isZieng2 = cleanUrl.contains('raw.githubusercontent.com/zieng2');
-    final urlsToTry = [cleanUrl];
-
-    if (isZieng2) {
-      urlsToTry.addAll([
-        'https://hub.mos.ru/zieng2/wl/raw/main/list_universal.txt',
-        'https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt',
-      ]);
-    }
+    final isTestSubscription = cleanUrl.contains(_testSubscriptionMarker);
+    final urlsToTry = [
+      cleanUrl,
+      if (isTestSubscription) ..._testSubscriptionMirrors,
+    ];
 
     String? raw;
     String? lastErrorMsg;
@@ -158,10 +173,10 @@ class SubscriptionService {
   }
 
   String _humanizeDioError(DioException e) => switch (e.type) {
-        DioExceptionType.connectionTimeout => 'Таймаут подключения (10с)',
-        DioExceptionType.receiveTimeout => 'Сервер не ответил (15с)',
-        DioExceptionType.badResponse => 'HTTP ${e.response?.statusCode}',
-        DioExceptionType.connectionError => 'Нет соединения с интернетом',
-        _ => e.message ?? 'Неизвестная ошибка сети',
-      };
+    DioExceptionType.connectionTimeout => 'Таймаут подключения (10с)',
+    DioExceptionType.receiveTimeout => 'Сервер не ответил (15с)',
+    DioExceptionType.badResponse => 'HTTP ${e.response?.statusCode}',
+    DioExceptionType.connectionError => 'Нет соединения с интернетом',
+    _ => e.message ?? 'Неизвестная ошибка сети',
+  };
 }

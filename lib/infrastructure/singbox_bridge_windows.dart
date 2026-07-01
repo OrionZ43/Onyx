@@ -9,8 +9,6 @@ import 'binary_manager.dart';
 import 'singbox_api_client.dart';
 
 
-/// Результат операции моста
-
 /// Windows-реализация sing-box моста.
 ///
 /// Жизненный цикл:
@@ -33,6 +31,14 @@ class SingboxBridgeWindows implements SingboxBridge {
   Timer? _statsTimer;
   Timer? _trafficWatchdog;
   BridgeState _state = BridgeState.idle;
+
+  // ИСПРАВЛЕНО: права администратора кэшируются на весь срок жизни
+  // процесса. Windows не позволяет процессу "приобрести" права после
+  // старта — либо requireAdministrator в манифесте отработал при запуске,
+  // либо нет. Раньше _checkAdmin() спавнил `net session` (внешний процесс,
+  // десятки-сотни мс) на КАЖДЫЙ connect(), хотя результат не может
+  // измениться между вызовами в рамках одного запуска приложения.
+  bool? _isAdminCached;
 
   // Стримы для UI
   final _stateCtrl = StreamController<BridgeState>.broadcast();
@@ -79,7 +85,8 @@ class SingboxBridgeWindows implements SingboxBridge {
         );
       }
 
-      // 2. Проверяем права администратора
+      // 2. Проверяем права администратора (результат кэшируется —
+      // см. комментарий у _isAdminCached)
       final isAdmin = await _checkAdmin();
       if (!isAdmin) {
         log.w('Нет прав администратора — WinTUN требует прав!', tag: 'BRIDGE');
@@ -102,8 +109,8 @@ class SingboxBridgeWindows implements SingboxBridge {
         smartRouting: smartRouting,
       );
 
-      // ИСПРАВЛЕНО: мержим experimental вместо полной перезаписи,
-      // чтобы сохранить cache_file из _buildExperimental().
+      // Мержим experimental вместо полной перезаписи, чтобы сохранить
+      // cache_file из _buildExperimental().
       final experimental = Map<String, dynamic>.from(
         config['experimental'] as Map? ?? {},
       );
@@ -115,7 +122,11 @@ class SingboxBridgeWindows implements SingboxBridge {
 
       final configJson = _builder.buildJson(config);
 
-      // Дамп конфига в лог
+      // Дамп конфига в лог. ВАЖНО: этот дамп содержит uuid/reality-ключи
+      // в открытом виде — это ожидаемо для локальной отладки (тег CFG
+      // виден только на экране логов), но LogService.exportText()
+      // маскирует эти поля перед копированием/отправкой, так что секрет
+      // не покидает устройство при "Скопировать лог".
       log.d('=== ПОЛНЫЙ КОНФИГ SING-BOX ===', tag: 'BRIDGE');
       for (final line in configJson.split('\n')) {
         log.d(line, tag: 'CFG');
@@ -141,19 +152,17 @@ class SingboxBridgeWindows implements SingboxBridge {
 
       log.i('sing-box PID: ${_process!.pid}', tag: 'BRIDGE');
 
-      // 7. Пишем stdout/stderr в лог
+      // 7. Пишем stdout/stderr в лог.
       //
-      // ИСПРАВЛЕНО: sing-box пишет ВСЕ свои логи в stderr — это его штатное
-      // поведение, а не признак ошибки. Раньше весь stderr тегировался как
-      // [ERR], что создавало ложный алерт на обычные INFO-сообщения.
-      // Теперь парсим уровень из текста самого sing-box и логируем правильно.
+      // sing-box пишет ВСЕ свои логи в stderr — это его штатное поведение,
+      // не признак ошибки. Парсим уровень из текста самого sing-box.
       _process!.stdout
           .transform(const SystemEncoding().decoder)
           .listen(_parseSingboxOutput);
 
       _process!.stderr.transform(const SystemEncoding().decoder).listen(
-            _parseSingboxOutput,
-          ); // sing-box пишет сюда ВСЁ, не только ошибки
+        _parseSingboxOutput,
+      );
 
       // Следим за завершением процесса
       _process!.exitCode.then((code) {
@@ -176,7 +185,7 @@ class SingboxBridgeWindows implements SingboxBridge {
         await _killProcess();
         throw Exception(
           'sing-box не ответил за 15 секунд. '
-          'Возможно, не хватает прав администратора.',
+              'Возможно, не хватает прав администратора.',
         );
       }
 
@@ -184,15 +193,13 @@ class SingboxBridgeWindows implements SingboxBridge {
       log.i('sing-box готов! Версия: $version', tag: 'BRIDGE');
 
       // 9. Запускаем сбор статистики + watchdog нулевого трафика.
-      //    Watchdog проверяет через 8 секунд — этого достаточно чтобы
-      //    Windows достроил маршруты TUN и пошёл первый трафик.
       _startStats();
       _startTrafficWatchdog();
       _setState(BridgeState.running);
 
       log.i(
         'VPN активен. Подожди 5–10 секунд — Windows перестраивает маршруты '
-        'после поднятия TUN. Интернет появится автоматически.',
+            'после поднятия TUN. Интернет появится автоматически.',
         tag: 'BRIDGE',
       );
 
@@ -229,18 +236,10 @@ class SingboxBridgeWindows implements SingboxBridge {
   }
 
   /// Резолвит доменное имя сервера в IP-адрес ДО запуска TUN.
-  ///
-  /// Результат используется для ip_cidr bypass в route-конфиге.
-  /// Резолвим сейчас, потому что:
-  ///   • TUN ещё не поднят → системный DNS работает нормально
-  ///   • После поднятия TUN весь трафик идёт через него, и DNS
-  ///     может не успеть настроиться до первого пакета к серверу
-  ///
-  /// Возвращает null если хост уже IP-адрес или резолв не удался.
   Future<String?> _resolveServerIp(String host) async {
     if (_isIpAddress(host)) {
       log.d('Хост уже IP-адрес: $host', tag: 'BRIDGE');
-      return null; // buildTunConfig сам возьмёт его из node.host
+      return null;
     }
 
     log.i('Резолвим IP сервера: $host', tag: 'BRIDGE');
@@ -259,7 +258,7 @@ class SingboxBridgeWindows implements SingboxBridge {
       } else {
         log.w(
           'DNS вернул пустой список для $host. '
-          'Bypass не будет добавлен — рассчитываем на auto_detect_interface.',
+              'Bypass не будет добавлен — рассчитываем на auto_detect_interface.',
           tag: 'BRIDGE',
         );
       }
@@ -267,7 +266,7 @@ class SingboxBridgeWindows implements SingboxBridge {
     } catch (e) {
       log.w(
         'Не удалось резолвнуть $host: $e. '
-        'Bypass не будет добавлен — рассчитываем на auto_detect_interface.',
+            'Bypass не будет добавлен — рассчитываем на auto_detect_interface.',
         tag: 'BRIDGE',
       );
       return null;
@@ -281,25 +280,16 @@ class SingboxBridgeWindows implements SingboxBridge {
   }
 
   /// Парсит вывод sing-box и логирует с правильным уровнем.
-  ///
-  /// Sing-box пишет строки вида:
-  ///   +0300 2026-05-17 17:50:25 INFO router: updated default interface...
-  ///   +0300 2026-05-17 17:50:25 WARN tun: ...
-  ///   +0300 2026-05-17 17:50:25 ERROR ...
-  ///
-  /// Мы вычленяем уровень и логируем с соответствующим тегом.
   void _parseSingboxOutput(String chunk) {
     for (final rawLine in chunk.split('\n')) {
       final line = rawLine.trim();
       if (line.isEmpty) continue;
 
-      // Ищем уровень в формате sing-box: "... INFO ...", "... WARN ...", "... ERROR ..."
       if (line.contains(' ERROR ') || line.contains(' FATAL ')) {
         log.e('[sing-box] $line', tag: 'SBOX');
       } else if (line.contains(' WARN ')) {
         log.w('[sing-box] $line', tag: 'SBOX');
       } else {
-        // INFO, DEBUG и всё остальное → info
         log.i('[sing-box] $line', tag: 'SBOX');
       }
     }
@@ -323,11 +313,6 @@ class SingboxBridgeWindows implements SingboxBridge {
   }
 
   /// Watchdog: проверяет что через 8 секунд после подключения трафик не ноль.
-  ///
-  /// 8 секунд выбрано потому что Windows после поднятия TUN-адаптера
-  /// несколько секунд перестраивает таблицу маршрутов — в это время
-  /// "нет сети" это нормально. Если через 8 секунд всё ещё 0 — реальная
-  /// проблема.
   void _startTrafficWatchdog() {
     _trafficWatchdog?.cancel();
     _trafficWatchdog = Timer(const Duration(seconds: 8), () async {
@@ -338,17 +323,17 @@ class SingboxBridgeWindows implements SingboxBridge {
         if (total == 0) {
           log.w(
             '⚠ WATCHDOG: 8 секунд прошло, трафик = 0 байт!\n'
-            '  Скорее всего причина одна из:\n'
-            '  1. Нет прав Администратора — WinTUN не может изменить таблицу маршрутов\n'
-            '  2. VLESS-сервер недоступен или не поддерживает MUX (smux)\n'
-            '  3. IP сервера не удалось резолвнуть до старта — проверь DNS',
+                '  Скорее всего причина одна из:\n'
+                '  1. Нет прав Администратора — WinTUN не может изменить таблицу маршрутов\n'
+                '  2. VLESS-сервер недоступен или не поддерживает MUX (smux)\n'
+                '  3. IP сервера не удалось резолвнуть до старта — проверь DNS',
             tag: 'DIAG',
           );
           _errorCtrl.add('WATCHDOG_NO_TRAFFIC');
         } else {
           log.i(
             '✓ WATCHDOG: трафик идёт — rx=${_fmtBytes(rx)}, tx=${_fmtBytes(tx)}. '
-            'VPN работает нормально.',
+                'VPN работает нормально.',
             tag: 'DIAG',
           );
         }
@@ -398,13 +383,20 @@ class SingboxBridgeWindows implements SingboxBridge {
     } catch (_) {}
   }
 
+  /// Проверяет права администратора один раз за время жизни процесса
+  /// и кэширует результат. `net session` — относительно тяжёлый вызов
+  /// (спавн процесса + запрос к SCM), права не могут измениться в
+  /// течение работы приложения, поэтому повторные проверки — чистые
+  /// потери времени на каждый connect().
   Future<bool> _checkAdmin() async {
+    if (_isAdminCached != null) return _isAdminCached!;
     try {
       final r = await Process.run('net', ['session'], runInShell: true);
-      return r.exitCode == 0;
+      _isAdminCached = r.exitCode == 0;
     } catch (_) {
-      return false;
+      _isAdminCached = false;
     }
+    return _isAdminCached!;
   }
 
   void dispose() {

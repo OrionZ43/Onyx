@@ -17,11 +17,11 @@ class LogEntry {
   final String tag;
 
   String get levelLabel => switch (level) {
-        LogLevel.debug => 'DBG',
-        LogLevel.info => 'INF',
-        LogLevel.warn => 'WRN',
-        LogLevel.error => 'ERR',
-      };
+    LogLevel.debug => 'DBG',
+    LogLevel.info => 'INF',
+    LogLevel.warn => 'WRN',
+    LogLevel.error => 'ERR',
+  };
 
   String get timeStr {
     final t = timestamp;
@@ -36,7 +36,10 @@ class LogEntry {
 }
 
 /// Глобальный логгер. Хранит последние 500 записей в памяти.
-/// Друг из Краснодара может скопировать весь лог кнопкой "Share".
+/// Пользователь может скопировать весь лог кнопкой "Share" для саппорта —
+/// поэтому ЛЮБОЙ секрет (UUID, Reality-ключи) должен быть вымаран из
+/// экспортируемого текста, даже если он присутствовал в исходном сообщении
+/// (например, дамп конфига sing-box в BRIDGE/CFG тегах).
 class LogService extends ChangeNotifier {
   static final instance = LogService._();
   LogService._();
@@ -58,7 +61,8 @@ class LogService extends ChangeNotifier {
     if (_entries.length > _maxEntries) {
       _entries.removeAt(0);
     }
-    // Дублируем в консоль разработчика
+    // Дублируем в консоль разработчика (полный, немаскированный текст —
+    // это локальная консоль во время разработки, не покидает устройство)
     if (kDebugMode) {
       debugPrint(_entries.last.toString());
     }
@@ -75,8 +79,36 @@ class LogService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Весь лог одной строкой — для кнопки "Скопировать и отправить"
-  String exportText() => _entries.map((e) => e.toString()).join('\n');
+  // ── Редакция секретов ────────────────────────────────────────────────
+  //
+  // Конфиг sing-box логируется построчно (тег CFG) для отладки маршрутизации
+  // и содержит: uuid (ключ доступа к VLESS-серверу), reality public_key,
+  // reality short_id, IP сервера. Всё это должно остаться на экране (для
+  // локальной отладки), но НЕ должно уйти при "Скопировать и отправить" —
+  // иначе пользователь случайно сольёт свой приватный доступ в саппорт-чат.
+  //
+  // Паттерны намеренно широкие (ловят JSON-поле независимо от форматирования
+  // sing-box: с пробелами, без пробелов, в одну строку или построчно).
+  static final List<RegExp> _secretPatterns = [
+    RegExp(r'("uuid"\s*:\s*")[^"]+(")'),
+    RegExp(r'("public_key"\s*:\s*")[^"]+(")'),
+    RegExp(r'("short_id"\s*:\s*")[^"]+(")'),
+    RegExp(r'("password"\s*:\s*")[^"]+(")'),
+    RegExp(r'("secret"\s*:\s*")[^"]+(")'), // clash_api secret, если задан
+  ];
+
+  static String _redact(String line) {
+    var out = line;
+    for (final pattern in _secretPatterns) {
+      out = out.replaceAllMapped(pattern, (m) => '${m[1]}***${m[2]}');
+    }
+    return out;
+  }
+
+  /// Весь лог одной строкой — для кнопки "Скопировать и отправить".
+  /// Секреты вымараны независимо от того, как они попали в лог.
+  String exportText() =>
+      _entries.map((e) => _redact(e.toString())).join('\n');
 }
 
 // Shortcut для удобного использования везде
@@ -84,5 +116,5 @@ final log = LogService.instance;
 
 // Riverpod provider для watch в UI
 final logProvider = ChangeNotifierProvider<LogService>(
-  (_) => LogService.instance,
+      (_) => LogService.instance,
 );
