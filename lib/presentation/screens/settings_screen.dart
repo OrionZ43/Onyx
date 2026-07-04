@@ -136,7 +136,7 @@ class SettingsScreen extends ConsumerWidget {
                                 const SizedBox(width: 16),
                                 Switch.adaptive(
                                   value: settings.smartRouting,
-                                  activeColor: AppColors.plasma,
+                                  activeThumbColor: AppColors.plasma,
                                   onChanged: (val) => ref
                                       .read(settingsProvider.notifier)
                                       .toggleSmartRouting(val),
@@ -301,7 +301,7 @@ class _SettingSwitchCard extends StatelessWidget {
           const SizedBox(width: 16),
           Switch.adaptive(
             value: value,
-            activeColor: AppColors.plasma,
+            activeThumbColor: AppColors.plasma,
             onChanged: onChanged,
           ),
         ],

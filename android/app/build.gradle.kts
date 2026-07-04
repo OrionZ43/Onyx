@@ -13,7 +13,10 @@ android {
     }
     namespace = "z43.studios.onyx"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Плагины требуют разные версии NDK (flutter_v2ray → 27, jni → 28).
+    // NDK обратно совместимы, поэтому ставим самую высокую из требуемых.
+    // Задаём явно вместо flutter.ndkVersion (по умолчанию был 26).
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

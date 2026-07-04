@@ -332,7 +332,7 @@ class _AppRow extends StatelessWidget {
             const SizedBox(width: 12),
             Switch.adaptive(
               value: excluded,
-              activeColor: AppColors.plasma,
+              activeThumbColor: AppColors.plasma,
               onChanged: onChanged,
             ),
           ],
