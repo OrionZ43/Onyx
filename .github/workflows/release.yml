@@ -5,6 +5,13 @@ on:
     tags:
       - 'v*'
 
+# Без этого GITHUB_TOKEN по умолчанию получает только read-права, и шаг
+# создания GitHub Release падает с 403 "Resource not accessible by
+# integration". contents: write разрешает джобам создавать релизы и
+# загружать в них артефакты.
+permissions:
+  contents: write
+
 jobs:
   build-android:
     name: Build Android APK
@@ -61,6 +68,11 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows app
+        env:
+          # Дублируем заглушку депрекации корутин на уровне переменной
+          # окружения — гарантированно долетает до всех плагинов, включая
+          # permission_handler_windows, даже если CMake-дефайн до них не дошёл.
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: |
           $tag = "${{ github.ref_name }}"
           $version = $tag.TrimStart('v')

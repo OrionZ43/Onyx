@@ -32,6 +32,15 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# Свежие версии MSVC (VS 2022 17.10+, VS 18 на новых CI-раннерах) превращают
+# использование <experimental/coroutine> в ЖЁСТКУЮ ОШИБКУ (STL1011), а не
+# предупреждение. Плагин permission_handler_windows всё ещё тянет эти
+# экспериментальные корутины и без этого макроса не компилируется на
+# обновлённых раннерах. Определяем макрос глобально (до add_subdirectory
+# плагинов), чтобы заглушка применилась и к плагинам тоже.
+add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+add_definitions(-D_SILENCE_CLANG_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
