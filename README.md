@@ -110,6 +110,6 @@ MIT — см. [LICENSE](LICENSE).
 
 <div align="center">
 
-**Сделано с 💙 в [Z43 Studios](https://z43-studios.vercel.app)**
+**Сделано с ⬢ в [Z43 Studios](https://z43-studios.vercel.app)**
 
 </div>

@@ -5,7 +5,6 @@ import '../../core/log_service.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/node_sanitizer.dart';
-import '../../infrastructure/singbox_bridge.dart';
 import '../../infrastructure/singbox_bridge_windows.dart';
 import '../../infrastructure/singbox_bridge_android.dart';
 import '../../infrastructure/vpn_notification_service.dart';

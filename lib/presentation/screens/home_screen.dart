@@ -26,7 +26,6 @@ import '../providers/vpn_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/node_provider.dart';
 import '../providers/update_provider.dart';
-import 'update_screen.dart';
 import '../widgets/node_list_sheet.dart';
 import 'log_screen.dart';
 import 'subscription_manager_screen.dart';
