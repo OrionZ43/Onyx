@@ -5,6 +5,7 @@ import '../../core/log_service.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/node_sanitizer.dart';
+import '../../infrastructure/singbox_bridge.dart';
 import '../../infrastructure/singbox_bridge_windows.dart';
 import '../../infrastructure/singbox_bridge_android.dart';
 import '../../infrastructure/vpn_notification_service.dart';
@@ -17,6 +18,8 @@ class VpnController extends StateNotifier<VpnState> {
     _listenBridge();
     _listenNotificationActions();
   }
+
+  StreamSubscription? _bridgeStateSub;
 
   final Ref ref;
   final _sanitizer = const NodeSanitizer();
@@ -75,8 +78,15 @@ class VpnController extends StateNotifier<VpnState> {
       connected: false,
     ));
 
-    final isSmartRouting = ref.read(settingsProvider).smartRouting;
-    final result = await _bridge.start(node, smartRouting: isSmartRouting);
+    final settingsSnapshot = ref.read(settingsProvider);
+    final result = await _bridge.start(
+      node,
+      smartRouting: settingsSnapshot.smartRouting,
+      aiDirectLane: settingsSnapshot.aiDirectLane,
+      excludedApps: settingsSnapshot.splitTunnelingEnabled
+          ? settingsSnapshot.excludedApps.toList()
+          : const [],
+    );
 
     if (mySession != _sessionId) {
       log.d(
@@ -190,54 +200,30 @@ class VpnController extends StateNotifier<VpnState> {
       final current = state;
       if (current is! VpnConnected) return;
 
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 8);
-      // ВАЖНО: локальный прокси на 127.0.0.1:2080 существует только на
-      // Windows (SingboxBridgeWindows поднимает sing-box с socksPort: 2080).
-      // На Android мостом рулит flutter_v2ray — он сам создаёт SOCKS5-инбаунд
-      // на порту 1080 (и это HTTP CONNECT через dart:io всё равно не умеет
-      // говорить с SOCKS5-портом). Плюс VpnService и так туннелирует весь
-      // трафик устройства (proxyOnly: false), включая наш собственный —
-      // так что на Android просто идём напрямую, без findProxy, и запрос
-      // естественным образом проходит через VPN-туннель.
-      if (!Platform.isAndroid) {
-        client.findProxy = (uri) => 'PROXY 127.0.0.1:2080';
-      }
-      client.badCertificateCallback = (cert, host, port) => true;
-
-      try {
-        final request = await client.getUrl(
-          Uri.parse('https://cp.cloudflare.com/generate_204'),
-        );
-        request.headers.set(HttpHeaders.connectionHeader, 'close');
-        final response = await request.close().timeout(
-          const Duration(seconds: 8),
-        );
-        await response.drain<void>();
-
-        if (response.statusCode >= 200 && response.statusCode < 400) {
-          if (_failedPings > 0) {
-            log.d(
-              'Health Monitor: связь восстановлена (было $_failedPings ошибок)',
-              tag: 'VPN',
-            );
-          }
-          _failedPings = 0;
-        } else {
-          log.w(
-            'Health Monitor: неожиданный статус ${response.statusCode}',
+      // Проверка связности делегирована мосту (verifyTunnel):
+      //   • Windows — HTTPS через локальный прокси sing-box (2080);
+      //   • Android — замер задержки САМИМ v2ray-core.
+      //
+      // Раньше на Android здесь был прямой HTTPS-запрос без прокси —
+      // расчёт был на то, что VpnService туннелирует весь трафик. Ловушка:
+      // если туннель НЕ поднялся, тот же запрос спокойно уходит через
+      // обычную сеть и тоже возвращает 204. Такой health-check «подтверждал»
+      // связность на мёртвом VPN (именно это сбило диагностику симптома B —
+      // failedPings=0/4 при фактически не созданном VPN-интерфейсе).
+      // verifyTunnel() по построению не может дать ложноположительный
+      // результат: на обеих платформах запрос физически идёт через туннель.
+      final ok = await _bridge.verifyTunnel();
+      if (ok) {
+        if (_failedPings > 0) {
+          log.d(
+            'Health Monitor: связь восстановлена (было $_failedPings ошибок)',
             tag: 'VPN',
           );
-          _failedPings++;
         }
-      } on TimeoutException {
-        log.d('Health Monitor: таймаут пинга', tag: 'VPN');
+        _failedPings = 0;
+      } else {
+        log.d('Health Monitor: проверка туннеля не прошла', tag: 'VPN');
         _failedPings++;
-      } catch (e) {
-        log.d('Health Monitor пинг не прошел: $e', tag: 'VPN');
-        _failedPings++;
-      } finally {
-        client.close(force: true);
       }
 
       if (mySession != _sessionId) return;
@@ -289,6 +275,41 @@ class VpnController extends StateNotifier<VpnState> {
   // ── Слушаем мост ──────────────────────────────────────────────────────
 
   void _listenBridge() {
+    // ── Синхронизация с реальным состоянием моста ─────────────────────────
+    //
+    // РАНЬШЕ подписки на stateStream не было вовсе, и Riverpod-состояние
+    // жило своей жизнью. Из-за этого, например, нажатие "ОТКЛЮЧИТЬ" в
+    // РОДНОМ уведомлении плагина flutter_v2ray (не нашем) останавливало
+    // VPN на нативном уровне, мост переходил в idle, а UI продолжал
+    // показывать "Защищён" до ручного отключения.
+    _bridgeStateSub = _bridge.stateStream.listen((bridgeState) {
+      final current = state;
+      switch (bridgeState) {
+        case BridgeState.idle:
+          // Туннель погас снаружи (нативная кнопка, отзыв VPN-разрешения
+          // системой и т.п.), а мы всё ещё считаем себя подключёнными.
+          if (current is VpnConnected) {
+            log.w('Мост перешёл в idle — синхронизируем UI', tag: 'VPN');
+            _healthTimer?.cancel();
+            _notifUpdateTimer?.cancel();
+            _sessionId++;
+            state = const VpnDisconnected();
+            unawaited(_notif.cancel());
+          }
+        case BridgeState.error:
+          // Ошибки с текстом приходят через errorStream; здесь ловим только
+          // молчаливый переход в error (например, watchdog Android-моста).
+          if (current is VpnConnected) {
+            _healthTimer?.cancel();
+            _notifUpdateTimer?.cancel();
+          }
+        case BridgeState.starting ||
+              BridgeState.running ||
+              BridgeState.stopping:
+          break; // Эти переходы инициируем мы сами — UI уже в курсе.
+      }
+    });
+
     _statsSub = _bridge.statsStream.listen((stats) {
       _lastRx = stats.$1;
       _lastTx = stats.$2;
@@ -319,6 +340,7 @@ class VpnController extends StateNotifier<VpnState> {
     _statsSub?.cancel();
     _errorSub?.cancel();
     _notifActionSub?.cancel();
+    _bridgeStateSub?.cancel();
     super.dispose();
   }
 }

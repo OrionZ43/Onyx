@@ -1,7 +1,7 @@
-
 import '../infrastructure/binary_manager.dart';
 import 'dart:convert';
 import 'entities/node.dart';
+import 'routing_domains.dart';
 
 /// Собирает финальный JSON-конфиг sing-box.
 class SingboxConfigBuilder {
@@ -14,11 +14,16 @@ class SingboxConfigBuilder {
         int socksPort = 2080,
         String? resolvedServerIp,
         bool smartRouting = true,
+        bool aiDirectLane = true,
         bool isAndroid = false,
       }) {
     return {
       'log': {'level': 'warn', 'timestamp': true},
-      'dns': _buildDns(smartRouting: smartRouting, isAndroid: isAndroid),
+      'dns': _buildDns(
+        smartRouting: smartRouting,
+        aiDirectLane: aiDirectLane,
+        isAndroid: isAndroid,
+      ),
       'inbounds': [_buildTun(isAndroid: isAndroid), _buildSocks(socksPort)],
       'outbounds': [
         _buildVless(node),
@@ -30,6 +35,7 @@ class SingboxConfigBuilder {
         node,
         resolvedServerIp: resolvedServerIp,
         smartRouting: smartRouting,
+        aiDirectLane: aiDirectLane,
         isAndroid: isAndroid,
       ),
       'experimental': _buildExperimental(),
@@ -182,7 +188,11 @@ class SingboxConfigBuilder {
   ///     Пользователь: DNS → TUN → sing-box DNS → dns-remote (DoH/proxy) ✓
   ///     sing-box сам: DNS для outbound → dns-local (Яндекс/direct/NIC)   ✓
   /// ──────────────────────────────────────────────────────────────────────────
-  Map<String, dynamic> _buildDns({bool smartRouting = false, bool isAndroid = false}) => {
+  Map<String, dynamic> _buildDns({
+    bool smartRouting = false,
+    bool aiDirectLane = true,
+    bool isAndroid = false,
+  }) => {
     'servers': [
       {
         // Основной: DoH через зашифрованный прокси — ТСПУ не видит запросы
@@ -212,6 +222,17 @@ class SingboxConfigBuilder {
         'outbound': 'any',
         'server': 'dns-local',
       },
+      // ── AI Direct Lane ────────────────────────────────────────────────
+      // Домены ИИ-сервисов резолвятся СТРОГО через dns-remote
+      // (DoH внутри туннеля, detour: proxy) — раньше любых правил умной
+      // маршрутизации. Ни один DNS-запрос к ИИ не уходит провайдеру в
+      // открытом виде → сервис не может определить реальную страну по
+      // резолверу, "Access Denied" из-за DNS-утечки исключён.
+      if (aiDirectLane)
+        {
+          'domain_suffix': kAiDomainSuffixes,
+          'server': 'dns-remote',
+        },
       // RU-домены резолвятся напрямую, не через proxy
       if (smartRouting) ...[
         {
@@ -227,7 +248,7 @@ class SingboxConfigBuilder {
           // Работает НЕЗАВИСИМО от наличия geosite.db.
           // Гарантирует прямой резолв даже если geosite-БД не загружена
           // или не содержит нужный домен.
-          'domain_suffix': _ruCdnDomainSuffixes,
+          'domain_suffix': kRuCdnDomainSuffixes,
           'server': 'dns-local',
         },
       ],
@@ -254,6 +275,7 @@ class SingboxConfigBuilder {
       Node node, {
         String? resolvedServerIp,
         bool smartRouting = true,
+        bool aiDirectLane = true,
         bool isAndroid = false,
       }) {
     final serverIp =
@@ -289,6 +311,17 @@ class SingboxConfigBuilder {
       'rules': [
         // DNS-трафик клиентов → модуль DNS sing-box
         {'protocol': 'dns', 'outbound': 'dns-out'},
+        // ── AI Direct Lane: максимальный приоритет ──────────────────────
+        // Трафик к ИИ-сервисам всегда идёт строго в outbound 'proxy' —
+        // раньше private/geoip/geosite/domain_suffix-правил умной
+        // маршрутизации. Даже если CDN ИИ-сервиса внезапно зарезолвится
+        // в IP из "прямых" диапазонов, домен-матч сработает первым
+        // (sniff включён в TUN-инбаунде) и запрос уйдёт через туннель.
+        if (aiDirectLane)
+          {
+            'domain_suffix': kAiDomainSuffixes,
+            'outbound': 'proxy',
+          },
         // Локальные адреса никогда не идут через прокси
         {'ip_is_private': true, 'outbound': 'direct'},
         // Обход VPN для RU-доменов и популярных сервисов
@@ -308,7 +341,7 @@ class SingboxConfigBuilder {
           //   2. geosite.db устарел и не содержит новые CDN-домены
           //   3. Конкретный домен не попал в категорию 'ru' в БД
           {
-            'domain_suffix': _ruCdnDomainSuffixes,
+            'domain_suffix': kRuCdnDomainSuffixes,
             'outbound': 'direct',
           },
         ],
@@ -327,77 +360,9 @@ class SingboxConfigBuilder {
     };
   }
 
-  // ── Хардкод-список CDN/сервисов СНГ ──────────────────────────────────────
-  //
-  // Используется как fallback в _buildDns и _buildRoute.
-  // Обновляй этот список при появлении новых крупных CDN.
-  static const List<String> _ruCdnDomainSuffixes = [
-    // Яндекс — CDN и сервисы
-    'yandex.ru',
-    'yandex.com',
-    'yandex.net',
-    'yandex.st',
-    'yastatic.net',    // главный Яндекс CDN (JS, CSS, изображения)
-    'yandexapis.com',
-    'ya.ru',
-    'yandex-team.ru',
-
-    // VK / Mail.ru Group
-    'vk.com',
-    'vk.me',
-    'vkuseraudio.com',
-    'vkuservideo.com',
-    'vkontakte.ru',
-    'userapi.com',     // VK CDN для медиа
-    'mail.ru',
-    'mailru.com',
-    'mradx.net',       // Mail.ru рекламная сеть
-    'mycdn.me',        // OK.ru CDN
-    'odnoklassniki.ru',
-    'ok.ru',
-
-    // Wildberries
-    'wildberries.ru',
-    'wb.ru',
-    'wbstatic.net',    // WB CDN для изображений товаров
-    'wbx-ru.net',
-
-    // Ozon
-    'ozon.ru',
-    'ozon-api.com',
-    'ozoncdn.com',
-    'cdnvideo.ru',     // Ozon видео CDN
-
-    // Сбер / ФинТех
-    'sber.ru',
-    'sberbank.ru',
-    'sberpay.ru',
-    'domclick.ru',
-    'sbercloud.ru',
-
-    // Прочие крупные RU-сервисы
-    'gosuslugi.ru',
-    'mos.ru',
-    'nalog.ru',
-    'pfr.gov.ru',
-    'tinkoff.ru',
-    'raiffeisen.ru',
-    'alfabank.ru',
-    'vtb.ru',
-    'avito.ru',
-    'cian.ru',
-    'hh.ru',
-    'rbc.ru',
-    'ria.ru',
-    'kommersant.ru',
-
-    // Стриминг
-    'kinopoisk.ru',    // принадлежит Яндексу, но CDN отдельный
-    'ivi.ru',
-    'okko.tv',
-    'more.tv',
-    'premier.one',
-  ];
+  // Хардкод-список CDN/сервисов СНГ вынесен в общий каталог
+  // routing_domains.dart (kRuCdnDomainSuffixes) — им теперь пользуется и
+  // Android-мост, где geosite-БД недоступна. Обновлять список — там.
 
   bool _isIpAddress(String host) {
     if (RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host)) return true;

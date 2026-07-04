@@ -6,6 +6,13 @@
          включая наше собственное VPN-статус уведомление и то, что создаёт
          flutter_v2ray, не покажется вообще, без ошибки и без предупреждения. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Split tunneling: без этого разрешения на Android 11+ (API 30)
+         getInstalledApplications() возвращает лишь крошечный поднабор
+         пакетов и экран выбора приложений будет почти пуст.
+         ВНИМАНИЕ для публикации в Google Play: QUERY_ALL_PACKAGES требует
+         обоснования в консоли; для VPN-приложений со split tunneling это
+         разрешённый use-case (категория "device search / VPN"). -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <application
         android:label="onyx"
         android:name="${applicationName}"

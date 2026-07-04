@@ -68,8 +68,17 @@ class SingboxBridgeWindows implements SingboxBridge {
   bool get binariesReady => _binMgr.isReady;
 
   /// Запускает VPN-туннель для [node].
+  ///
+  /// [excludedApps] (split tunneling) на Windows не поддерживается —
+  /// параметр игнорируется. Per-app маршрутизация возможна только через
+  /// WFP-фильтры по PID, что требует отдельного драйверного решения.
   @override
-  Future<BridgeResult> start(Node node, {bool smartRouting = true}) async {
+  Future<BridgeResult> start(
+      Node node, {
+        bool smartRouting = true,
+        bool aiDirectLane = true,
+        List<String> excludedApps = const [],
+      }) async {
     if (_state == BridgeState.running || _state == BridgeState.starting) {
       return const BridgeResult(success: false, error: 'Уже запущен');
     }
@@ -107,6 +116,7 @@ class SingboxBridgeWindows implements SingboxBridge {
         socksPort: 2080,
         resolvedServerIp: resolvedServerIp,
         smartRouting: smartRouting,
+        aiDirectLane: aiDirectLane,
       );
 
       // Мержим experimental вместо полной перезаписи, чтобы сохранить
@@ -210,6 +220,36 @@ class SingboxBridgeWindows implements SingboxBridge {
       await _killProcess();
       _setState(BridgeState.error);
       return BridgeResult(success: false, error: e.toString());
+    }
+  }
+
+  /// Проверка реальной связности через туннель: HTTPS-запрос через
+  /// локальный mixed-прокси sing-box (2080). Если процесс sing-box мёртв,
+  /// соединение с прокси просто не откроется — ложноположительный результат
+  /// невозможен, в отличие от прямого запроса в обход прокси.
+  @override
+  Future<bool> verifyTunnel() async {
+    if (_state != BridgeState.running) return false;
+
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    client.findProxy = (uri) => 'PROXY 127.0.0.1:2080';
+    client.badCertificateCallback = (cert, host, port) => true;
+
+    try {
+      final request = await client.getUrl(
+        Uri.parse('https://cp.cloudflare.com/generate_204'),
+      );
+      request.headers.set(HttpHeaders.connectionHeader, 'close');
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
+      await response.drain<void>();
+      return response.statusCode >= 200 && response.statusCode < 400;
+    } catch (_) {
+      return false;
+    } finally {
+      client.close(force: true);
     }
   }
 

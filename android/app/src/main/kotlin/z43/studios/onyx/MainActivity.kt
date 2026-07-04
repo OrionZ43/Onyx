@@ -46,6 +46,58 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
+                    // Список установленных приложений для split tunneling.
+                    // Возвращает List<Map>: packageName, appName, isSystem.
+                    // Иконки намеренно не передаются — сериализация сотен
+                    // PNG через MethodChannel заметно тормозит открытие
+                    // экрана, а глass-аватар с первой буквой выглядит
+                    // консистентнее с дизайн-системой.
+                    "getInstalledApps" -> {
+                        Thread {
+                            try {
+                                val pm = packageManager
+                                val apps = pm.getInstalledApplications(0)
+                                    .filter { it.packageName != packageName }
+                                    .map {
+                                        mapOf(
+                                            "packageName" to it.packageName,
+                                            "appName" to pm
+                                                .getApplicationLabel(it)
+                                                .toString(),
+                                            "isSystem" to ((it.flags and
+                                                android.content.pm.ApplicationInfo
+                                                    .FLAG_SYSTEM) != 0),
+                                        )
+                                    }
+                                    .sortedBy {
+                                        (it["appName"] as String).lowercase()
+                                    }
+                                runOnUiThread { result.success(apps) }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("APPS_ERROR", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+
+                    // Открывает системные настройки VPN — там пользователь
+                    // включает Always-on VPN и "Блокировать соединения без
+                    // VPN" (системный Kill Switch, надёжнее любого
+                    // программного).
+                    "openVpnSettings" -> {
+                        try {
+                            startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_VPN_SETTINGS
+                                )
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("SETTINGS_ERROR", e.message, null)
+                        }
+                    }
+
                     else -> result.notImplemented()
                 }
             }

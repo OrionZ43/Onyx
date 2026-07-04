@@ -8,6 +8,7 @@ import 'package:local_notifier/local_notifier.dart';
 import 'core/theme/app_theme.dart';
 import 'core/log_service.dart';
 import 'infrastructure/binary_manager.dart';
+import 'infrastructure/singbox_bridge_windows.dart';
 import 'presentation/screens/setup_screen.dart';
 import 'presentation/screens/onboarding_screen.dart';
 
@@ -125,6 +126,16 @@ class _OnyxAppState extends State<OnyxApp> with WindowListener, TrayListener {
       await windowManager.restore();
       await windowManager.focus();
     } else if (menuItem.key == 'exit_app') {
+      // ВАЖНО: перед выходом гасим sing-box, иначе процесс с поднятым
+      // WinTUN-интерфейсом остаётся жить после закрытия приложения —
+      // маршруты не восстанавливаются, и весь интернет у пользователя
+      // «пропадает» до ручного убийства sing-box.exe в диспетчере задач.
+      try {
+        await SingboxBridgeWindows.instance.stop();
+      } catch (_) {
+        // Даже если остановка не удалась — всё равно выходим, но пробуем
+        // добить процесс напрямую.
+      }
       await windowManager.destroy();
       exit(0);
     }
