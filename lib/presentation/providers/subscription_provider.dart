@@ -74,6 +74,23 @@ class SubscriptionState {
     return alive.isEmpty ? null : alive.first;
   }
 
+  /// Лучшая нода для доступа к ИИ: из прошедших AI-проверку — с минимальным
+  /// пингом. Если ни одна не прошла AI, возвращает обычный [bestNode]
+  /// (лучше рабочий туннель без гарантии ИИ, чем ничего).
+  Node? get bestAiNode {
+    final aiNodes = nodes.where((n) => n.aiReachable).toList();
+    if (aiNodes.isNotEmpty) {
+      aiNodes.sort(
+        (a, b) => (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999),
+      );
+      return aiNodes.first;
+    }
+    return bestNode;
+  }
+
+  /// Сколько нод подтвердили доступ к ИИ (для счётчиков в UI).
+  int get aiReachableCount => nodes.where((n) => n.aiReachable).length;
+
   SubscriptionState copyWith({
     SubStatus? status,
     List<Node>? nodes,
@@ -262,30 +279,47 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
   // ── Приватные ─────────────────────────────────────────────────────────────
 
+  /// Deep Probe теперь сканирует ВСЕ живые ноды (раньше — только топ-10) и
+  /// для каждой проверяет и базовую связность, и доступ к ИИ. Результаты
+  /// применяются прогрессивно: как только нода проверена, UI сразу получает
+  /// её обновлённые флаги (isTrulyWorking / aiReachable) — можно подключаться
+  /// к первой же зелёной ноде, не дожидаясь конца полного скана.
   Future<void> _runDeepProbe(List<Node> sortedNodes) async {
-    // Бинарник нужен для запуска sing-box
     final binMgr = BinaryManager.instance;
     if (!binMgr.isReady) {
       // Бинарники ещё не скачаны — пропускаем Deep Probe
       return;
     }
 
-    // Сколько нод будет проверяться (топ-10 из живых)
-    final candidateCount = sortedNodes.where((n) => n.isAlive).take(10).length;
-    if (candidateCount == 0) return;
+    // Все живые ноды, без ограничения в 10.
+    final aliveCount = sortedNodes.where((n) => n.isAlive).length;
+    if (aliveCount == 0) return;
 
     if (mounted) {
       state = state.copyWith(
         status: SubStatus.deepProbing,
         deepProbedCount: 0,
-        deepProbeTotal: candidateCount,
+        deepProbeTotal: aliveCount,
       );
     }
 
     final deepProbe = DeepProbe(singboxExePath: binMgr.singboxExe.path);
 
-    final workingNode = await deepProbe.findWorkingNode(
+    await deepProbe.probeAllNodes(
       sortedNodes,
+      onNodeResult: (updated) {
+        if (!mounted) return;
+        // Прогрессивно вливаем результат одной ноды в общий список.
+        final merged = state.nodes.map((n) {
+          return n.id == updated.id
+              ? n.copyWith(
+                  isTrulyWorking: updated.isTrulyWorking,
+                  aiReachable: updated.aiReachable,
+                )
+              : n;
+        }).toList();
+        state = state.copyWith(nodes: merged);
+      },
       onProgress: (done, total) {
         if (mounted) {
           state = state.copyWith(
@@ -295,22 +329,15 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
           );
         }
       },
+      isCancelled: () => !mounted,
     );
 
     if (!mounted) return;
 
-    if (workingNode != null) {
-      // Помечаем найденную ноду как isTrulyWorking = true в общем списке
-      final updatedNodes = state.nodes.map((n) {
-        return n.id == workingNode.id ? n.copyWith(isTrulyWorking: true) : n;
-      }).toList();
-
-      _saveCache(updatedNodes);
-      state = state.copyWith(status: SubStatus.ready, nodes: updatedNodes);
-    } else {
-      // Ни одна нода не прошла — возвращаемся в ready без изменений
-      state = state.copyWith(status: SubStatus.ready);
-    }
+    // Кэш пишем один раз в конце (а не на каждую ноду) — экономим
+    // сотни записей в SharedPreferences при большом списке.
+    _saveCache(state.nodes);
+    state = state.copyWith(status: SubStatus.ready);
   }
 
   Future<void> _saveCache(List<Node> nodes) async {

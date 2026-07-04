@@ -227,8 +227,18 @@ class DeepProbe {
 
   /// Цель HTTPS-проверки: Cloudflare generate_204 (всегда открыт, 204 ответ).
   static const _probeHost = 'cp.cloudflare.com';
-  static const _probePort = 443;
   static const _probePath = '/generate_204';
+
+  /// Цель AI-проверки. ChatGPT фронтирован Cloudflare, и именно Cloudflare
+  /// отдаёт 403/challenge для датацентр-IP из типовых блок-листов — то есть
+  /// это хороший индикатор "пустит ли exit-IP к ИИ вообще".
+  ///
+  /// Почему один хост, а не все ИИ сразу: полный обход всех ИИ-доменов
+  /// умножил бы время скана. ChatGPT/Cloudflare — самый строгий и
+  /// репрезентативный фильтр; если IP проходит здесь, он с высокой
+  /// вероятностью пройдёт и к остальным. При желании список можно
+  /// расширить (ценой скорости).
+  static const _aiProbeHost = 'chatgpt.com';
 
   // ── Публичный API ──────────────────────────────────────────────────────────
 
@@ -289,6 +299,131 @@ class DeepProbe {
       tag: 'DEEP',
     );
     return null;
+  }
+
+  /// Полный Deep-скан ВСЕХ живых нод — без ранней остановки.
+  ///
+  /// В отличие от [findWorkingNode] (который ищет ПЕРВУЮ рабочую и глушит
+  /// остальные), этот метод проверяет КАЖДУЮ живую ноду и для каждой ставит
+  /// два флага:
+  ///   • isTrulyWorking — базовая связность (generate_204);
+  ///   • aiReachable    — доступ к ИИ (только если базовая прошла).
+  ///
+  /// Результат по каждой ноде отдаётся немедленно через [onNodeResult],
+  /// чтобы UI заполнялся прогрессивно и пользователь мог подключиться к
+  /// первой же зелёной ноде, не дожидаясь конца полного скана.
+  ///
+  /// Батчи идут последовательно (по [_batchSize] параллельно внутри батча),
+  /// поэтому порты переиспользуются в пределах слота 0..[_batchSize]-1 —
+  /// процессы предыдущего батча к началу следующего уже убиты.
+  ///
+  /// [isCancelled] проверяется между батчами — позволяет прервать долгий
+  /// скан (например, при размонтировании провайдера).
+  Future<void> probeAllNodes(
+    List<Node> sortedNodes, {
+    required void Function(Node updated) onNodeResult,
+    void Function(int done, int total)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final candidates = sortedNodes.where((n) => n.isAlive).toList();
+    if (candidates.isEmpty) {
+      log.w('Deep-скан: нет живых кандидатов', tag: 'DEEP');
+      return;
+    }
+
+    log.i(
+      'Deep-скан ВСЕХ нод: ${candidates.length} кандидатов, '
+      'батчи по $_batchSize, база=$_probeHost, AI=$_aiProbeHost',
+      tag: 'DEEP',
+    );
+
+    int done = 0;
+
+    for (var start = 0; start < candidates.length; start += _batchSize) {
+      if (isCancelled?.call() ?? false) {
+        log.d('Deep-скан прерван на $done/${candidates.length}', tag: 'DEEP');
+        return;
+      }
+
+      final end = min(start + _batchSize, candidates.length);
+      final batch = candidates.sublist(start, end);
+
+      log.d(
+        'Батч ${start ~/ _batchSize + 1}: ноды ${start + 1}–$end '
+        'из ${candidates.length}',
+        tag: 'DEEP',
+      );
+
+      await Future.wait(
+        List.generate(batch.length, (slot) async {
+          final node = batch[slot];
+          final port = _basePort + slot;
+          final result = await _probeNodeFull(node, port);
+          done++;
+          onNodeResult(result);
+          onProgress?.call(done, candidates.length);
+        }),
+      );
+    }
+
+    log.i('Deep-скан завершён: проверено ${candidates.length} нод', tag: 'DEEP');
+  }
+
+  /// Полная проверка одной ноды: базовая связность + (при успехе) AI.
+  /// Всегда возвращает ноду с проставленными флагами (в т.ч. false/false
+  /// при провале), чтобы вызывающий мог обновить UI без исключений.
+  Future<Node> _probeNodeFull(Node node, int port) async {
+    final configPath = _probeConfigPath(port);
+    Process? process;
+    bool basicOk = false;
+    bool aiOk = false;
+
+    try {
+      await _writeProbeConfig(node, port, configPath);
+      process = await Process.start(
+        singboxExePath,
+        ['run', '-c', configPath],
+        mode: ProcessStartMode.detached,
+      );
+      log.d('[${node.name}] PID=${process.pid}, SOCKS5 порт=$port', tag: 'DEEP');
+
+      await Future.delayed(_startupDelay);
+
+      if (!await _isSocksListening(port)) {
+        log.d('[${node.name}] SOCKS5:$port не отвечает', tag: 'DEEP');
+        return node.copyWith(isTrulyWorking: false, aiReachable: false);
+      }
+
+      basicOk = await _httpsProbeViaSocks5(port, node.name).timeout(
+        _httpTimeout,
+        onTimeout: () => false,
+      );
+
+      // AI проверяем только у живых нод — на мёртвой это пустая трата времени.
+      if (basicOk) {
+        aiOk = await _aiProbeViaSocks5(port, node.name).timeout(
+          _httpTimeout,
+          onTimeout: () => false,
+        );
+      }
+
+      log.i(
+        '${basicOk ? "✓" : "✗"} [${node.name}] '
+        'база=${basicOk ? "ok" : "нет"} AI=${aiOk ? "ok" : "нет"}',
+        tag: 'DEEP',
+      );
+    } catch (e) {
+      log.d('[${node.name}] _probeNodeFull ошибка: $e', tag: 'DEEP');
+    } finally {
+      try {
+        process?.kill();
+      } catch (_) {}
+      try {
+        File(configPath).deleteSync();
+      } catch (_) {}
+    }
+
+    return node.copyWith(isTrulyWorking: basicOk, aiReachable: aiOk);
   }
 
   // ── Приватные методы ───────────────────────────────────────────────────────
@@ -460,6 +595,64 @@ class DeepProbe {
       return response.statusCode == 204 || response.statusCode == 200;
     } catch (e) {
       log.d('[$nodeName] HTTPS-проверка таймаут/ошибка', tag: 'DEEP');
+      return false;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// AI-проверка: пускает ли exit-IP к ИИ-сервису.
+  ///
+  /// Логика: делаем HTTPS-запрос к ChatGPT (Cloudflare-фронт) через прокси,
+  /// НЕ следуя редиректам, и смотрим первый статус:
+  ///   • 200 / 301 / 302 / 307 / 308 → IP чистый, ИИ доступен (обычная
+  ///     страница или редирект на /auth);
+  ///   • 403 / 451 → IP забанен по репутации/региону (то самое "Unable to
+  ///     load site" от Cloudflare, что мы видели на скринах);
+  ///   • заголовок cf-mitigated: challenge → Cloudflare выдаёт челлендж =
+  ///     тоже фактический блок для автоматики.
+  ///
+  /// Возвращает false при любой ошибке/таймауте — нет ответа, значит не
+  /// подтверждено.
+  Future<bool> _aiProbeViaSocks5(int proxyPort, String nodeName) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 5);
+    client.findProxy = (uri) => 'PROXY 127.0.0.1:$proxyPort';
+    client.badCertificateCallback = (cert, host, port) => true;
+
+    try {
+      final request = await client.getUrl(Uri.parse('https://$_aiProbeHost/'));
+      request.followRedirects = false;
+      // Реалистичный User-Agent: некоторые эджи режут запросы без него.
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/122.0 Safari/537.36',
+      );
+      final response = await request.close().timeout(_httpTimeout);
+
+      final code = response.statusCode;
+      final cfMitigated = response.headers.value('cf-mitigated');
+      await response.drain<void>();
+
+      if (cfMitigated != null && cfMitigated.contains('challenge')) {
+        log.d('[$nodeName] AI: cf-mitigated=challenge → блок', tag: 'DEEP');
+        return false;
+      }
+
+      final ok = code == 200 ||
+          code == 301 ||
+          code == 302 ||
+          code == 307 ||
+          code == 308;
+      log.d(
+        '[$nodeName] AI-проверка ($_aiProbeHost): HTTP $code → '
+        '${ok ? "доступен" : "блок"}',
+        tag: 'DEEP',
+      );
+      return ok;
+    } catch (e) {
+      log.d('[$nodeName] AI-проверка таймаут/ошибка', tag: 'DEEP');
       return false;
     } finally {
       client.close(force: true);

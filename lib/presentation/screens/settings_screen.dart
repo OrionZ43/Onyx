@@ -161,7 +161,23 @@ class SettingsScreen extends ConsumerWidget {
                                 .toggleAiDirectLane(val),
                           ),
 
-                          // ── Split tunneling (только Android) ─────────
+                          // ── Автопереключение серверов ────────────────
+                          const SizedBox(height: 16),
+                          _SettingSwitchCard(
+                            icon: Icons.swap_horiz_rounded,
+                            title: 'Автопереключение серверов',
+                            description:
+                                'Если активный сервер начал подвисать (пинг '
+                                'улетел, звонок заикается) или отвалился — '
+                                'Onyx сам перейдёт на лучший рабочий сервер '
+                                'и покажет уведомление. Переключение занимает '
+                                'пару секунд.',
+                            value: settings.autoFailover,
+                            onChanged: (val) => ref
+                                .read(settingsProvider.notifier)
+                                .toggleAutoFailover(val),
+                          ),
+
                           if (Platform.isAndroid) ...[
                             const SizedBox(height: 16),
                             _SettingSwitchCard(

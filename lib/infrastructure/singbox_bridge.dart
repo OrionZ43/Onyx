@@ -46,6 +46,17 @@ abstract class SingboxBridge {
   /// обычную сеть) — см. CHANGELOG, симптом B.
   Future<bool> verifyTunnel();
 
+  /// Замеряет текущую задержку через туннель в миллисекундах.
+  /// Возвращает -1, если туннель не отвечает (мёртв/таймаут).
+  ///
+  /// Отличие от [verifyTunnel]: даёт не булев «жив/мёртв», а число, по
+  /// которому можно поймать ДЕГРАДАЦИЮ (пинг улетел в 5000 мс, туннель
+  /// формально жив, но uplink захлёбывается — классический «тебя не слышно
+  /// в звонке»). Булева проверка такое пропускает.
+  ///   • Android — нативный getConnectedServerDelay (замер самим ядром);
+  ///   • Windows — время HTTPS-запроса через локальный прокси sing-box.
+  Future<int> measureLatency();
+
   Stream<BridgeState> get stateStream;
   Stream<(int rx, int tx)> get statsStream;
   Stream<String> get errorStream;

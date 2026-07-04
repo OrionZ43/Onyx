@@ -1,17 +1,115 @@
-# onyx
+<div align="center">
 
-VPN-Client
+# ⬢ Onyx VPN
 
-## Getting Started
+**Быстрый клиент для приватности и защиты трафика — на движке sing-box.**
+Шифрование соединения через VLESS/REALITY, умная маршрутизация и стабильный доступ к ИИ-сервисам.
 
-This project is a starting point for a Flutter application.
+![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Windows-8B5CF6?style=flat-square)
+![Flutter](https://img.shields.io/badge/Flutter-Dart-02569B?style=flat-square&logo=flutter)
+![Core](https://img.shields.io/badge/core-sing--box%201.10-000000?style=flat-square)
+![Protocol](https://img.shields.io/badge/protocol-VLESS%20%2F%20REALITY-3DDC84?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)
 
-A few resources to get you started if this is your first Flutter project:
+_Проект [Z43 Studios](https://z43-studios.vercel.app) · эстетика glassmorphism «Liquid Cosmic Onyx»_
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+</div>
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
+
+## О проекте
+
+**Onyx** — кроссплатформенный клиент для защиты приватности, который прячет сложность за одной кнопкой. Под капотом — ядро [sing-box](https://github.com/SagerNet/sing-box) на десктопе и [flutter_v2ray](https://pub.dev/packages/flutter_v2ray) на Android, современные протоколы шифрования (VLESS + REALITY) и умная маршрутизация, которая пускает выбранный трафик через зашифрованный туннель, а локальный — напрямую.
+
+Отдельное внимание — **стабильному доступу к ИИ-сервисам**: Onyx умеет проверять, какие серверы корректно работают с ChatGPT, Claude, Gemini и другими, и помечать их, чтобы соединение с нейросетями было предсказуемым.
+
+## Возможности
+
+### Соединение и протоколы
+- **VLESS + REALITY** — современное шифрование и маскировка трафика
+- **Один клиент — две платформы**: Android и Windows из единой Flutter-кодовой базы
+- **Импорт конфигураций** — вставь ссылку-подписку, получи список серверов
+- **Двухэтапная проверка серверов**: быстрый TCP-пинг + реальный Deep Probe через поднятый туннель
+
+### Умная маршрутизация
+- **Split routing** — локальный трафик (CDN, региональные сервисы) идёт напрямую, остальной — через зашифрованный туннель. Меньше задержки, корректная работа локальных приложений (например банковских)
+- **AI Direct Lane** — трафик к ИИ-сервисам (ChatGPT, Claude, Gemini, Grok, Perplexity и др.) идёт строго через туннель, а их DNS резолвится в зашифрованном виде внутри соединения. Устраняет ошибки «сервис недоступен в вашем регионе» из-за утечки DNS или геолокации
+- **Split tunneling** (Android) — выбранные приложения работают в обход туннеля
+
+### Надёжность
+- **AI-проба серверов** — Deep Probe проверяет, корректно ли сервер работает с ИИ-сервисами, и помечает подходящие ноды зелёным значком **AI**
+- **Автопереключение при деградации** — если активный сервер начал подвисать (задержка выросла, канал захлёбывается) или отвалился, Onyx сам переходит на лучший рабочий сервер с уведомлением
+- **Kill Switch** (Android) — интеграция с системным Always-on VPN: трафик не уходит в открытую сеть при обрыве соединения
+- **Health-мониторинг** — фоновая проверка соединения по задержке, в щадящем режиме
+
+## Технологии
+
+| Слой | Технологии |
+|------|-----------|
+| **UI / клиент** | Flutter, Dart |
+| **Состояние** | Riverpod |
+| **Ядро** | sing-box 1.10 (Windows), flutter_v2ray 1.0.10 (Android) |
+| **Протоколы** | VLESS, REALITY, TUN |
+| **Сеть** | Dio, кастомный SOCKS5-проб |
+| **Хранилище** | SharedPreferences, path_provider |
+| **Native (Android)** | Kotlin — уведомления, список приложений, системные настройки VPN |
+
+Архитектура — чистое разделение слоёв: `domain` (сущности, маршрутизация, пробы), `infrastructure` (мосты к sing-box/v2ray, нативные каналы, менеджер бинарников), `presentation` (Riverpod-провайдеры, экраны, виджеты).
+
+## Установка
+
+Собранные сборки — во вкладке [**Releases**](../../releases): APK для Android и инсталлятор для Windows.
+
+### Сборка из исходников
+
+Нужен [Flutter SDK](https://docs.flutter.dev/get-started/install) (Dart >= 3.3).
+
+```bash
+git clone <repo-url>
+cd onyx
+flutter pub get
+
+# Android
+flutter build apk --release
+
+# Windows (запускать из-под администратора — нужен доступ к WinTUN)
+flutter build windows --release
+```
+
+Бинарники ядра (sing-box, geosite/geoip) скачиваются автоматически при первом запуске.
+
+> **Windows:** приложению нужны права администратора для поднятия TUN-интерфейса.
+> **Android:** при первом подключении система запросит разрешение на VPN.
+
+## Как это устроено
+
+```
+┌─────────────┐      ┌──────────────────┐      ┌─────────────┐
+│  Flutter UI │─────▶│  VpnController    │─────▶│   Bridge    │
+│  (Riverpod) │      │  (health monitor, │      │  Win / Andr │
+└─────────────┘      │   failover)       │      └──────┬──────┘
+                     └──────────────────┘             │
+                              │                        ▼
+                     ┌────────▼─────────┐      ┌─────────────┐
+                     │  Deep Probe      │      │  sing-box / │
+                     │  (TCP + AI-проба)│      │  v2ray-core │
+                     └──────────────────┘      └─────────────┘
+```
+
+## Дисклеймер
+
+Onyx — инструмент для защиты приватности и шифрования сетевого трафика. Приложение предназначено для обеспечения безопасности соединения и контроля над собственными данными.
+
+Проект не предоставляет и не хостит VPN-серверы: пользователь подключает собственные конфигурации. Автор не контролирует и не несёт ответственности за то, как используется приложение, и не призывает применять его для доступа к материалам, ограниченным законодательством.
+
+Использование приложения — под ответственностью пользователя, в соответствии с законодательством его юрисдикции.
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).
+
+<div align="center">
+
+**Сделано с 💙 в [Z43 Studios](https://z43-studios.vercel.app)**
+
+</div>

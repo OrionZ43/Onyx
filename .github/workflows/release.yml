@@ -33,10 +33,14 @@ jobs:
           VERSION="${VERSION#v}"
           flutter build apk --release --dart-define=APP_VERSION=$VERSION
 
+      - name: Rename APK to stable name
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk onyx-android.apk
+
       - name: Upload APK to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: onyx-android.apk
           name: Onyx VPN ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,6 +104,8 @@ jobs:
           Copy-Item "tools\onyx_installer\build\windows\x64\runner\Release\*" installer_bundle\ -Recurse -Force
           Copy-Item "Onyx_${tag}_payload.zip" installer_bundle\
           Compress-Archive -Path installer_bundle\* -DestinationPath "OnyxSetup_${tag}.zip" -Force
+          # Стабильная копия имени для ссылок вида releases/latest/download/...
+          Copy-Item "OnyxSetup_${tag}.zip" "onyx-setup-windows.zip" -Force
 
       - name: Upload Windows artifacts to Release
         uses: softprops/action-gh-release@v2
@@ -107,6 +113,7 @@ jobs:
           files: |
             OnyxSetup_${{ github.ref_name }}.zip
             Onyx_${{ github.ref_name }}_payload.zip
+            onyx-setup-windows.zip
           name: Onyx VPN ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

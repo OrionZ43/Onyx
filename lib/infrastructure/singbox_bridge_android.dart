@@ -365,6 +365,21 @@ class SingboxBridgeAndroid implements SingboxBridge {
   }
 
   @override
+  Future<int> measureLatency() async {
+    try {
+      // getConnectedServerDelay меряет задержку самим v2ray-core через
+      // connected-outbound: возвращает мс при живом туннеле, -1 при мёртвом.
+      // Это ровно то, что нужно для детекта деградации, и почти бесплатно.
+      final delay = await _v2ray
+          .getConnectedServerDelay(url: 'https://cp.cloudflare.com/generate_204')
+          .timeout(const Duration(seconds: 5), onTimeout: () => -1);
+      return delay;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  @override
   Future<void> stop() async {
     log.i('Stopping V2Ray...', tag: 'BRIDGE');
     _statusWatchdog?.cancel();

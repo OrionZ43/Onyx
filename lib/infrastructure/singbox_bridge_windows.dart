@@ -253,6 +253,34 @@ class SingboxBridgeWindows implements SingboxBridge {
     }
   }
 
+  @override
+  Future<int> measureLatency() async {
+    if (_state != BridgeState.running) return -1;
+
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 5);
+    client.findProxy = (uri) => 'PROXY 127.0.0.1:2080';
+    client.badCertificateCallback = (cert, host, port) => true;
+
+    final sw = Stopwatch()..start();
+    try {
+      final request = await client.getUrl(
+        Uri.parse('https://cp.cloudflare.com/generate_204'),
+      );
+      request.headers.set(HttpHeaders.connectionHeader, 'close');
+      final response =
+          await request.close().timeout(const Duration(seconds: 5));
+      await response.drain<void>();
+      sw.stop();
+      final ok = response.statusCode >= 200 && response.statusCode < 400;
+      return ok ? sw.elapsedMilliseconds : -1;
+    } catch (_) {
+      return -1;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   /// Останавливает VPN-туннель.
   @override
   Future<void> stop() async {

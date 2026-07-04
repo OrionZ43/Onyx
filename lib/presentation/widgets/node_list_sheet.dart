@@ -270,16 +270,42 @@ class _SheetHeader extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              const Text(
-                'Выбор сервера',
-                style: TextStyle(
-                  fontFamily: 'Syne',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.nebula0,
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Выбор сервера',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Syne',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.nebula0,
+                    ),
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
+              if (ref.watch(subscriptionProvider).aiReachableCount > 0) ...[
+                GlassPill(
+                  color: const Color(0xFF3DDC84),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  child: Text(
+                    'AI ${ref.watch(subscriptionProvider).aiReachableCount}',
+                    style: const TextStyle(
+                      fontFamily: 'DM Sans',
+                      fontSize: 11,
+                      color: Color(0xFF3DDC84),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
               GlassPill(
                 color: AppColors.aurora,
                 padding: const EdgeInsets.symmetric(
@@ -287,7 +313,7 @@ class _SheetHeader extends ConsumerWidget {
                   vertical: 4,
                 ),
                 child: Text(
-                  '$aliveCount / $nodeCount онлайн',
+                  '$aliveCount / $nodeCount',
                   style: const TextStyle(
                     fontFamily: 'DM Sans',
                     fontSize: 11,
@@ -296,8 +322,9 @@ class _SheetHeader extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              // Кнопка обновления
+              const SizedBox(width: 6),
+              // Кнопка обновления — компактная иконка (текст убран, чтобы
+              // шапка не переполнялась по ширине на узких экранах).
               GestureDetector(
                 onTap: () {
                   final url = ref.read(subscriptionProvider).url;
@@ -306,10 +333,9 @@ class _SheetHeader extends ConsumerWidget {
                   }
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: AppColors.plasma.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(100),
@@ -317,25 +343,10 @@ class _SheetHeader extends ConsumerWidget {
                       color: AppColors.plasma.withValues(alpha: 0.3),
                     ),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.sync_rounded,
-                        size: 14,
-                        color: AppColors.plasmaLight,
-                      ),
-                      SizedBox(width: 6),
-                      Text(
-                        'Обновить',
-                        style: TextStyle(
-                          fontFamily: 'DM Sans',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.plasmaLight,
-                        ),
-                      ),
-                    ],
+                  child: const Icon(
+                    Icons.sync_rounded,
+                    size: 16,
+                    color: AppColors.plasmaLight,
                   ),
                 ),
               ),
@@ -604,6 +615,13 @@ class _CompactNodeRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+
+                // Бейдж AI (нода пускает к ИИ-сервисам) — самый заметный,
+                // идёт первым. Зелёный = exit-IP не забанен ИИ-эджами.
+                if (node.aiReachable) ...[
+                  _SmallBadge('AI', const Color(0xFF3DDC84)),
+                  const SizedBox(width: 4),
+                ],
 
                 // Бейдж LIVE / MUX
                 if (node.isTrulyWorking) ...[

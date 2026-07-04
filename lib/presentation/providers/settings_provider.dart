@@ -7,6 +7,7 @@ class SettingsState {
     this.aiDirectLane = true,
     this.splitTunnelingEnabled = false,
     this.excludedApps = const <String>{},
+    this.autoFailover = true,
   });
 
   final bool smartRouting;
@@ -24,11 +25,19 @@ class SettingsState {
   /// Package name'ы приложений, исключённых из туннеля.
   final Set<String> excludedApps;
 
+  /// Автопереключение при деградации: если активный сервер начал подвисать
+  /// (пинг улетел, uplink захлёбывается) или отвалился — приложение само
+  /// перейдёт на лучшую рабочую ноду с уведомлением. Выключи, если не
+  /// хочешь, чтобы соединение рвалось без спроса (например, в звонке
+  /// секундный разрыв нежелателен).
+  final bool autoFailover;
+
   SettingsState copyWith({
     bool? smartRouting,
     bool? aiDirectLane,
     bool? splitTunnelingEnabled,
     Set<String>? excludedApps,
+    bool? autoFailover,
   }) =>
       SettingsState(
         smartRouting: smartRouting ?? this.smartRouting,
@@ -36,6 +45,7 @@ class SettingsState {
         splitTunnelingEnabled:
             splitTunnelingEnabled ?? this.splitTunnelingEnabled,
         excludedApps: excludedApps ?? this.excludedApps,
+        autoFailover: autoFailover ?? this.autoFailover,
       );
 }
 
@@ -48,6 +58,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   static const _keyAiDirectLane = 'settings_ai_direct_lane';
   static const _keySplitTunneling = 'settings_split_tunneling';
   static const _keyExcludedApps = 'settings_excluded_apps';
+  static const _keyAutoFailover = 'settings_auto_failover';
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -58,6 +69,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       splitTunnelingEnabled: prefs.getBool(_keySplitTunneling) ?? false,
       excludedApps:
           (prefs.getStringList(_keyExcludedApps) ?? const []).toSet(),
+      autoFailover: prefs.getBool(_keyAutoFailover) ?? true,
     );
   }
 
@@ -77,6 +89,12 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     state = state.copyWith(splitTunnelingEnabled: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keySplitTunneling, value);
+  }
+
+  Future<void> toggleAutoFailover(bool value) async {
+    state = state.copyWith(autoFailover: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAutoFailover, value);
   }
 
   Future<void> setAppExcluded(String packageName, bool excluded) async {

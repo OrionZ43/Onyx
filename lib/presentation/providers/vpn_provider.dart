@@ -28,16 +28,11 @@ class VpnController extends StateNotifier<VpnState> {
       : SingboxBridgeWindows.instance;
   final _notif = VpnNotificationService.instance;
 
-  // Порог отказа адаптивный по платформе — на Android нестабильность
-  // сети (лифт, метро, смена вышки) это норма, а не признак мёртвой ноды.
-  static int get _maxFailedPings => Platform.isAndroid ? 4 : 2;
-
   StreamSubscription? _statsSub;
   StreamSubscription? _errorSub;
   StreamSubscription? _notifActionSub;
   Timer? _healthTimer;
   Timer? _notifUpdateTimer;
-  int _failedPings = 0;
 
   // Монотонно растущий id сессии подключения — защита от гонки таймеров
   // при быстром connect → disconnect → connect на разных нодах.
@@ -189,87 +184,209 @@ class VpnController extends StateNotifier<VpnState> {
     });
   }
 
-  // ── Active Health Monitor ─────────────────────────────────────────────
+  // ── Active Health Monitor (латентность + деградация) ──────────────────
+  //
+  // Ловит НЕ только смерть ноды, но и деградацию: пинг улетел в 5000 мс,
+  // туннель формально жив (downstream идёт — ты всех слышишь), но uplink
+  // захлёбывается (тебя не слышно). Булев verifyTunnel такое пропускал —
+  // теперь меряем конкретную задержку.
+  //
+  // Щадящий режим: в норме проверка редкая (_healthInterval). При первой
+  // же плохой пробе делаем быстрое переподтверждение (_recheckDelay), и
+  // только если и оно плохое — переключаемся. Так в покое нагрузка
+  // минимальна, а реакция на реальный сбой — считанные секунды.
+
+  /// Интервал плановой проверки в норме (щадящий).
+  static const _healthInterval = Duration(seconds: 20);
+
+  /// Быстрое переподтверждение после первой плохой пробы.
+  static const _recheckDelay = Duration(seconds: 3);
+
+  /// Порог задержки (мс), выше которого нода считается деградировавшей.
+  /// -1 (нет ответа) тоже трактуется как плохая проба.
+  static int get _latencyThresholdMs => Platform.isAndroid ? 3000 : 2500;
+
+  /// Сколько плохих проб подряд → переключение.
+  static const _badSamplesToSwitch = 2;
+
+  int _badSamples = 0;
+  bool _isFailingOver = false;
 
   void _startHealthMonitor(int mySession) {
     _healthTimer?.cancel();
-    _failedPings = 0;
-    _healthTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+    _badSamples = 0;
+    _isFailingOver = false;
+    _healthTimer = Timer.periodic(_healthInterval, (_) async {
       if (mySession != _sessionId) return;
+      if (state is! VpnConnected) return;
+      if (_isFailingOver) return;
 
-      final current = state;
-      if (current is! VpnConnected) return;
+      final bad = await _sampleIsBad(mySession);
+      if (mySession != _sessionId || state is! VpnConnected) return;
 
-      // Проверка связности делегирована мосту (verifyTunnel):
-      //   • Windows — HTTPS через локальный прокси sing-box (2080);
-      //   • Android — замер задержки САМИМ v2ray-core.
-      //
-      // Раньше на Android здесь был прямой HTTPS-запрос без прокси —
-      // расчёт был на то, что VpnService туннелирует весь трафик. Ловушка:
-      // если туннель НЕ поднялся, тот же запрос спокойно уходит через
-      // обычную сеть и тоже возвращает 204. Такой health-check «подтверждал»
-      // связность на мёртвом VPN (именно это сбило диагностику симптома B —
-      // failedPings=0/4 при фактически не созданном VPN-интерфейсе).
-      // verifyTunnel() по построению не может дать ложноположительный
-      // результат: на обеих платформах запрос физически идёт через туннель.
-      final ok = await _bridge.verifyTunnel();
-      if (ok) {
-        if (_failedPings > 0) {
-          log.d(
-            'Health Monitor: связь восстановлена (было $_failedPings ошибок)',
-            tag: 'VPN',
-          );
+      if (!bad) {
+        // Хорошая проба — сбрасываем счётчик.
+        if (_badSamples > 0) {
+          log.d('Health: связь в норме (было $_badSamples плохих)', tag: 'VPN');
         }
-        _failedPings = 0;
-      } else {
-        log.d('Health Monitor: проверка туннеля не прошла', tag: 'VPN');
-        _failedPings++;
+        _badSamples = 0;
+        return;
       }
 
-      if (mySession != _sessionId) return;
-
-      log.d(
-        'Health Monitor: failedPings=$_failedPings/$_maxFailedPings '
-            '(платформа: ${Platform.isAndroid ? "Android" : "Desktop"})',
+      _badSamples++;
+      log.w(
+        'Health: плохая проба $_badSamples/$_badSamplesToSwitch',
         tag: 'VPN',
       );
 
-      if (_failedPings >= _maxFailedPings) {
+      if (_badSamples < _badSamplesToSwitch) {
+        // Не дёргаемся на одиночном спайке — быстрое переподтверждение.
+        await Future.delayed(_recheckDelay);
+        if (mySession != _sessionId || state is! VpnConnected) return;
+        final stillBad = await _sampleIsBad(mySession);
+        if (mySession != _sessionId || state is! VpnConnected) return;
+        if (!stillBad) {
+          log.d('Health: спайк прошёл, нода восстановилась', tag: 'VPN');
+          _badSamples = 0;
+          return;
+        }
+        _badSamples++;
+      }
+
+      if (_badSamples >= _badSamplesToSwitch) {
+        log.w('Health: нода деградировала — переключаемся', tag: 'VPN');
         _healthTimer?.cancel();
-        _autoSwitch(mySession);
+        await _failover(mySession);
       }
     });
   }
 
-  Future<void> _autoSwitch(int mySession) async {
-    if (mySession != _sessionId) return;
+  /// Одна проба: меряет задержку через туннель и решает, плохая ли она.
+  /// Плохая = нет ответа (-1) или задержка выше порога.
+  Future<bool> _sampleIsBad(int mySession) async {
+    final ms = await _bridge.measureLatency();
+    if (mySession != _sessionId) return false;
 
-    final current = state;
-    if (current is! VpnConnected) return;
-    final deadNode = current.node;
-
-    log.w(
-      '🔄 Авто-переключение: нода ${deadNode.name} не отвечает!',
+    if (ms < 0) {
+      log.d('Health: туннель не ответил (-1)', tag: 'VPN');
+      return true;
+    }
+    final bad = ms > _latencyThresholdMs;
+    log.d(
+      'Health: задержка ${ms}мс (порог $_latencyThresholdMs) → '
+      '${bad ? "плохо" : "ок"}',
       tag: 'VPN',
     );
+    return bad;
+  }
+
+  /// Переключение на лучшую доступную ноду при деградации/смерти текущей.
+  ///
+  /// Приоритет кандидата: если авто-переключение включено — берём лучшую
+  /// рабочую ноду, при этом если текущая была AI-годной, предпочитаем
+  /// тоже AI-годную (чтобы доступ к нейронкам не пропал после свитча).
+  Future<void> _failover(int mySession) async {
+    if (mySession != _sessionId) return;
+    if (_isFailingOver) return;
+    _isFailingOver = true;
+
+    final current = state;
+    if (current is! VpnConnected) {
+      _isFailingOver = false;
+      return;
+    }
+    final deadNode = current.node;
+
+    // Уважаем настройку: если пользователь выключил автопереключение —
+    // просто уведомляем и остаёмся как есть (не рвём звонок без спроса).
+    final autoFailover = ref.read(settingsProvider).autoFailover;
+    if (!autoFailover) {
+      log.i('Автопереключение выключено — только уведомляем', tag: 'VPN');
+      unawaited(_notif.show(
+        nodeName: '${deadNode.name} — нестабилен',
+        rxBytes: _lastRx,
+        txBytes: _lastTx,
+        connected: true,
+      ));
+      _isFailingOver = false;
+      // Возобновляем мониторинг — вдруг восстановится.
+      _startHealthMonitor(mySession);
+      return;
+    }
+
+    log.w('🔄 Переключение: ${deadNode.name} деградировал', tag: 'VPN');
+
+    // Помечаем текущую как ненадёжную и ищем замену ДО отключения,
+    // чтобы знать, есть ли куда переключаться.
+    final sub = ref.read(subscriptionProvider);
+    final wasAi = deadNode.aiReachable;
+
+    Node? next = _pickFailoverCandidate(
+      excludeId: deadNode.id,
+      preferAi: wasAi,
+      sub: sub,
+    );
+
+    if (next == null) {
+      log.e('❌ Нет запасных серверов для переключения', tag: 'VPN');
+      unawaited(_notif.show(
+        nodeName: 'Нет запасных серверов',
+        rxBytes: 0,
+        txBytes: 0,
+        connected: false,
+      ));
+      _isFailingOver = false;
+      return;
+    }
 
     await disconnect();
-
     ref.read(subscriptionProvider.notifier).markNodeAsDead(deadNode.id);
     ref.read(nodeSelectionProvider.notifier).clear();
 
-    final nextNode = ref.read(subscriptionProvider).bestNode;
+    log.i('🚀 Переключаемся на ${next.name}', tag: 'VPN');
+    // Уведомление о самом факте свитча — пользователь поймёт, почему
+    // звонок дёрнулся на секунду.
+    unawaited(_notif.show(
+      nodeName: '${deadNode.name} подвисал → ${next.name}',
+      rxBytes: 0,
+      txBytes: 0,
+      connected: false,
+    ));
 
-    if (nextNode != null) {
-      log.i(
-        '🚀 Переключаемся на следующий сервер: ${nextNode.name}',
-        tag: 'VPN',
-      );
-      await connect(nextNode);
-    } else {
-      log.e('❌ Нет доступных серверов для авто-переключения', tag: 'VPN');
-      state = const VpnError(message: 'Все серверы недоступны');
+    _isFailingOver = false;
+    await connect(next);
+  }
+
+  /// Выбирает лучшего кандидата для переключения.
+  /// Порядок: сперва AI-годные (если preferAi), затем просто рабочие,
+  /// внутри группы — по минимальной задержке. Текущая нода исключается.
+  Node? _pickFailoverCandidate({
+    required String excludeId,
+    required bool preferAi,
+    required SubscriptionState sub,
+  }) {
+    int lat(Node n) => n.latencyMs ?? 9999;
+
+    if (preferAi) {
+      final aiNodes = sub.nodes
+          .where((n) => n.aiReachable && n.id != excludeId)
+          .toList()
+        ..sort((a, b) => lat(a).compareTo(lat(b)));
+      if (aiNodes.isNotEmpty) return aiNodes.first;
     }
+
+    final working = sub.nodes
+        .where((n) => n.isTrulyWorking && n.id != excludeId)
+        .toList()
+      ..sort((a, b) => lat(a).compareTo(lat(b)));
+    if (working.isNotEmpty) return working.first;
+
+    // Последний шанс — любая живая, кроме текущей.
+    final alive = sub.nodes
+        .where((n) => n.isAlive && n.id != excludeId)
+        .toList()
+      ..sort((a, b) => lat(a).compareTo(lat(b)));
+    return alive.isEmpty ? null : alive.first;
   }
 
   // ── Слушаем мост ──────────────────────────────────────────────────────
@@ -321,7 +438,7 @@ class VpnController extends StateNotifier<VpnState> {
 
     _errorSub = _bridge.errorStream.listen((error) {
       if (error == 'WATCHDOG_NO_TRAFFIC') {
-        _autoSwitch(_sessionId);
+        _failover(_sessionId);
         return;
       }
 

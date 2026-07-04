@@ -18,6 +18,7 @@ class Node {
     this.udpSupported = false,
     this.isAlive = false,
     this.isTrulyWorking = false, // ← прошёл реальную HTTP-проверку
+    this.aiReachable = false, // ← прошёл проверку доступа к ИИ-сервисам
     this.muxEnabled = false,
     this.muxProtocol = 'smux',
     this.muxMaxStreams = 32,
@@ -48,6 +49,16 @@ class Node {
   /// Является приоритетным критерием для bestNode и quality.
   final bool isTrulyWorking;
 
+  /// true = через эту ноду удалось достучаться до ИИ-сервиса (проверка
+  /// на бан exit-IP со стороны Cloudflare/AI-эджей). Проставляется Deep
+  /// Probe только для нод, у которых уже isTrulyWorking == true.
+  ///
+  /// ВНИМАНИЕ: это эвристика. Проверка бьёт по Cloudflare-фронтированному
+  /// ИИ-домену; зелёный значок означает "IP не в типовых датацентр-блок-
+  /// листах", но не гарантирует доступ к КАЖДОМУ ИИ (Anthropic/Google
+  /// используют свои списки и иногда отдают блок как обычную 200-страницу).
+  final bool aiReachable;
+
   // Mux (применяется санитайзером)
   final bool muxEnabled;
   final String muxProtocol;
@@ -58,6 +69,7 @@ class Node {
     bool? udpSupported,
     bool? isAlive,
     bool? isTrulyWorking,
+    bool? aiReachable,
     String? fingerprint,
     String? flow,
     bool? muxEnabled,
@@ -82,6 +94,7 @@ class Node {
       udpSupported: udpSupported ?? this.udpSupported,
       isAlive: isAlive ?? this.isAlive,
       isTrulyWorking: isTrulyWorking ?? this.isTrulyWorking,
+      aiReachable: aiReachable ?? this.aiReachable,
       muxEnabled: muxEnabled ?? this.muxEnabled,
       muxProtocol: muxProtocol ?? this.muxProtocol,
       muxMaxStreams: muxMaxStreams ?? this.muxMaxStreams,
@@ -126,6 +139,7 @@ class Node {
     'udpSupported': udpSupported,
     'isAlive': isAlive,
     'isTrulyWorking': isTrulyWorking,
+    'aiReachable': aiReachable,
     'muxEnabled': muxEnabled,
     'muxProtocol': muxProtocol,
     'muxMaxStreams': muxMaxStreams,
@@ -149,6 +163,7 @@ class Node {
     udpSupported: json['udpSupported'] as bool? ?? false,
     isAlive: json['isAlive'] as bool? ?? false,
     isTrulyWorking: json['isTrulyWorking'] as bool? ?? false,
+    aiReachable: json['aiReachable'] as bool? ?? false,
     muxEnabled: json['muxEnabled'] as bool? ?? false,
     muxProtocol: json['muxProtocol'] as String? ?? 'smux',
     muxMaxStreams: json['muxMaxStreams'] as int? ?? 32,

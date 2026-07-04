@@ -38,7 +38,6 @@ const List<String> kAiDomainSuffixes = [
   'anthropic.com',
   'claude.ai',
   'claudeusercontent.com',
-  'claude.com',
 
   // Google AI (только AI-поддомены, НЕ весь google.com — иначе умная
   // маршрутизация и обычный поиск начнут конфликтовать)
@@ -49,7 +48,6 @@ const List<String> kAiDomainSuffixes = [
   'deepmind.google',
   'generativelanguage.googleapis.com', // Gemini API
   'aiplatform.googleapis.com', // Vertex AI
-  'jules.google.com',
 
   // xAI / Grok
   'x.ai',
