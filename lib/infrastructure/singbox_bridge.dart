@@ -1,4 +1,9 @@
 import '../domain/entities/node.dart';
+import '../domain/singbox_config_builder.dart';
+import '../domain/udp_probe.dart';
+
+export '../domain/singbox_config_builder.dart' show RoutingOptions;
+export '../domain/udp_probe.dart' show UdpProbeResult;
 
 enum BridgeState { idle, starting, running, stopping, error }
 
@@ -22,12 +27,18 @@ abstract class SingboxBridge {
   /// [excludedApps] — package name'ы приложений, идущих в обход VPN
   /// (split tunneling). Поддерживается только на Android; Windows-реализация
   /// игнорирует параметр.
+  /// [fallbacks] — другие транспорты того же сервера (REALITY + Hysteria2):
+  /// мост собирает из них urltest-группу с автопереключением.
   Future<BridgeResult> start(
     Node node, {
-    bool smartRouting = true,
-    bool aiDirectLane = true,
+    List<Node> fallbacks = const [],
+    RoutingOptions routing = const RoutingOptions(),
     List<String> excludedApps = const [],
   });
+
+  /// Проверка UDP через поднятый туннель (STUN через локальный SOCKS5).
+  /// Именно по UDP идут голос, камера и стримы Discord.
+  Future<UdpProbeResult> checkUdp();
 
   Future<void> stop();
 

@@ -73,10 +73,16 @@ class VpnController extends StateNotifier<VpnState> {
     ));
 
     final settingsSnapshot = ref.read(settingsProvider);
+    final fallbacks = _transportFallbacks(node);
     final result = await _bridge.start(
       node,
-      smartRouting: settingsSnapshot.smartRouting,
-      aiDirectLane: settingsSnapshot.aiDirectLane,
+      fallbacks: fallbacks,
+      routing: RoutingOptions(
+        smartRouting: settingsSnapshot.smartRouting,
+        region: settingsSnapshot.routingRegion,
+        aiDirectLane: settingsSnapshot.aiDirectLane,
+        discordMode: settingsSnapshot.discordMode,
+      ),
       excludedApps: settingsSnapshot.splitTunnelingEnabled
           ? settingsSnapshot.excludedApps.toList()
           : const [],
@@ -114,6 +120,34 @@ class VpnController extends StateNotifier<VpnState> {
     ));
     _startHealthMonitor(mySession);
     _startNotificationUpdates(mySession, node.name);
+  }
+
+  /// Другие транспорты ТОГО ЖЕ сервера (тот же host, другой протокол или
+  /// порт): например REALITY + Hysteria2 от нашего серверного скрипта.
+  /// Мост объединит их в urltest-группу — sing-box сам переключится на
+  /// живой транспорт, если GFW задушит UDP или заблокирует TCP-порт.
+  /// Мёртвых членов группы urltest отсеет сам; берём не больше 3.
+  List<Node> _transportFallbacks(Node node) {
+    final nodes = ref.read(subscriptionProvider).nodes;
+    return nodes
+        .where((n) =>
+            n.id != node.id &&
+            n.serverKey == node.serverKey &&
+            (n.protocol != node.protocol || n.port != node.port))
+        .map(_sanitizer.sanitize)
+        .take(3)
+        .toList();
+  }
+
+  /// Проверка UDP через активный туннель (голос/видео Discord).
+  /// Нужен статус «подключено»; длится до ~4 с.
+  Future<UdpProbeResult> checkUdp() async {
+    if (state is! VpnConnected) {
+      return const UdpProbeResult.failed('VPN не подключён');
+    }
+    final r = await _bridge.checkUdp();
+    log.i('Проверка UDP: ${r.summary}', tag: 'VPN');
+    return r;
   }
 
   // ── Отключение ────────────────────────────────────────────────────────

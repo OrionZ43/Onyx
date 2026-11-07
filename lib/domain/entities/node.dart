@@ -1,6 +1,51 @@
-/// Represents a single VLESS server node parsed from a subscription URL.
+/// Протоколы, которые понимает Onyx.
+///
+/// `vless` — исторический и по умолчанию (старые сохранённые ноды без поля
+/// protocol читаются как vless). Остальные добавлены для Китая: Hysteria2 и
+/// TUIC (QUIC/UDP), Shadowsocks, Trojan, AnyTLS.
+abstract final class NodeProtocol {
+  static const vless = 'vless';
+  static const hysteria2 = 'hysteria2';
+  static const tuic = 'tuic';
+  static const shadowsocks = 'shadowsocks';
+  static const trojan = 'trojan';
+  static const anytls = 'anytls';
+
+  static const all = {vless, hysteria2, tuic, shadowsocks, trojan, anytls};
+
+  /// Короткая метка для UI-бейджа.
+  static String label(String p) => switch (p) {
+        vless => 'VLESS',
+        hysteria2 => 'HY2',
+        tuic => 'TUIC',
+        shadowsocks => 'SS',
+        trojan => 'TROJAN',
+        anytls => 'ANYTLS',
+        _ => p.toUpperCase(),
+      };
+}
+
+/// Один сервер (нода) из подписки или ссылки.
+///
+/// Исторически класс описывал только VLESS; поля VLESS сохранены как были,
+/// для остальных протоколов добавлены необязательные поля ниже (password,
+/// obfs, serverPorts и т.д.). Неиспользуемые для протокола поля пустые.
 class Node {
   const Node({
+    this.protocol = NodeProtocol.vless,
+    this.password = '',
+    this.method = '',
+    this.obfs = '',
+    this.obfsPassword = '',
+    this.serverPorts = '',
+    this.hopInterval = '',
+    this.alpn = const [],
+    this.insecure = false,
+    this.congestion = '',
+    this.upMbps = 0,
+    this.downMbps = 0,
+    this.plugin = '',
+    this.pluginOpts = '',
     required this.id,
     required this.name,
     required this.host,
@@ -23,6 +68,52 @@ class Node {
     this.muxProtocol = 'smux',
     this.muxMaxStreams = 32,
   });
+
+  /// Один из [NodeProtocol]. По умолчанию vless.
+  final String protocol;
+
+  /// Пароль: hysteria2 / tuic / shadowsocks / trojan / anytls.
+  final String password;
+
+  /// Метод шифрования shadowsocks (например 2022-blake3-aes-128-gcm).
+  final String method;
+
+  /// Обфускация hysteria2 (сейчас только 'salamander') и её пароль.
+  final String obfs;
+  final String obfsPassword;
+
+  /// Port hopping hysteria2: диапазоны через запятую, формат "20000-50000"
+  /// или "443,20000-50000". Пусто = только [port].
+  final String serverPorts;
+
+  /// Интервал смены порта при hopping, например "30s". Пусто = по умолчанию.
+  final String hopInterval;
+
+  /// ALPN для TLS (hysteria2/tuic — обычно h3).
+  final List<String> alpn;
+
+  /// Не проверять сертификат (самоподписанный на своём сервере).
+  final bool insecure;
+
+  /// Контроль перегрузки TUIC (bbr/cubic/new_reno).
+  final String congestion;
+
+  /// Пропускная способность для Hysteria2 Brutal. 0 = не задана (BBR).
+  final int upMbps;
+  final int downMbps;
+
+  /// Плагин shadowsocks (obfs-local / v2ray-plugin) и его опции.
+  final String plugin;
+  final String pluginOpts;
+
+  /// true для протоколов поверх QUIC/UDP — у них нет TCP-порта, поэтому
+  /// TCP-пинг к ним бессмысленен.
+  bool get isQuic =>
+      protocol == NodeProtocol.hysteria2 || protocol == NodeProtocol.tuic;
+
+  /// Ключ «того же сервера» для автопереключения транспорта: ноды с одним
+  /// host, но разными протоколами (REALITY + Hysteria2 от нашего скрипта).
+  String get serverKey => host.toLowerCase();
 
   final String id;
   final String name;
@@ -77,6 +168,20 @@ class Node {
     int? muxMaxStreams,
   }) {
     return Node(
+      protocol: protocol,
+      password: password,
+      method: method,
+      obfs: obfs,
+      obfsPassword: obfsPassword,
+      serverPorts: serverPorts,
+      hopInterval: hopInterval,
+      alpn: alpn,
+      insecure: insecure,
+      congestion: congestion,
+      upMbps: upMbps,
+      downMbps: downMbps,
+      plugin: plugin,
+      pluginOpts: pluginOpts,
       id: id,
       name: name,
       host: host,
@@ -122,6 +227,20 @@ class Node {
   }
 
   Map<String, dynamic> toJson() => {
+    'protocol': protocol,
+    if (password.isNotEmpty) 'password': password,
+    if (method.isNotEmpty) 'method': method,
+    if (obfs.isNotEmpty) 'obfs': obfs,
+    if (obfsPassword.isNotEmpty) 'obfsPassword': obfsPassword,
+    if (serverPorts.isNotEmpty) 'serverPorts': serverPorts,
+    if (hopInterval.isNotEmpty) 'hopInterval': hopInterval,
+    if (alpn.isNotEmpty) 'alpn': alpn,
+    if (insecure) 'insecure': insecure,
+    if (congestion.isNotEmpty) 'congestion': congestion,
+    if (upMbps > 0) 'upMbps': upMbps,
+    if (downMbps > 0) 'downMbps': downMbps,
+    if (plugin.isNotEmpty) 'plugin': plugin,
+    if (pluginOpts.isNotEmpty) 'pluginOpts': pluginOpts,
     'id': id,
     'name': name,
     'host': host,
@@ -146,6 +265,20 @@ class Node {
   };
 
   factory Node.fromJson(Map<String, dynamic> json) => Node(
+    protocol: json['protocol'] as String? ?? NodeProtocol.vless,
+    password: json['password'] as String? ?? '',
+    method: json['method'] as String? ?? '',
+    obfs: json['obfs'] as String? ?? '',
+    obfsPassword: json['obfsPassword'] as String? ?? '',
+    serverPorts: json['serverPorts'] as String? ?? '',
+    hopInterval: json['hopInterval'] as String? ?? '',
+    alpn: (json['alpn'] as List?)?.whereType<String>().toList() ?? const [],
+    insecure: json['insecure'] as bool? ?? false,
+    congestion: json['congestion'] as String? ?? '',
+    upMbps: json['upMbps'] as int? ?? 0,
+    downMbps: json['downMbps'] as int? ?? 0,
+    plugin: json['plugin'] as String? ?? '',
+    pluginOpts: json['pluginOpts'] as String? ?? '',
     id: json['id'] as String? ?? '',
     name: json['name'] as String? ?? '',
     host: json['host'] as String? ?? '',
@@ -210,7 +343,7 @@ class Node {
   }
 
   @override
-  String toString() => 'Node($name, $host:$port, ${latencyMs}ms, sni=$sni, '
+  String toString() => 'Node(${NodeProtocol.label(protocol)} $name, $host:$port, ${latencyMs}ms, sni=$sni, '
       'working=$isTrulyWorking)';
 }
 

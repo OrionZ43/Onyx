@@ -21,6 +21,16 @@ class SingboxApiClient {
 
   String get baseUrl => 'http://$host:$port';
 
+  /// Секрет Clash API (experimental.clash_api.secret). Генерируется заново
+  /// при каждом подключении; передаётся как Bearer-токен.
+  set secret(String value) {
+    if (value.isEmpty) {
+      _dio.options.headers.remove('Authorization');
+    } else {
+      _dio.options.headers['Authorization'] = 'Bearer $value';
+    }
+  }
+
   /// Проверяет что API отвечает (sing-box запущен и готов)
   Future<bool> isReady() async {
     try {

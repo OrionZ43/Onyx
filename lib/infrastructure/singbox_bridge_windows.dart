@@ -2,6 +2,8 @@ export 'singbox_bridge.dart';
 import 'singbox_bridge.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
+import '../domain/udp_probe.dart';
 import '../core/log_service.dart';
 import '../domain/entities/node.dart';
 import '../domain/singbox_config_builder.dart';
@@ -75,8 +77,8 @@ class SingboxBridgeWindows implements SingboxBridge {
   @override
   Future<BridgeResult> start(
       Node node, {
-        bool smartRouting = true,
-        bool aiDirectLane = true,
+        List<Node> fallbacks = const [],
+        RoutingOptions routing = const RoutingOptions(),
         List<String> excludedApps = const [],
       }) async {
     if (_state == BridgeState.running || _state == BridgeState.starting) {
@@ -87,12 +89,9 @@ class SingboxBridgeWindows implements SingboxBridge {
     log.i('Запускаем sing-box для ${node.name}', tag: 'BRIDGE');
 
     try {
-      // 1. Проверка бинарников
-      if (!_binMgr.isReady) {
-        throw Exception(
-          'Бинарники не готовы. Запустите ensureBinaries() сначала.',
-        );
-      }
+      // 1. Бинарники: раскладываем бандл установщика или обновляем версию
+      // (без сети, если установщик положил core\).
+      await _binMgr.ensureBinaries();
 
       // 2. Проверяем права администратора (результат кэшируется —
       // см. комментарий у _isAdminCached)
@@ -108,27 +107,32 @@ class SingboxBridgeWindows implements SingboxBridge {
       // Зачем: правило `domain: [node.host]` в route не работает для
       // сырых IP-пакетов из WinTUN. Нужен ip_cidr, а для него нужен IP.
       // Резолвим сейчас — пока TUN не поднят и системный DNS доступен.
-      final resolvedServerIp = await _resolveServerIp(node.host);
+      // IP нужны для ВСЕХ серверов группы автопереключения.
+      final serverIps = <String>{};
+      for (final n in [node, ...fallbacks]) {
+        final ip = _isIpAddress(n.host) ? n.host : await _resolveServerIp(n.host);
+        if (ip != null) serverIps.add(ip);
+      }
 
-      // 4. Генерируем конфиг
+      // 4. Генерируем конфиг. Clash API защищён случайным секретом:
+      // без него любой локальный процесс мог управлять туннелем.
+      final secret = _newSecret();
+      _apiClient.secret = secret;
       final config = _builder.buildTunConfig(
         node,
+        fallbacks: fallbacks,
+        serverIps: serverIps.toList(),
         socksPort: 2080,
-        resolvedServerIp: resolvedServerIp,
-        smartRouting: smartRouting,
-        aiDirectLane: aiDirectLane,
+        routing: routing,
+        clashSecret: secret,
+        clashPort: _apiPort,
       );
-
-      // Мержим experimental вместо полной перезаписи, чтобы сохранить
-      // cache_file из _buildExperimental().
-      final experimental = Map<String, dynamic>.from(
-        config['experimental'] as Map? ?? {},
-      );
-      experimental['clash_api'] = {
-        'external_controller': '127.0.0.1:$_apiPort',
-        'secret': '',
-      };
-      config['experimental'] = experimental;
+      if (fallbacks.isNotEmpty) {
+        log.i(
+          'Автопереключение транспорта: ${[node, ...fallbacks].map((n) => n.protocol).join(" + ")}',
+          tag: 'BRIDGE',
+        );
+      }
 
       final configJson = _builder.buildJson(config);
 
@@ -304,6 +308,21 @@ class SingboxBridgeWindows implements SingboxBridge {
   }
 
   /// Резолвит доменное имя сервера в IP-адрес ДО запуска TUN.
+  String _newSecret() {
+    final r = Random.secure();
+    return List.generate(24, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  @override
+  Future<UdpProbeResult> checkUdp() async {
+    if (_state != BridgeState.running) {
+      return const UdpProbeResult.failed('VPN не подключён');
+    }
+    // mixed-inbound sing-box (2080) умеет SOCKS5 UDP ASSOCIATE: датаграммы
+    // идут тем же outbound-ом `proxy`, что и трафик Discord.
+    return UdpProbe.viaSocks5(2080);
+  }
+
   Future<String?> _resolveServerIp(String host) async {
     if (_isIpAddress(host)) {
       log.d('Хост уже IP-адрес: $host', tag: 'BRIDGE');

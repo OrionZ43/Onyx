@@ -12,6 +12,11 @@ class NodeSanitizer {
   Node sanitize(Node raw) {
     Node node = raw;
 
+    // Правила ниже (Vision/MUX/fingerprint) — про VLESS. Для Hysteria2, TUIC,
+    // Shadowsocks, Trojan и AnyTLS параметры сервера берём как есть:
+    // принудительный flow или смена fingerprint их бы сломали.
+    if (node.protocol != NodeProtocol.vless) return node;
+
     // 1. Нормализация отпечатка браузера
     node = _patchFingerprint(node);
 
