@@ -19,18 +19,24 @@ class UpdateService {
   static const _githubApi =
       'https://api.github.com/repos/OrionZ43/Onyx/releases/latest';
 
-  // Версия вшивается автоматически из git-тега при сборке через --dart-define.
-  // Локально (flutter run) = '0.0.0' чтобы всегда показывало обновление для отладки.
-  static const _currentVersion = String.fromEnvironment(
+  // Версия вшивается из git-тега при сборке в CI: --dart-define=APP_VERSION.
+  // Локальная сборка без этого флага — dev: обновления ей НЕ предлагаются,
+  // иначе апдейтер ставил бы поверх dev-сборки старый релиз с GitHub
+  // (раньше по умолчанию было '0.0.0' — «обновлялось» на что угодно).
+  static const isDevBuild = !bool.hasEnvironment('APP_VERSION');
+  static const currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '0.0.0',
+    defaultValue: '0.3.0-dev',
   );
+  static const _currentVersion = currentVersion;
 
   final Dio _dio = Dio();
 
   Future<UpdateInfo?> checkForUpdate() async {
     // На Android обновления не поддерживаются (APK обновляется через магазин)
     if (Platform.isAndroid) return null;
+    // Dev-сборка: не предлагаем «обновиться» на релиз с GitHub.
+    if (isDevBuild) return null;
 
     try {
       final response = await _dio.get(_githubApi);

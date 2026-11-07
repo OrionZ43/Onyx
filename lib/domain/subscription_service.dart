@@ -53,7 +53,9 @@ class SubscriptionService {
     'https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt',
   ];
 
-  Future<SubscriptionResult> fetch(String url) async {
+  /// Загружает подписку. [mirrors] — зеркала источника, перебираются после
+  /// основного URL (к ним добавляются зеркала пресетов и zieng2).
+  Future<SubscriptionResult> fetch(String url, {List<String> mirrors = const []}) async {
     final cleanUrl = url.trim();
     log.i('Начинаем загрузку подписки', tag: 'SUB');
     log.d('URL: $cleanUrl', tag: 'SUB');
@@ -66,7 +68,10 @@ class SubscriptionService {
       // Встроенные пресеты (бесплатные ноды для Китая) — со своими
       // зеркалами: raw.githubusercontent.com там обычно недоступен.
       if (preset != null) ...preset.mirrors,
+      ...mirrors,
     ];
+    final seen = <String>{};
+    urlsToTry.retainWhere(seen.add);
 
     String? raw;
     String? lastErrorMsg;
@@ -100,6 +105,12 @@ class SubscriptionService {
       );
     }
 
+    return parseContent(raw, rawUrl: cleanUrl);
+  }
+
+  /// Разбирает и санитизирует уже полученный текст подписки или ссылок.
+  SubscriptionResult parseContent(String raw, {String rawUrl = ''}) {
+    final cleanUrl = rawUrl;
     try {
       final parsed = _parser.parse(raw);
       log.i('Распарсено узлов: ${parsed.length}', tag: 'SUB');

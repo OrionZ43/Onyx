@@ -9,6 +9,8 @@ import '../../infrastructure/singbox_bridge_windows.dart';
 import '../../infrastructure/singbox_bridge_android.dart';
 import '../../infrastructure/vpn_notification_service.dart';
 import 'subscription_provider.dart';
+import 'groups_provider.dart';
+import '../../domain/sources/node_pool.dart';
 import 'node_provider.dart';
 import 'settings_provider.dart';
 
@@ -398,28 +400,14 @@ class VpnController extends StateNotifier<VpnState> {
     required bool preferAi,
     required SubscriptionState sub,
   }) {
-    int lat(Node n) => n.latencyMs ?? 9999;
-
-    if (preferAi) {
-      final aiNodes = sub.nodes
-          .where((n) => n.aiReachable && n.id != excludeId)
-          .toList()
-        ..sort((a, b) => lat(a).compareTo(lat(b)));
-      if (aiNodes.isNotEmpty) return aiNodes.first;
-    }
-
-    final working = sub.nodes
-        .where((n) => n.isTrulyWorking && n.id != excludeId)
-        .toList()
-      ..sort((a, b) => lat(a).compareTo(lat(b)));
-    if (working.isNotEmpty) return working.first;
-
-    // Последний шанс — любая живая, кроме текущей.
-    final alive = sub.nodes
-        .where((n) => n.isAlive && n.id != excludeId)
-        .toList()
-      ..sort((a, b) => lat(a).compareTo(lat(b)));
-    return alive.isEmpty ? null : alive.first;
+    // Сначала — в группе автовыбора (если выбрана), потом по всем.
+    final groupId = ref.read(autoGroupProvider);
+    return NodePool.failover(
+      excludeId: excludeId,
+      groupNodes: groupId == null ? sub.nodes : ref.read(groupNodesProvider(groupId)),
+      allNodes: sub.nodes,
+      preferAi: preferAi,
+    );
   }
 
   // ── Слушаем мост ──────────────────────────────────────────────────────

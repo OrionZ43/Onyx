@@ -33,6 +33,7 @@ abstract final class NodeProtocol {
 class Node {
   const Node({
     this.protocol = NodeProtocol.vless,
+    this.sourceIds = const [],
     this.password = '',
     this.method = '',
     this.obfs = '',
@@ -71,6 +72,13 @@ class Node {
 
   /// Один из [NodeProtocol]. По умолчанию vless.
   final String protocol;
+
+  /// Источники (SubscriptionSource.id), в которых встречается нода. Дубли
+  /// из разных источников склеиваются по [id], а их источники копятся здесь.
+  final List<String> sourceIds;
+
+  /// Первый (основной) источник ноды или пустая строка.
+  String get sourceId => sourceIds.isEmpty ? '' : sourceIds.first;
 
   /// Пароль: hysteria2 / tuic / shadowsocks / trojan / anytls.
   final String password;
@@ -156,6 +164,7 @@ class Node {
   final int muxMaxStreams;
 
   Node copyWith({
+    List<String>? sourceIds,
     int? latencyMs,
     bool? udpSupported,
     bool? isAlive,
@@ -168,6 +177,7 @@ class Node {
     int? muxMaxStreams,
   }) {
     return Node(
+      sourceIds: sourceIds ?? this.sourceIds,
       protocol: protocol,
       password: password,
       method: method,
@@ -228,6 +238,7 @@ class Node {
 
   Map<String, dynamic> toJson() => {
     'protocol': protocol,
+    if (sourceIds.isNotEmpty) 'sourceIds': sourceIds,
     if (password.isNotEmpty) 'password': password,
     if (method.isNotEmpty) 'method': method,
     if (obfs.isNotEmpty) 'obfs': obfs,
@@ -265,6 +276,7 @@ class Node {
   };
 
   factory Node.fromJson(Map<String, dynamic> json) => Node(
+    sourceIds: (json['sourceIds'] as List?)?.whereType<String>().toList() ?? const [],
     protocol: json['protocol'] as String? ?? NodeProtocol.vless,
     password: json['password'] as String? ?? '',
     method: json['method'] as String? ?? '',
