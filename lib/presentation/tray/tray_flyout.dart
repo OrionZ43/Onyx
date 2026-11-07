@@ -149,6 +149,8 @@ class _MainPage extends ConsumerWidget {
     final auto = ref.watch(autoNodeProvider);
     final autoGroup = ref.watch(autoGroupProvider);
     final groups = ref.watch(groupsProvider);
+    // Серверы есть, но ни один пока не ответил — это не «нет серверов».
+    final listed = ref.watch(subscriptionProvider.select((s) => s.nodes.isNotEmpty));
     // Этап автопилота (обновляю / проверяю / не удалось) поверх состояния VPN.
     final ap = AutopilotView.of(vpn, ref.watch(connectPhaseProvider));
     final failure = ap?.failure;
@@ -238,7 +240,7 @@ class _MainPage extends ConsumerWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(node == null ? 'Нет серверов' : displayNodeName(node.name),
+                Text(node != null ? displayNodeName(node.name) : (listed ? 'Выберу при подключении' : 'Нет серверов'),
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontFamily: t.bodyFont, fontSize: 14, fontWeight: FontWeight.w500, color: t.text)),
                 const SizedBox(height: 2),

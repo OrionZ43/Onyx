@@ -389,7 +389,10 @@ class ServerCard extends ConsumerWidget {
     final t = OnyxTokens.of(context);
     final n = node;
     final country = n == null ? Country.unknown : countryOfName(n.name);
-    final title = n == null ? 'Нет серверов' : displayNodeName(n.name);
+    // Серверы есть, но ни один пока не ответил (проверка не прошла или все
+    // недоступны) — это не «нет серверов»: автопилот проверит их по тапу.
+    final listed = sub.nodes.isNotEmpty;
+    final title = n != null ? displayNodeName(n.name) : (listed ? 'Автовыбор' : 'Нет серверов');
     final String subtitle;
     if (sub.status == SubStatus.fetching) {
       subtitle = 'Загружаем список…';
@@ -398,7 +401,7 @@ class ServerCard extends ConsumerWidget {
     } else if (sub.status == SubStatus.deepProbing) {
       subtitle = 'AI-проба ${sub.deepProbedCount}/${sub.deepProbeTotal}';
     } else if (n == null) {
-      subtitle = 'Добавьте подписку';
+      subtitle = listed ? 'Лучший выберется при подключении' : 'Добавьте подписку';
     } else {
       subtitle = country.isKnown ? country.name : '${sub.aliveNodes.length} из ${sub.nodes.length} доступно';
     }
