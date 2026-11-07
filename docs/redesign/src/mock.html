@@ -33,7 +33,7 @@ body{-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1,"cv11" 1}
 .homebar{position:absolute;left:50%;bottom:8px;width:134px;height:5px;border-radius:3px;background:var(--t1);opacity:.9;transform:translateX(-50%)}
 
 /* ── окно Windows ── */
-.desk .titlebar{height:40px;padding-left:18px;justify-content:space-between;border-bottom:1px solid var(--line)}
+.desk .titlebar,.det .titlebar{height:40px;padding-left:18px;justify-content:space-between;border-bottom:1px solid var(--line)}
 .winbtn{width:46px;height:40px;display:flex;align-items:center;justify-content:center;color:var(--t2)}
 .winbtn b{display:block}
 .desk .body{position:absolute;top:40px;left:0;right:0;bottom:0;display:flex}
@@ -66,7 +66,7 @@ const groups = [];
 for (const s of SERVERS) { let g = groups.find(g => g.cc === s.cc); if (!g) groups.push(g = {cc:s.cc, country:s.country, items:[]}); g.items.push(s); }
 
 /* ───────────────────────── помощники ───────────────────────── */
-const SET = {a:'phosphor', a2:'phosphor', b:'lucide', c:'pixel'}[D];
+const SET = {a:'phosphor', a2:'phosphor', b:'lucide', c:'pixel', c2:'pixel', m3:'m3'}[D];
 const ic = (n, size, extra='') => `<span class="ic ${extra}" style="--src:url(icons/${SET}/${n}.svg);--is:${size||20}px"></span>`;
 const h = (s) => s; // для читаемости шаблонов
 
@@ -90,6 +90,7 @@ const GL = {
  '4':['00010','00110','01010','10010','11111','00010','00010'], '5':['11111','10000','11110','00001','00001','10001','01110'],
  '6':['00110','01000','10000','11110','10001','10001','01110'], '7':['11111','00001','00010','00100','01000','01000','01000'],
  '8':['01110','10001','10001','01110','10001','10001','01110'], '9':['01110','10001','10001','01111','00001','00010','01100'],
+ 'E':['11111','10000','10000','11110','10000','10000','11111'], 'R':['11110','10001','10001','11110','10100','10010','10001'], '+':['00000','00100','00100','11111','00100','00100','00000'],
  ':':['0','0','1','0','1','0','0'], '-':['000','000','000','111','000','000','000'], ' ':['0','0','0','0','0','0','0'],
 };
 function dots(text, d=6, gap=2, on='#fff', off='#161616') {
@@ -600,11 +601,18 @@ desk() {
 };
 
 /* ───────────────────────── сборка ───────────────────────── */
-const T = {a:A, a2:A2, b:B, c:C}[D];
-document.getElementById('theme').textContent = T.css;
-document.documentElement.style.setProperty('--W', V==='desk'?'1100px':'390px');
-document.documentElement.style.setProperty('--H', V==='desk'?'720px':'844px');
-document.getElementById('root').innerHTML = `<div class="app ${V} ${S} ${ON?"on":"off"}">${V==='desk'?T.desk():T.phone()}</div>`;
+function build(extra) {
+  const T = Object.assign({a:A, a2:A2, b:B, c:C}, extra || {})[D];
+  document.getElementById('theme').textContent = T.css;
+  const W = V==='desk' || V==='det' ? '1100px' : '390px', H = V==='desk' || V==='det' ? '720px' : '844px';
+  document.documentElement.style.setProperty('--W', W);
+  document.documentElement.style.setProperty('--H', H);
+  const body = V==='desk' ? T.desk() : V==='det' ? T.det() : T.phone();
+  document.getElementById('root').innerHTML = `<div class="app ${V} ${S} ${ON?"on":"off"}">${body}</div>`;
+  if (T.after) T.after();
+}
 </script>
+<script src="flags-data.js"></script>
+<script src="mock-ext.js"></script>
 </body>
 </html>
