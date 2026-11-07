@@ -289,3 +289,19 @@
 - `OnyxThemeKind { onyx, signal, material }` хранится в `SharedPreferences`, переключается в «Настройки → Оформление».
 - Общие токены лежат в `ThemeExtension<OnyxTokens>` (цвета ролей, радиусы, шрифты, моторика). Каждая тема даёт свой набор `ThemeData` и свою реализацию главной кнопки, флага и индикатора пинга через `OnyxThemeKit` (фабрика виджетов).
 - Шрифты встроены в `assets/fonts`: Inter, Inter Tight (Onyx); Onest, JetBrains Mono (Signal); Roboto Flex (M3 на Windows, на Android системный Roboto).
+
+---
+
+## 11. Material 3 Expressive — каноничная версия (итерация 2)
+
+Замечание пользователя: «фигуры не как из оригинальной Material 3, нужно смотреть гайдлайны». Что изменилось:
+
+- **Фигуры — эталонные, а не нарисованные на глаз.** Контуры выгружены из `material_new_shapes`: это Dart-порт `androidx.graphics.shapes`, параметры `MaterialShapes` (вершины, rounding, innerRadius) повторяют Compose Material3. Скрипт `docs/redesign/src/tool/m3_shapes_dump_test.dart` выгружает данные в `docs/redesign/src/m3-shapes.js`. Морф — `Morph` из той же библиотеки. Последовательность форм LoadingIndicator — `IndeterminateIndicatorPolygons`: SoftBurst → Cookie9Sided → Pentagon → Pill → Sunny → Cookie4Sided → Oval.
+- **Компоненты — по страницам m3.material.io/components с токенами**: Top app bar small, Lists segmented, Filter chips, Search bar, Switch, Linear wavy progress, Loading indicator contained, Bottom sheet, Snackbar, Filled/Tonal buttons, Standard icon buttons, Filled card (`medium` 12). Источники — выгрузка `.m3-guidelines` и справочник `mitso_schedule/docs/m3`.
+- **Navigation bar и rail осознанно не используются**: у приложения одно назначение, а гайдлайн требует от 3 до 5 пунктов.
+- Флаги по-прежнему обрезаются фигурами, но теперь официальными MaterialShapes (роль «avatars / image crops»).
+- Цвета: baseline dark (Flutter `_colorSchemeDarkM3` / Compose `ColorDarkTokens`); на Android 12+ — dynamic color.
+
+Мокапы: `m3c-phone-{off,ing,on,err,list}.png`, `m3c-desktop-{off,on}.png`, `overview-m3c-phone.png`, `details-m3c.png`.
+Лист-сверка: `m3c-checklist.png` («экран → компонент → страница гайдлайна → ключевые токены»).
+Старые `m3-*` и `details-m3.png` больше не актуальны, оставлены для истории.

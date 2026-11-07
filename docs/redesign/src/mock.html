@@ -66,7 +66,7 @@ const groups = [];
 for (const s of SERVERS) { let g = groups.find(g => g.cc === s.cc); if (!g) groups.push(g = {cc:s.cc, country:s.country, items:[]}); g.items.push(s); }
 
 /* ───────────────────────── помощники ───────────────────────── */
-const SET = {a:'phosphor', a2:'phosphor', b:'lucide', c:'pixel', c2:'pixel', m3:'m3'}[D];
+const SET = {a:'phosphor', a2:'phosphor', b:'lucide', c:'pixel', c2:'pixel', m3:'m3', m3b:'m3'}[D];
 const ic = (n, size, extra='') => `<span class="ic ${extra}" style="--src:url(icons/${SET}/${n}.svg);--is:${size||20}px"></span>`;
 const h = (s) => s; // для читаемости шаблонов
 
@@ -604,15 +604,18 @@ desk() {
 function build(extra) {
   const T = Object.assign({a:A, a2:A2, b:B, c:C}, extra || {})[D];
   document.getElementById('theme').textContent = T.css;
-  const W = V==='desk' || V==='det' ? '1100px' : '390px', H = V==='desk' || V==='det' ? '720px' : '844px';
+  const big = V==='desk' || V==='det' || V==='chk';
+  const W = big ? '1100px' : '390px', H = V==='chk' ? '920px' : big ? '720px' : '844px';
   document.documentElement.style.setProperty('--W', W);
   document.documentElement.style.setProperty('--H', H);
-  const body = V==='desk' ? T.desk() : V==='det' ? T.det() : T.phone();
-  document.getElementById('root').innerHTML = `<div class="app ${V} ${S} ${ON?"on":"off"}">${body}</div>`;
+  const body = V==='desk' ? T.desk() : V==='det' ? T.det() : V==='chk' ? T.check() : T.phone();
+  document.getElementById('root').innerHTML = `<div class="app ${V==='chk'?'det':V} ${S} ${ON?"on":"off"}">${body}</div>`;
   if (T.after) T.after();
 }
 </script>
 <script src="flags-data.js"></script>
+<script src="m3-shapes.js"></script>
+<script src="mock-m3.js"></script>
 <script src="mock-ext.js"></script>
 </body>
 </html>
