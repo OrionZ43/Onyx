@@ -154,7 +154,8 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
   /// панели задач. Если значок не нашёлся — правый нижний угол основного
   /// монитора.
   Future<Rect> _flyoutRect() async {
-    const s = TrayFlyout.size, m = 12.0;
+    final s = TrayFlyout.sizeFor(region: ref.read(settingsProvider).smartRouting);
+    const m = 12.0;
     final (primary, areas) = await _workAreas();
     Rect? icon;
     try {
@@ -206,10 +207,24 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
     if (!_normalMaximized) _normalBounds = await windowManager.getBounds();
   }
 
+  Future<void> _queue = Future<void>.value();
+
+  /// Переходы окна — строго по очереди (второй щелчок двойного клика
+  /// приходит, пока панель ещё строится). Пока идёт переход, потеря фокуса и
+  /// сворачивание панель не трогают.
+  Future<void> _serial(Future<void> Function() step) => _queue = _queue.then((_) async {
+        _switching = true;
+        try {
+          await step();
+        } catch (e) {
+          log.w('Окно: переход не удался ($e)', tag: 'MAIN');
+        } finally {
+          _switching = false;
+        }
+      });
+
   Future<void> _showFlyout() async {
-    if (_switching) return;
-    _switching = true;
-    try {
+    await _serial(() async {
       final minimized = await windowManager.isMinimized();
       if (!_flyout) _flyoutFromWindow = !minimized && await windowManager.isVisible();
       // Из свёрнутого и развёрнутого состояний панель не построить: Windows
@@ -235,7 +250,7 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setSkipTaskbar(true);
       await windowManager.setResizable(false);
-      await windowManager.setMinimumSize(TrayFlyout.size);
+      await windowManager.setMinimumSize(rect.size);
       await windowManager.setBounds(rect);
       await windowManager.show();
       await windowManager.focus();
@@ -244,58 +259,52 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
         await Future<void>.delayed(const Duration(milliseconds: 60));
         await windowManager.focus();
       }
-      await _tray?.sync();
-    } finally {
-      _switching = false;
-    }
+    });
+    await _tray?.sync();
   }
 
-  Future<void> _hideFlyout() async {
-    if (!_flyout || !_isVisible) return;
-    _lastFlyoutHide = DateTime.now();
-    _flyoutFromWindow = false;
-    setState(() => _isVisible = false);
-    await windowManager.hide();
-  }
+  Future<void> _hideFlyout() => _serial(() async {
+        if (!_flyout || !_isVisible) return;
+        _lastFlyoutHide = DateTime.now();
+        _flyoutFromWindow = false;
+        setState(() => _isVisible = false);
+        await windowManager.hide();
+      });
 
   /// Esc в панели: открыли поверх полного окна — к нему и вернуться.
   void _onFlyoutEsc() => _flyoutFromWindow ? _showWindow() : _hideFlyout();
 
   /// Полное окно Onyx (из панели, двойной клик по значку и т. п.).
-  Future<void> _showWindow() async {
-    if (_switching) return;
-    _switching = true;
-    try {
-      if (_flyout) {
-        setState(() => _flyout = false);
-        _flyoutFromWindow = false;
-        await windowManager.setAlwaysOnTop(false);
-        await windowManager.setSkipTaskbar(false);
-        await windowManager.setResizable(true);
-        await windowManager.setMinimumSize(_normalMin);
-        final (primary, _) = await _workAreas();
-        await windowManager.setBounds(_normalBounds ??
-            Rect.fromCenter(
-              center: primary.center,
-              width: math.min(_normalDefault.width, primary.width),
-              height: math.min(_normalDefault.height, primary.height),
-            ));
-      }
-      setState(() => _isVisible = true);
-      await windowManager.show();
-      await windowManager.restore();
-      if (_normalMaximized) await windowManager.maximize();
-      await windowManager.focus();
-    } finally {
-      _switching = false;
-    }
-  }
+  Future<void> _showWindow() => _serial(() async {
+        if (_flyout) {
+          setState(() => _flyout = false);
+          _flyoutFromWindow = false;
+          await windowManager.setAlwaysOnTop(false);
+          await windowManager.setSkipTaskbar(false);
+          await windowManager.setResizable(true);
+          await windowManager.setMinimumSize(_normalMin);
+          final (primary, _) = await _workAreas();
+          await windowManager.setBounds(_normalBounds ??
+              Rect.fromCenter(
+                center: primary.center,
+                width: math.min(_normalDefault.width, primary.width),
+                height: math.min(_normalDefault.height, primary.height),
+              ));
+        }
+        setState(() => _isVisible = true);
+        await windowManager.show();
+        await windowManager.restore();
+        if (_normalMaximized) await windowManager.maximize();
+        await windowManager.focus();
+      });
 
   /// «Свернуть»: Onyx уходит в трей и продолжает работу.
   Future<void> _hideToTray() async {
-    await _rememberNormal();
-    setState(() => _isVisible = false);
-    await windowManager.hide();
+    await _serial(() async {
+      await _rememberNormal();
+      setState(() => _isVisible = false);
+      await windowManager.hide();
+    });
     await LocalNotification(
       title: 'Onyx VPN',
       body: 'Onyx свернут в трей и продолжает работу.',

@@ -52,7 +52,9 @@ class TrayFlyout extends ConsumerStatefulWidget {
   /// Меняется при каждом показе — перезапускает анимацию появления.
   final int showId;
 
-  static const Size size = Size(360, 452);
+  /// Размер панели. Без выбора региона (умная маршрутизация выключена) —
+  /// ниже на высоту переключателя, чтобы над кнопками не было пустоты.
+  static Size sizeFor({required bool region}) => Size(360, region ? 420 : 364);
 
   @override
   ConsumerState<TrayFlyout> createState() => _TrayFlyoutState();

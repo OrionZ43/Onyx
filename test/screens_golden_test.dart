@@ -19,6 +19,7 @@ import 'package:onyx/domain/entities/node.dart';
 import 'package:onyx/domain/entities/vpn_state.dart';
 import 'package:onyx/infrastructure/update_service.dart';
 import 'package:onyx/presentation/providers/groups_provider.dart';
+import 'package:onyx/presentation/providers/settings_provider.dart';
 import 'package:onyx/presentation/providers/sources_provider.dart';
 import 'package:onyx/presentation/providers/subscription_provider.dart';
 import 'package:onyx/presentation/providers/theme_provider.dart';
@@ -229,10 +230,10 @@ Widget flyoutScene(int frame) => Builder(builder: (context) {
             ]),
           ),
         ),
-        Positioned(
-          right: 40, bottom: 60,
-          width: TrayFlyout.size.width, height: TrayFlyout.size.height,
-          child: Container(
+        Consumer(builder: (_, ref, child) {
+          final size = TrayFlyout.sizeFor(region: ref.watch(settingsProvider).smartRouting);
+          return Positioned(right: 40, bottom: 60, width: size.width, height: size.height, child: child!);
+        }, child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               boxShadow: const [BoxShadow(color: Color(0x99000000), blurRadius: 32, offset: Offset(0, 12))],
@@ -243,6 +244,16 @@ Widget flyoutScene(int frame) => Builder(builder: (context) {
         ),
       ]);
     });
+
+/// Умная маршрутизация выключена — панель без выбора региона, ниже.
+Future<void> withoutSmartRouting(Future<void> Function() body) async {
+  SharedPreferences.setMockInitialValues({'settings_smart_routing': false});
+  try {
+    await body();
+  } finally {
+    SharedPreferences.setMockInitialValues({});
+  }
+}
 
 void main() {
   setUpAll(() async {
@@ -264,6 +275,10 @@ void main() {
         await tester.tap(find.text('Автовыбор · из «Все»').first, warnIfMissed: false);
         await tester.pump(const Duration(milliseconds: 400));
       });
+    });
+    testWidgets('${k.name} flyout noregion', (tester) async {
+      await withoutSmartRouting(() =>
+          shot(tester, '${k.name}-flyout-noregion', app(k, vpnOf('on'), Scaffold(body: flyoutScene(0))), const Size(760, 620), android: false));
     });
     for (final s in ['off', 'ing', 'on', 'err']) {
       testWidgets('${k.name} phone $s', (tester) async {
