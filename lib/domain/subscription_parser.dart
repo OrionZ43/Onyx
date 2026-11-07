@@ -40,6 +40,33 @@ class SubscriptionParser {
     return decoded != null && _schemes.any(decoded.contains);
   }
 
+  static const _supportedHint =
+      'Вставьте ссылку vless://, hy2://, tuic://, ss://, trojan://, anytls:// или адрес подписки (https://…).';
+
+  /// Понятная причина, если вставлен НЕПОДДЕРЖИВАЕМЫЙ формат (vpn:// Amnezia,
+  /// vmess://, WireGuard, неизвестная схема). null — формат поддерживается
+  /// или это не ссылка вовсе.
+  static String? unsupportedReason(String input) {
+    final first = input
+        .trim()
+        .split(RegExp(r'[\n\r]+'))
+        .map((l) => l.trim())
+        .firstWhere((l) => l.isNotEmpty, orElse: () => '');
+    final m = RegExp(r'^([a-zA-Z][a-zA-Z0-9+.\-]*)://').firstMatch(first);
+    if (m == null) return null;
+    final scheme = m.group(1)!.toLowerCase();
+    if (scheme == 'http' || scheme == 'https') return null;
+    if (_schemes.contains('$scheme://')) return null;
+    return switch (scheme) {
+      'vpn' => 'Формат Amnezia (vpn://) не поддерживается. $_supportedHint',
+      'vmess' => 'VMess (vmess://) не поддерживается. $_supportedHint',
+      'ssr' => 'ShadowsocksR (ssr://) не поддерживается. $_supportedHint',
+      'wireguard' || 'wg' || 'awg' =>
+        'WireGuard / AmneziaWG не поддерживается. $_supportedHint',
+      _ => 'Ссылка «$scheme://» не поддерживается. $_supportedHint',
+    };
+  }
+
   List<Node> parse(String raw) {
     var text = raw.trim();
     if (text.startsWith('﻿')) text = text.substring(1);

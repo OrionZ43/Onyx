@@ -5,19 +5,45 @@
 ///                Bilibili, Taobao, банки) напрямую, локальный DNS 223.5.5.5,
 ///                всё остальное — через туннель.
 ///
+///   • [auto]   — определить по часовому поясу и локали устройства (Китай,
+///                иначе Россия/Беларусь). Значение по умолчанию.
+///
 /// Работает только при включённой умной маршрутизации (smartRouting).
-enum RoutingRegion { russia, china }
+enum RoutingRegion { auto, russia, china }
 
 extension RoutingRegionLabel on RoutingRegion {
   String get label => switch (this) {
+        RoutingRegion.auto => 'Авто (по часовому поясу)',
         RoutingRegion.russia => 'Россия/Беларусь',
         RoutingRegion.china => 'Китай',
       };
 
   static RoutingRegion parse(String? v) => RoutingRegion.values.firstWhere(
         (r) => r.name == v,
-        orElse: () => RoutingRegion.russia,
+        orElse: () => RoutingRegion.auto,
       );
+
+  /// Конкретный регион: для [RoutingRegion.auto] — определённый по устройству.
+  RoutingRegion resolve(RoutingRegion detected) =>
+      this == RoutingRegion.auto ? detected : this;
+
+  /// Определение региона без сети: Китай, если часовой пояс UTC+8 и при
+  /// этом имя пояса китайское (China/CST/Beijing/Shanghai…) или локаль
+  /// zh_CN / zh_Hans_CN. Иначе — Россия/Беларусь. (UTC+8 сам по себе
+  /// не годится: это и Сингапур, и Гонконг, и Перт.)
+  static RoutingRegion detect({
+    required Duration offset,
+    required String timeZoneName,
+    required String locale,
+  }) {
+    if (offset != const Duration(hours: 8)) return RoutingRegion.russia;
+    final tz = timeZoneName.toLowerCase();
+    final loc = locale.toLowerCase().replaceAll('-', '_');
+    final chinaTz = ['china', 'cst', 'beijing', 'shanghai', 'chongqing', 'urumqi', 'harbin', 'prc']
+        .any(tz.contains);
+    final chinaLocale = loc.startsWith('zh_cn') || loc.startsWith('zh_hans_cn') || loc == 'zh_hans';
+    return (chinaTz || chinaLocale) ? RoutingRegion.china : RoutingRegion.russia;
+  }
 }
 
 /// Домены Discord: клиент, API, gateway, CDN, медиа и голос.

@@ -16,6 +16,26 @@ import 'subscription_provider.dart';
 export '../../domain/entities/subscription_source.dart';
 export '../../domain/subscription_presets.dart';
 
+/// Итог «Обновить всё»: для тоста в UI.
+class RefreshReport {
+  const RefreshReport({this.ok = 0, this.failed = const []});
+
+  /// Сколько источников обновилось.
+  final int ok;
+
+  /// «Имя: причина» для источников, которые не ответили (включая все зеркала).
+  final List<String> failed;
+
+  bool get allFailed => ok == 0 && failed.isNotEmpty;
+
+  String get summary {
+    if (ok == 0 && failed.isEmpty) return 'Нет включённых источников';
+    if (allFailed) return 'Не удалось обновить: ${failed.join('; ')}';
+    if (failed.isEmpty) return 'Обновлено источников: $ok. Проверяем серверы…';
+    return 'Обновлено: $ok, не ответили: ${failed.join('; ')}';
+  }
+}
+
 /// Итог импорта резервной копии.
 class ImportResult {
   const ImportResult({this.sources = 0, this.groups = 0, this.error});
@@ -104,6 +124,11 @@ class SourcesController extends StateNotifier<List<SubscriptionSource>> {
       lastError = 'Пустая ссылка';
       return null;
     }
+    final unsupported = SubscriptionParser.unsupportedReason(input);
+    if (unsupported != null) {
+      lastError = unsupported;
+      return null;
+    }
     if (SubscriptionParser.looksLikeContent(input)) {
       return addLinks(input, name: name);
     }
@@ -133,7 +158,9 @@ class SourcesController extends StateNotifier<List<SubscriptionSource>> {
     lastError = null;
     final result = _service.parseContent(raw.trim());
     if (!result.isSuccess || result.nodes.isEmpty) {
-      lastError = result.error ?? 'Не найдено ни одной ссылки на сервер';
+      lastError = SubscriptionParser.unsupportedReason(raw) ??
+          result.error ??
+          'Не найдено ни одной ссылки на сервер';
       return null;
     }
     final source = SourcesCodec.newLinks(raw, name: name, count: result.nodes.length);
@@ -183,19 +210,41 @@ class SourcesController extends StateNotifier<List<SubscriptionSource>> {
     await _persist();
   }
 
-  /// Перезагружает источник (подписку — из сети, ссылки — перепарсивает).
-  Future<void> refresh(String id) async {
+  /// Перезагружает источник (подписку — из сети с зеркалами, ссылки —
+  /// перепарсивает). false — не удалось (причина в source.error).
+  Future<bool> refresh(String id, {bool probe = true}) async {
     await ready;
-    if (byId(id) == null) return;
-    if (await _load(id)) await _persist();
+    if (byId(id) == null) return false;
+    final ok = await _load(id, probe: probe);
+    if (ok) await _persist();
+    return ok;
   }
 
-  /// Обновляет все включённые источники по очереди.
-  Future<void> refreshAll() async {
+  /// «Обновить»: перезагружает все включённые источники и ПЕРЕПРОВЕРЯЕТ все
+  /// серверы (раньше проверялись только новые ноды — если состав не
+  /// менялся, кнопка «ничего не делала»). Пока идёт загрузка, у
+  /// subscriptionProvider статус fetching (крутилка в UI); если не ответил
+  /// ни один источник — статус error с понятной причиной.
+  Future<RefreshReport> refreshAll() async {
     await ready;
+    final sub = _ref.read(subscriptionProvider.notifier);
+    sub.beginRefresh();
+    var ok = 0;
+    final failed = <String>[];
     for (final s in List.of(state)) {
-      if (s.enabled) await refresh(s.id);
+      if (!s.enabled) continue;
+      if (await refresh(s.id, probe: false)) {
+        ok++;
+      } else {
+        failed.add('${s.name}: ${byId(s.id)?.error ?? 'нет ответа'}');
+      }
     }
+    final report = RefreshReport(ok: ok, failed: failed);
+    log.i(report.summary, tag: 'SOURCES');
+    sub.endRefresh(error: report.allFailed ? report.summary : null);
+    // Перепроверяем всё, что есть (и старые ноды тоже): мёртвые отсеются.
+    unawaited(sub.reprobe());
+    return report;
   }
 
   /// Обновляет источники, у которых подошло время автообновления.
@@ -267,7 +316,7 @@ class SourcesController extends StateNotifier<List<SubscriptionSource>> {
 
   // ── Внутреннее ───────────────────────────────────────────────────────────
 
-  Future<bool> _load(String id) async {
+  Future<bool> _load(String id, {bool probe = true}) async {
     final src = byId(id);
     if (src == null) return false;
     _update(id, (s) => s.copyWith(status: SourceStatus.fetching, clearError: true));
@@ -296,7 +345,7 @@ class SourcesController extends StateNotifier<List<SubscriptionSource>> {
           clearError: true,
         ));
     await _store.saveNodes(id, nodes);
-    _sync(probeNew: true);
+    _sync(probeNew: probe);
     return true;
   }
 

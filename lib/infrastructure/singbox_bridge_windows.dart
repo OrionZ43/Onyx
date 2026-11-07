@@ -155,52 +155,58 @@ class SingboxBridgeWindows implements SingboxBridge {
       // 5. Завершаем старый процесс если висит
       await _killExisting();
 
-      // 6. Запускаем sing-box.exe
-      log.i('Запускаем: ${_binMgr.singboxExe.path}', tag: 'BRIDGE');
-      _process = await Process.start(
-        _binMgr.singboxExe.path,
-        ['run', '--config', _binMgr.configFile.path],
-        workingDirectory: _binMgr.singboxExe.parent.path,
-        mode: ProcessStartMode.normal,
-      );
-
-      log.i('sing-box PID: ${_process!.pid}', tag: 'BRIDGE');
-
-      // 7. Пишем stdout/stderr в лог.
-      //
-      // sing-box пишет ВСЕ свои логи в stderr — это его штатное поведение,
-      // не признак ошибки. Парсим уровень из текста самого sing-box.
-      _process!.stdout
-          .transform(const SystemEncoding().decoder)
-          .listen(_parseSingboxOutput);
-
-      _process!.stderr.transform(const SystemEncoding().decoder).listen(
-        _parseSingboxOutput,
-      );
-
-      // Следим за завершением процесса
-      _process!.exitCode.then((code) {
-        log.w('sing-box завершился с кодом: $code', tag: 'BRIDGE');
-        if (_state == BridgeState.running) {
-          _errorCtrl.add('sing-box неожиданно завершился (код $code)');
-          _setState(BridgeState.error);
-          _stopStats();
-          _stopTrafficWatchdog();
-        }
-      });
-
-      // 8. Ждём готовности API
-      log.i('Ждём готовности API sing-box...', tag: 'BRIDGE');
-      final ready = await _apiClient.waitReady(
-        timeout: const Duration(seconds: 15),
-      );
-
-      if (!ready) {
-        await _killProcess();
-        throw Exception(
-          'sing-box не ответил за 15 секунд. '
-              'Возможно, не хватает прав администратора.',
+      // 6–8. Запуск sing-box.exe и ожидание API. Один повтор при ошибке TUN:
+      // при быстром переподключении Windows ещё не успевает удалить старый
+      // адаптер WinTUN → «create adapter: Cannot create a file when that file
+      // already exists». Через пару секунд адаптер исчезает и старт проходит.
+      var ready = false;
+      for (var attempt = 0; attempt < 2 && !ready; attempt++) {
+        _stderrTail.clear();
+        log.i('Запускаем: ${_binMgr.singboxExe.path}', tag: 'BRIDGE');
+        final proc = await Process.start(
+          _binMgr.singboxExe.path,
+          ['run', '--config', _binMgr.configFile.path],
+          workingDirectory: _binMgr.singboxExe.parent.path,
+          mode: ProcessStartMode.normal,
         );
+        _process = proc;
+        log.i('sing-box PID: ${proc.pid}', tag: 'BRIDGE');
+
+        // sing-box пишет ВСЕ свои логи в stderr — это штатно.
+        proc.stdout.transform(const SystemEncoding().decoder).listen(_parseSingboxOutput);
+        proc.stderr.transform(const SystemEncoding().decoder).listen(_parseSingboxOutput);
+
+        var exited = false;
+        final exitFuture = proc.exitCode.then((code) {
+          exited = true;
+          log.w('sing-box завершился с кодом: $code', tag: 'BRIDGE');
+          if (identical(_process, proc) && _state == BridgeState.running) {
+            _errorCtrl.add('sing-box неожиданно завершился (код $code)');
+            _setState(BridgeState.error);
+            _stopStats();
+            _stopTrafficWatchdog();
+          }
+          return false;
+        });
+
+        log.i('Ждём готовности API sing-box...', tag: 'BRIDGE');
+        // Не ждём все 15 с, если процесс уже упал.
+        ready = await Future.any([
+          _apiClient.waitReady(timeout: const Duration(seconds: 15)),
+          exitFuture,
+        ]);
+        if (ready) break;
+
+        await _killProcess();
+        final tunBusy = _stderrTail.toString().contains('configure tun interface');
+        if (attempt == 0 && tunBusy) {
+          log.w('WinTUN-адаптер ещё не освобождён — повторяем запуск через 3 с', tag: 'BRIDGE');
+          await Future.delayed(const Duration(seconds: 3));
+          continue;
+        }
+        throw Exception(exited
+            ? 'sing-box завершился при запуске: ${_lastFatal() ?? 'см. лог'}'
+            : 'sing-box не ответил за 15 секунд. Возможно, не хватает прав администратора.');
       }
 
       final version = await _apiClient.getVersion();
@@ -367,7 +373,18 @@ class SingboxBridgeWindows implements SingboxBridge {
   }
 
   /// Парсит вывод sing-box и логирует с правильным уровнем.
+  /// Хвост вывода текущего запуска sing-box (для диагностики старта).
+  final StringBuffer _stderrTail = StringBuffer();
+
+  String? _lastFatal() {
+    for (final l in _stderrTail.toString().split('\n').reversed) {
+      if (l.contains('FATAL')) return l.replaceAll(RegExp(r'\x1b\[[0-9;]*m'), '').trim();
+    }
+    return null;
+  }
+
   void _parseSingboxOutput(String chunk) {
+    if (_stderrTail.length < 16384) _stderrTail.write(chunk);
     for (final rawLine in chunk.split('\n')) {
       final line = rawLine.trim();
       if (line.isEmpty) continue;

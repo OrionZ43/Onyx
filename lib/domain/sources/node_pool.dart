@@ -101,8 +101,15 @@ abstract final class NodePool {
   /// Лучшая нода: сначала прошедшие реальную проверку, затем живые по
   /// TCP. Внутри — по [NodeScorer] (регион, REALITY/QUIC, предпочтение UDP
   /// в режиме Discord, задержка). null — нет живых.
-  static Node? best(Iterable<Node> nodes, {String? excludeId}) {
-    final pool = nodes.where((n) => n.id != excludeId).toList();
+  ///
+  /// [exclude] — ноды на карантине (сервер не отвечал при подключении):
+  /// их не выбираем, даже если TCP-пинг или старая проверка «зелёные».
+  static Node? best(
+    Iterable<Node> nodes, {
+    String? excludeId,
+    Set<String> exclude = const {},
+  }) {
+    final pool = nodes.where((n) => n.id != excludeId && !exclude.contains(n.id)).toList();
     final verified = pool.where((n) => n.isTrulyWorking).toList()..sort(NodeScorer.compare);
     if (verified.isNotEmpty) return verified.first;
     final alive = pool.where((n) => n.isAlive).toList()..sort(NodeScorer.compare);
@@ -118,13 +125,14 @@ abstract final class NodePool {
     required List<Node> groupNodes,
     required List<Node> allNodes,
     bool preferAi = false,
+    Set<String> exclude = const {},
   }) {
     for (final pool in [groupNodes, allNodes]) {
       if (preferAi) {
-        final ai = best(pool.where((n) => n.aiReachable), excludeId: excludeId);
+        final ai = best(pool.where((n) => n.aiReachable), excludeId: excludeId, exclude: exclude);
         if (ai != null) return ai;
       }
-      final n = best(pool, excludeId: excludeId);
+      final n = best(pool, excludeId: excludeId, exclude: exclude);
       if (n != null) return n;
     }
     return null;
