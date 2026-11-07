@@ -47,7 +47,7 @@ body{-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1,"cv11" 1}
 <script>
 const P = Object.fromEntries(location.hash.slice(1).split('&').map(kv => kv.split('=')));
 const D = P.d || 'a', S = P.s || 'off', V = P.v || 'phone';
-const ON = S === 'on';
+const ON = S === 'on', ING = S === 'ing', ERR = S === 'err', K = P.k || '1';
 
 /* ───────────────────────── данные ───────────────────────── */
 const SERVERS = [
@@ -66,7 +66,7 @@ const groups = [];
 for (const s of SERVERS) { let g = groups.find(g => g.cc === s.cc); if (!g) groups.push(g = {cc:s.cc, country:s.country, items:[]}); g.items.push(s); }
 
 /* ───────────────────────── помощники ───────────────────────── */
-const SET = {a:'phosphor', b:'lucide', c:'pixel'}[D];
+const SET = {a:'phosphor', a2:'phosphor', b:'lucide', c:'pixel'}[D];
 const ic = (n, size, extra='') => `<span class="ic ${extra}" style="--src:url(icons/${SET}/${n}.svg);--is:${size||20}px"></span>`;
 const h = (s) => s; // для читаемости шаблонов
 
@@ -265,6 +265,94 @@ desk() {
 };
 function A_titleIcons(){ return `<div class="winbtn">${ic('settings',16)}</div>`; }
 
+
+/* ═════════════════════════ A2 · ОБСИДИАН без часов ═════════════════════════
+   Характер A (чёрный камень, шампань, Inter, Phosphor), но кнопка — современная:
+   k=1 — «линза»: круг с мягким объёмом, световой ободок, тонкое кольцо прогресса;
+   k=2 — «галька»: скруглённый квадрат (squircle) с тем же материалом.
+   Состояния: off | ing (подключение) | on | err | list. */
+const A2 = Object.assign({}, A, {
+css: A.css + `
+.app{--acc:#D2B98F;--acc2:#8E7B5B;--err:#C8655A}
+.status .v{font-weight:300}
+.ing .status .k{color:var(--acc2)} .ing .status .k b{background:var(--acc2)}
+.err .status .k{color:var(--err)} .err .status .k b{background:var(--err)}
+.status .sub{font:400 13px var(--ff);color:var(--t2);margin-top:2px}
+.hero{position:relative;width:var(--D);height:var(--D);display:flex;align-items:center;justify-content:center}
+.hero>svg{position:absolute;inset:0;overflow:visible}
+.lens{position:relative;width:var(--L);height:var(--L);border-radius:var(--rad);
+  background:radial-gradient(120% 100% at 50% 0%, #1D1D21 0%, #101012 45%, #070708 100%);
+  box-shadow:inset 0 -24px 40px rgba(0,0,0,.55),0 30px 70px rgba(0,0,0,.75),0 0 0 1px #17171A;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--t1)}
+.lens::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+  background:linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,.04) 38%,rgba(255,255,255,.02) 70%,rgba(255,255,255,.08));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.lens::after{content:"";position:absolute;left:22%;right:22%;top:5%;height:22%;border-radius:50%;
+  background:radial-gradient(50% 50% at 50% 50%,rgba(255,255,255,.06),transparent)}
+.lens .l{font:500 10.5px var(--fd);letter-spacing:.26em;text-transform:uppercase;color:var(--t2)}
+.on .lens{color:var(--acc);background:radial-gradient(120% 100% at 50% 0%, #1F1D19 0%, #110F0D 45%, #070706 100%);
+  box-shadow:inset 0 -24px 40px rgba(0,0,0,.55),inset 0 0 50px rgba(210,185,143,.07),0 30px 70px rgba(0,0,0,.75),0 0 0 1px #2A2419,0 0 90px rgba(210,185,143,.13)}
+.on .lens::before{background:linear-gradient(180deg,rgba(210,185,143,.75),rgba(210,185,143,.10) 40%,rgba(210,185,143,.04) 70%,rgba(210,185,143,.22))}
+.on .lens .l{color:var(--acc)}
+.ing .lens{transform:scale(.975);color:var(--acc2)}
+.ing .lens::before{background:linear-gradient(180deg,rgba(210,185,143,.40),rgba(255,255,255,.03) 40%,rgba(255,255,255,.02) 70%,rgba(255,255,255,.06))}
+.err .lens::before{background:linear-gradient(180deg,rgba(200,101,90,.55),rgba(255,255,255,.03) 40%,rgba(255,255,255,.02) 70%,rgba(255,255,255,.06))}
+.err .lens .l{color:var(--err)}
+.kbd{font:500 11px var(--fd);color:var(--t2);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;background:var(--s1)}
+.toast{gap:10px;font:400 12.5px var(--ff);color:var(--t2);padding:9px 14px;border-radius:14px;border:1px solid var(--line);background:var(--s1)}
+`,
+hero(D) {
+  const sq = K === '2', L = Math.round(D * (sq ? .72 : .74)), pad = (D - L) / 2;
+  const w = 1.6, gap = 13;
+  // кольцо/контур прогресса вокруг кнопки
+  const o = pad - gap, size = D - 2*o, rx = sq ? L*.30 + gap : size/2;
+  const shape = (attrs) => `<rect x="${o}" y="${o}" width="${size}" height="${size}" rx="${rx}" pathLength="100" ${attrs}/>`;
+  const track = shape(`fill="none" stroke="${ERR?'#2A1714':'#1A1A1D'}" stroke-width="${w}"`);
+  let arc = '';
+  const grad = `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E6D3AE"/><stop offset="1" stop-color="#9C8661"/></linearGradient></defs>`;
+  // старт прогресса — сверху по центру
+  const rot = `transform="rotate(-90 ${D/2} ${D/2})"`;
+  const per = 4*(size-2*rx) + 2*Math.PI*rx, c0 = (size/2 - rx) / per * 100;
+  const startFix = `stroke-dashoffset="${-c0}"`;
+  if (ON)  arc = shape(`fill="none" stroke="url(#g)" stroke-width="${w}" style="filter:drop-shadow(0 0 6px rgba(210,185,143,.45))"`);
+  if (ING) arc = shape(`fill="none" stroke="url(#g)" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="62 100" ${startFix} style="filter:drop-shadow(0 0 5px rgba(210,185,143,.35))"`);
+  if (ERR) arc = shape(`fill="none" stroke="#C8655A" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="8 92" stroke-dashoffset="${-c0+4}" style="filter:drop-shadow(0 0 4px rgba(200,101,90,.5))"`);
+  const label = ON ? 'Отключить' : ING ? 'Отмена' : ERR ? 'Повторить' : 'Подключить';
+  return `<div class="hero" style="--D:${D}px"><svg width="${D}" height="${D}">${grad}${track}${arc}</svg>
+    <div class="lens" style="--L:${L}px;--rad:${sq?'30%':'50%'}">${ic('power', L*.15)}<span class="l">${label}</span></div></div>`;
+},
+status() {
+  const [k, v, sub] = ON ? ['Защищено', '01:24:07', ''] : ING ? ['Подключение', 'Амстердам', 'Проверяем канал · AMS-03'] :
+    ERR ? ['Нет соединения', 'Сервер молчит', 'AMS-03 не ответил · пробуем HEL-02'] : ['Не защищено', 'Трафик открыт', ''];
+  return `<div class="col status"><div class="k"><b></b>${k}</div><div class="v">${v}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`;
+},
+comps() {
+  return `<div class="row comps"><span class="row comp lit"><b></b>Авто</span><span class="row comp lit"><b></b>AI-проба</span><span class="row comp ${ON?'lit':''}"><b></b>Kill switch</span></div>`;
+},
+phone() {
+  if (S === 'list') return A.phone();
+  return `<div class="screen">${statusBar()}
+    <div class="top row"><span class="word">ONYX</span><div class="iconbtn">${ic('settings',18)}</div></div>
+    <div class="main"><div style="height:34px"></div>${A2.status()}<div style="flex:1"></div>${A2.hero(K==='2'?266:280)}<div style="flex:1"></div>
+      ${ON?A.stats()+'<div style="height:22px"></div>':''}${A.server()}<div style="height:16px"></div>${A2.comps()}<div style="height:34px"></div></div></div><div class="homebar"></div>`;
+},
+desk() {
+  const right = `<div class="panel"><div class="row h"><span>Сервер</span><span class="kbd">S</span></div>${A.server()}</div>
+      <div class="panel"><div class="row h"><span>Сессия</span><span>${ON?'01:24:07':'—'}</span></div>
+        <div class="kv row"><span>Получено</span><b>${ON?'1.82 ГБ':'—'}</b></div><div class="kv row"><span>Отправлено</span><b>${ON?'214 МБ':'—'}</b></div>
+        <div class="kv row"><span>IP</span><b>${ON?'185.•.•.12 · NL':'95.•.•.40 · RU'}</b></div></div>
+      <div class="panel" style="border:0"><div class="row h"><span>Защита</span></div>
+        <div class="kv row"><span>Автопереключение</span><div class="sw on"></div></div>
+        <div class="kv row"><span>Приоритет AI-сервисов</span><div class="sw on"></div></div>
+        <div class="kv row"><span>Раздельный туннель</span><b class="t2" style="font-weight:400">4 приложения ${ic('chev',12)}</b></div></div>`;
+  return `<div class="titlebar row"><span class="word">ONYX</span><div class="row">
+      <span class="row" style="gap:8px;font:400 12px var(--ff);color:var(--t3);margin-right:10px">Команды <span class="kbd">Ctrl K</span></span>
+      <div class="winbtn">${ic('settings',16)}</div>${winButtons()}</div></div>
+    <div class="body"><div class="left">${A2.status()}<div style="height:40px"></div>${A2.hero(K==='2'?300:316)}<div style="height:40px"></div>${A2.comps()}
+      ${ON?`<div class="row toast" style="position:absolute;bottom:26px">${ic('zap',14)}Автопереключение: AMS-01 → AMS-03, задержка 112 → 38 мс</div>`:''}</div>
+    <div class="right">${right}</div></div>`;
+},
+});
 /* ═════════════════════════ B · ГРАФИТ ═════════════════════════ */
 const B = {
 css: `
@@ -512,11 +600,11 @@ desk() {
 };
 
 /* ───────────────────────── сборка ───────────────────────── */
-const T = {a:A, b:B, c:C}[D];
+const T = {a:A, a2:A2, b:B, c:C}[D];
 document.getElementById('theme').textContent = T.css;
 document.documentElement.style.setProperty('--W', V==='desk'?'1100px':'390px');
 document.documentElement.style.setProperty('--H', V==='desk'?'720px':'844px');
-document.getElementById('root').innerHTML = `<div class="app ${V} ${ON?'on':'off'}">${V==='desk'?T.desk():T.phone()}</div>`;
+document.getElementById('root').innerHTML = `<div class="app ${V} ${S} ${ON?"on":"off"}">${V==='desk'?T.desk():T.phone()}</div>`;
 </script>
 </body>
 </html>
