@@ -44,7 +44,27 @@ abstract final class SubscriptionPresets {
     ],
   );
 
-  static const all = [chinaFree];
+  /// Бесплатные серверы zieng2 для обхода белых списков РФ (договорённость
+  /// о зеркалах hub.mos.ru и gitverse.ru — см. SubscriptionService).
+  static const zieng2 = SubscriptionPreset(
+    id: 'zieng2',
+    title: 'Белые списки (РФ)',
+    subtitle: 'бесплатные серверы zieng2 · для России',
+    url: 'https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt',
+    mirrors: [
+      'https://hub.mos.ru/zieng2/wl/raw/main/list_universal.txt',
+      'https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt',
+    ],
+  );
+
+  static const all = [chinaFree, zieng2];
+
+  static SubscriptionPreset? byId(String? id) {
+    for (final p in all) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
 
   static SubscriptionPreset? byUrl(String url) {
     final u = url.trim();

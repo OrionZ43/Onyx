@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/node.dart';
-import '../../domain/subscription_service.dart';
+import '../../domain/entities/subscription_source.dart';
 import '../../domain/smart_probe.dart';
+import '../../domain/sources/node_pool.dart';
 import '../../infrastructure/binary_manager.dart';
+import 'sources_provider.dart';
 
 // ── SubStatus ─────────────────────────────────────────────────────────────────
 
@@ -20,6 +22,9 @@ enum SubStatus {
 
 // ── SubscriptionState ─────────────────────────────────────────────────────────
 
+/// Итоговый пул серверов: склейка ВКЛЮЧЁННЫХ источников (sourcesProvider)
+/// с результатами проверок. Источники, группы и избранное — в
+/// sources_provider.dart и groups_provider.dart.
 class SubscriptionState {
   const SubscriptionState({
     this.status = SubStatus.idle,
@@ -27,6 +32,7 @@ class SubscriptionState {
     this.url = '',
     this.error,
     this.probedCount = 0,
+    this.probeTotal = 0,
     this.deepProbedCount = 0,
     this.deepProbeTotal = 0,
     this.lastFetchedAt,
@@ -35,60 +41,38 @@ class SubscriptionState {
 
   final SubStatus status;
   final List<Node> nodes;
+
+  /// Совместимость: URL последней добавленной через loadFromUrl или первой
+  /// включённой подписки. Для «обновить» используйте
+  /// sourcesProvider.notifier.refreshAll().
   final String url;
   final String? error;
   final bool isStale;
 
-  /// Количество нод, прошедших TCP-пинг (для прогресс-бара Этапа 1).
+  /// Сколько нод прошли TCP-пинг в текущем проходе (прогресс Этапа 1).
   final int probedCount;
 
-  /// Количество нод, прошедших Deep Probe (для прогресс-бара Этапа 2).
-  final int deepProbedCount;
+  /// Сколько нод проверяется в текущем проходе Этапа 1.
+  final int probeTotal;
 
-  /// Сколько нод всего проверяется на Этапе 2 (топ-10).
+  /// Сколько нод прошли Deep Probe (прогресс Этапа 2).
+  final int deepProbedCount;
   final int deepProbeTotal;
+
+  /// Самое свежее обновление среди включённых источников.
   final DateTime? lastFetchedAt;
 
   List<Node> get aliveNodes => nodes.where((n) => n.isAlive).toList();
 
-  /// Лучшая нода для подключения.
-  ///
-  /// Приоритет:
-  ///   1. Первая нода с isTrulyWorking = true (прошла HTTP-проверку).
-  ///   2. Если Deep Probe ещё не завершён — нода с минимальным TCP-пингом.
   bool get isSubscriptionStale => isStale;
 
-  Node? get bestNode {
-    // Приоритет: реально проверенная нода
-    final verified = nodes.where((n) => n.isTrulyWorking).toList();
-    if (verified.isNotEmpty) {
-      verified.sort(
-        (a, b) => (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999),
-      );
-      return verified.first;
-    }
+  /// Лучшая нода по ВСЕМ включённым источникам. Для выбора с учётом
+  /// автогруппы — autoNodeProvider (groups_provider.dart).
+  Node? get bestNode => NodePool.best(nodes);
 
-    // Fallback: лучший по TCP-пингу
-    final alive = aliveNodes
-      ..sort((a, b) => (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999));
-    return alive.isEmpty ? null : alive.first;
-  }
+  /// Лучшая нода с доступом к ИИ; если таких нет — [bestNode].
+  Node? get bestAiNode => NodePool.best(nodes.where((n) => n.aiReachable)) ?? bestNode;
 
-  /// Лучшая нода для доступа к ИИ: из прошедших AI-проверку — с минимальным
-  /// пингом. Если ни одна не прошла AI, возвращает обычный [bestNode]
-  /// (лучше рабочий туннель без гарантии ИИ, чем ничего).
-  Node? get bestAiNode {
-    final aiNodes = nodes.where((n) => n.aiReachable).toList();
-    if (aiNodes.isNotEmpty) {
-      aiNodes.sort(
-        (a, b) => (a.latencyMs ?? 9999).compareTo(b.latencyMs ?? 9999),
-      );
-      return aiNodes.first;
-    }
-    return bestNode;
-  }
-
-  /// Сколько нод подтвердили доступ к ИИ (для счётчиков в UI).
   int get aiReachableCount => nodes.where((n) => n.aiReachable).length;
 
   SubscriptionState copyWith({
@@ -97,6 +81,7 @@ class SubscriptionState {
     String? url,
     String? error,
     int? probedCount,
+    int? probeTotal,
     int? deepProbedCount,
     int? deepProbeTotal,
     DateTime? lastFetchedAt,
@@ -108,6 +93,7 @@ class SubscriptionState {
         url: url ?? this.url,
         error: error,
         probedCount: probedCount ?? this.probedCount,
+        probeTotal: probeTotal ?? this.probeTotal,
         deepProbedCount: deepProbedCount ?? this.deepProbedCount,
         deepProbeTotal: deepProbeTotal ?? this.deepProbeTotal,
         lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
@@ -118,14 +104,30 @@ class SubscriptionState {
 // ── SubscriptionController ────────────────────────────────────────────────────
 
 class SubscriptionController extends StateNotifier<SubscriptionState> {
-  SubscriptionController() : super(const SubscriptionState()) {
-    _loadSavedUrl();
+  SubscriptionController(this._ref) : super(const SubscriptionState()) {
+    // Поднимаем контроллер источников: после загрузки/миграции он сам
+    // вызовет syncFromSources(). Кэш проб читаем параллельно; когда он
+    // прочитан, пересобираем пул, чтобы вернуть ноды их пинг и флаги.
+    _ref.read(sourcesProvider);
+    _loadCache().then((_) {
+      if (mounted) syncFromSources(probeNew: false);
+    });
   }
 
-  final _service = SubscriptionService();
+  final Ref _ref;
   final _probe = const SmartProbe();
-  static const _urlKey = 'sub_url';
+  static const _cacheKey = 'cached_nodes';
+  static const _staleAfter = Duration(minutes: 30);
   Timer? _staleTimer;
+
+  /// Результаты проб из прошлого запуска — для склейки до первой проверки.
+  final Map<String, Node> _probeCache = {};
+
+  /// id нод, уже прошедших TCP-пинг (в этом запуске или раньше).
+  final Set<String> _probedIds = {};
+
+  bool _busy = false;
+  final Set<String> _pending = {};
 
   @override
   void dispose() {
@@ -133,167 +135,132 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     super.dispose();
   }
 
-  void _scheduleStaleCheck(DateTime lastFetched) {
-    _staleTimer?.cancel();
-    final now = DateTime.now();
-    final staleTime = lastFetched.add(const Duration(minutes: 30));
-
-    if (now.isAfter(staleTime) || now.isAtSameMomentAs(staleTime)) {
-      if (!state.isStale && mounted) {
-        state = state.copyWith(isStale: true);
-      }
-    } else {
-      if (state.isStale && mounted) {
-        state = state.copyWith(isStale: false);
-      }
-      final duration = staleTime.difference(now);
-      _staleTimer = Timer(duration, () {
-        if (mounted) {
-          state = state.copyWith(isStale: true);
-        }
-      });
-    }
-  }
-
   // ── Публичный API ──────────────────────────────────────────────────────────
 
-  /// Загрузить подписку по URL и запустить двухэтапную проверку.
+  /// Совместимость со старым UI: добавляет подписку (или ссылки) как
+  /// источник — либо обновляет существующий с тем же URL. Ничего не заменяет.
   Future<void> loadFromUrl(String url) async {
-    if (state.status == SubStatus.fetching ||
-        state.status == SubStatus.probing ||
-        state.status == SubStatus.deepProbing) {
-      return;
-    }
-
-    state = state.copyWith(
-      status: SubStatus.fetching,
-      url: url,
-      probedCount: 0,
-      deepProbedCount: 0,
-      deepProbeTotal: 0,
-      isStale: false,
-    );
-
-    // ─── Этап 0: Загрузка и парсинг ──────────────────────────────────────
-    final result = await _service.fetch(url);
-    if (!result.isSuccess) {
-      if (mounted) {
-        state = state.copyWith(status: SubStatus.error, error: result.error);
-      }
-      return;
-    }
-
-    // ─── Этап 1: TCP-пинг всех нод ───────────────────────────────────────
-    if (mounted) {
-      state = state.copyWith(
-        status: SubStatus.probing,
-        nodes: result.nodes,
-        probedCount: 0,
-      );
-    }
-
-    final probed = await _probe.probeAll(
-      result.nodes,
-      onProgress: (done, total) {
-        if (mounted) {
-          state = state.copyWith(status: SubStatus.probing, probedCount: done);
-        }
-      },
-    );
-
-    // Сохраняем URL сразу после TCP-пинга — пользователь уже видит серверы
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_urlKey, url);
-    final fetchTime = DateTime.now();
-    await prefs.setInt(
-        'subscription_last_fetched', fetchTime.millisecondsSinceEpoch);
-
-    _saveCache(probed);
-    _scheduleStaleCheck(fetchTime);
-
+    state = state.copyWith(status: SubStatus.fetching, url: url.trim());
+    final sources = _ref.read(sourcesProvider.notifier);
+    final added = await sources.addSubscription(url);
     if (!mounted) return;
-    state = state.copyWith(
-      status: SubStatus.ready, // UI показывает результаты Этапа 1
-      nodes: probed,
-      probedCount: probed.length,
-      lastFetchedAt: fetchTime,
-    );
-
-    // ─── Этап 2: Deep Probe (реальный HTTP) для топ-10 нод ───────────────
-    await _runDeepProbe(probed);
+    if (added == null) {
+      state = state.copyWith(status: SubStatus.error, error: sources.lastError);
+    } else if (!_busy && state.status == SubStatus.fetching) {
+      state = state.copyWith(status: SubStatus.ready);
+    }
   }
 
-  /// Повторная проверка уже загруженных нод.
+  /// Пересобрать пул из источников. Вызывается SourcesController-ом после
+  /// любого изменения. [probeNew] — проверить ноды, которых ещё не пинговали.
+  void syncFromSources({bool probeNew = true}) {
+    if (!mounted) return;
+    // До загрузки источников пул не трогаем: на экране кэш прошлого запуска.
+    if (!_ref.read(sourcesProvider.notifier).isLoaded) return;
+    final sources = _ref.read(sourcesProvider);
+    final bySource = _ref.read(sourcesProvider.notifier).nodesBySource;
+    final previous = {..._probeCache, for (final n in state.nodes) n.id: n};
+    final merged = NodePool.merge(sources, bySource, previous: previous.values);
+
+    DateTime? last;
+    String firstUrl = '';
+    for (final s in sources) {
+      if (!s.enabled) continue;
+      if (firstUrl.isEmpty && s.kind == SourceKind.subscription) firstUrl = s.url ?? '';
+      final t = s.lastUpdatedAt;
+      if (t != null && (last == null || t.isAfter(last))) last = t;
+    }
+
+    state = state.copyWith(
+      nodes: merged,
+      url: state.url.isNotEmpty && sources.any((s) => s.url == state.url) ? state.url : firstUrl,
+      lastFetchedAt: last,
+      status: state.status == SubStatus.idle && merged.isNotEmpty ? SubStatus.ready : state.status,
+    );
+    if (last != null) _scheduleStaleCheck(last);
+    _saveCache(merged);
+
+    if (probeNew) {
+      final fresh = {for (final n in merged) if (!_probedIds.contains(n.id)) n.id};
+      if (fresh.isNotEmpty) unawaited(_probeIds(fresh));
+    }
+  }
+
+  /// Повторная проверка всех нод пула.
   Future<void> reprobe() async {
     if (state.nodes.isEmpty) return;
-    if (state.status == SubStatus.fetching ||
-        state.status == SubStatus.probing ||
-        state.status == SubStatus.deepProbing) {
-      return;
-    }
-    state = state.copyWith(
-      status: SubStatus.probing,
-      probedCount: 0,
-      deepProbedCount: 0,
-      deepProbeTotal: 0,
-      isStale: false,
-    );
-
-    final probed = await _probe.probeAll(
-      state.nodes,
-      onProgress: (done, total) {
-        if (mounted) {
-          state = state.copyWith(status: SubStatus.probing, probedCount: done);
-        }
-      },
-    );
-
-    _saveCache(probed);
-    final prefs = await SharedPreferences.getInstance();
-    final fetchTime = DateTime.now();
-    await prefs.setInt(
-        'subscription_last_fetched', fetchTime.millisecondsSinceEpoch);
-
-    _scheduleStaleCheck(fetchTime);
-
-    if (!mounted) return;
-    state = state.copyWith(
-      status: SubStatus.ready,
-      nodes: probed,
-      probedCount: probed.length,
-      lastFetchedAt: fetchTime,
-    );
-
-    await _runDeepProbe(probed);
+    await _probeIds({for (final n in state.nodes) n.id});
   }
 
   void markNodeAsDead(String nodeId) {
-    final updated = state.nodes.map((n) {
-      if (n.id == nodeId) {
-        return n.copyWith(isAlive: false, isTrulyWorking: false);
-      }
-      return n;
-    }).toList();
-    state = state.copyWith(nodes: updated);
+    state = state.copyWith(nodes: [
+      for (final n in state.nodes)
+        n.id == nodeId ? n.copyWith(isAlive: false, isTrulyWorking: false) : n,
+    ]);
   }
 
-  // ── Приватные ─────────────────────────────────────────────────────────────
+  // ── Проверки ───────────────────────────────────────────────────────────────
 
-  /// Deep Probe теперь сканирует ВСЕ живые ноды (раньше — только топ-10) и
-  /// для каждой проверяет и базовую связность, и доступ к ИИ. Результаты
-  /// применяются прогрессивно: как только нода проверена, UI сразу получает
-  /// её обновлённые флаги (isTrulyWorking / aiReachable) — можно подключаться
-  /// к первой же зелёной ноде, не дожидаясь конца полного скана.
-  Future<void> _runDeepProbe(List<Node> sortedNodes) async {
-    final binMgr = BinaryManager.instance;
-    if (!binMgr.isReady) {
-      // Бинарники ещё не скачаны — пропускаем Deep Probe
+  /// TCP-пинг и Deep Probe для нод [ids]. Если проверка уже идёт — ноды
+  /// встают в очередь и проверятся следующим проходом.
+  Future<void> _probeIds(Set<String> ids) async {
+    if (_busy) {
+      _pending.addAll(ids);
       return;
     }
+    _busy = true;
+    try {
+      var batch = ids;
+      while (batch.isNotEmpty && mounted) {
+        await _runProbe(batch);
+        batch = {..._pending};
+        _pending.clear();
+      }
+    } finally {
+      _busy = false;
+    }
+  }
 
-    // Все живые ноды, без ограничения в 10.
+  Future<void> _runProbe(Set<String> ids) async {
+    final targets = state.nodes.where((n) => ids.contains(n.id)).toList();
+    if (targets.isEmpty) return;
+    state = state.copyWith(
+      status: SubStatus.probing,
+      probedCount: 0,
+      probeTotal: targets.length,
+      deepProbedCount: 0,
+      deepProbeTotal: 0,
+      isStale: false,
+    );
+
+    // ─── Этап 1: TCP-пинг ──────────────────────────────────────────────
+    final probed = await _probe.probeAll(
+      targets,
+      onProgress: (done, total) {
+        if (mounted) state = state.copyWith(status: SubStatus.probing, probedCount: done);
+      },
+    );
+    if (!mounted) return;
+    _probedIds.addAll(probed.map((n) => n.id));
+    _apply(probed, (cur, upd) => cur.copyWith(
+          isAlive: upd.isAlive,
+          latencyMs: upd.latencyMs,
+          // При повторной проверке сбрасываем «работает», пока Deep Probe не
+          // подтвердит заново — иначе мёртвая нода висела бы зелёной.
+          isTrulyWorking: upd.isAlive ? cur.isTrulyWorking : false,
+        ));
+    state = state.copyWith(status: SubStatus.ready, probedCount: probed.length);
+    _saveCache(state.nodes);
+
+    // ─── Этап 2: Deep Probe (реальный HTTPS + AI + UDP) ───────────────
+    await _runDeepProbe(probed);
+  }
+
+  Future<void> _runDeepProbe(List<Node> sortedNodes) async {
     final aliveCount = sortedNodes.where((n) => n.isAlive).length;
     if (aliveCount == 0) return;
+    final binMgr = BinaryManager.instance;
+    if (!binMgr.isReady) return;
 
     if (mounted) {
       state = state.copyWith(
@@ -303,22 +270,16 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       );
     }
 
-    final deepProbe = DeepProbe(singboxExePath: binMgr.singboxExe.path);
-
-    await deepProbe.probeAllNodes(
+    await DeepProbe(singboxExePath: binMgr.singboxExe.path).probeAllNodes(
       sortedNodes,
-      onNodeResult: (updated) {
+      onNodeResult: (u) {
         if (!mounted) return;
-        // Прогрессивно вливаем результат одной ноды в общий список.
-        final merged = state.nodes.map((n) {
-          return n.id == updated.id
-              ? n.copyWith(
-                  isTrulyWorking: updated.isTrulyWorking,
-                  aiReachable: updated.aiReachable,
-                )
-              : n;
-        }).toList();
-        state = state.copyWith(nodes: merged);
+        _apply([u], (cur, upd) => cur.copyWith(
+              isTrulyWorking: upd.isTrulyWorking,
+              aiReachable: upd.aiReachable,
+              udpSupported: upd.udpSupported,
+              latencyMs: upd.latencyMs,
+            ));
       },
       onProgress: (done, total) {
         if (mounted) {
@@ -333,48 +294,58 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     );
 
     if (!mounted) return;
-
-    // Кэш пишем один раз в конце (а не на каждую ноду) — экономим
-    // сотни записей в SharedPreferences при большом списке.
     _saveCache(state.nodes);
     state = state.copyWith(status: SubStatus.ready);
   }
 
-  Future<void> _saveCache(List<Node> nodes) async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = nodes.map((n) => jsonEncode(n.toJson())).toList();
-    await prefs.setStringList('cached_nodes', jsonList);
+  /// Вливает результаты проб в ТЕКУЩИЙ пул (он мог измениться, пока шла
+  /// проверка: источник выключили или обновили) — по id, порядок не трогаем.
+  void _apply(List<Node> updates, Node Function(Node cur, Node upd) f) {
+    final byId = {for (final u in updates) u.id: u};
+    state = state.copyWith(nodes: [
+      for (final n in state.nodes) byId.containsKey(n.id) ? f(n, byId[n.id]!) : n,
+    ]);
+    for (final u in updates) {
+      final cur = state.nodes.where((n) => n.id == u.id);
+      if (cur.isNotEmpty) _probeCache[u.id] = cur.first;
+    }
   }
 
-  Future<void> _loadSavedUrl() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_urlKey);
-    final cached = prefs.getStringList('cached_nodes');
-    final lastFetchedMs = prefs.getInt('subscription_last_fetched');
-    final lastFetched = lastFetchedMs != null
-        ? DateTime.fromMillisecondsSinceEpoch(lastFetchedMs)
-        : null;
+  // ── Кэш и «устаревание» ───────────────────────────────────────────────────
 
-    if (saved != null && saved.isNotEmpty) {
-      if (cached != null && cached.isNotEmpty) {
-        try {
-          final nodes =
-              cached.map((s) => Node.fromJson(jsonDecode(s))).toList();
-          state = state.copyWith(
-            url: saved,
-            nodes: nodes,
-            status: SubStatus.ready,
-            lastFetchedAt: lastFetched,
-          );
-          if (lastFetched != null) {
-            _scheduleStaleCheck(lastFetched);
-          }
-        } catch (_) {
-          state = state.copyWith(url: saved);
-        }
-      } else {
-        state = state.copyWith(url: saved);
-      }
+  void _scheduleStaleCheck(DateTime lastFetched) {
+    _staleTimer?.cancel();
+    final staleTime = lastFetched.add(_staleAfter);
+    final now = DateTime.now();
+    if (!now.isBefore(staleTime)) {
+      if (!state.isStale && mounted) state = state.copyWith(isStale: true);
+      return;
+    }
+    if (state.isStale && mounted) state = state.copyWith(isStale: false);
+    _staleTimer = Timer(staleTime.difference(now), () {
+      if (mounted) state = state.copyWith(isStale: true);
+    });
+  }
+
+  Future<void> _saveCache(List<Node> nodes) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_cacheKey, [for (final n in nodes) jsonEncode(n.toJson())]);
+  }
+
+  /// Кэш результатов проб прошлого запуска. Ноды показываем сразу (до
+  /// загрузки источников), чтобы экран не был пустым.
+  Future<void> _loadCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getStringList(_cacheKey) ?? const [];
+    for (final s in cached) {
+      try {
+        final n = Node.fromJson(jsonDecode(s) as Map<String, dynamic>);
+        _probeCache[n.id] = n;
+        if (n.isAlive || n.latencyMs != null || n.isTrulyWorking) _probedIds.add(n.id);
+      } catch (_) {}
+    }
+    if (mounted && state.nodes.isEmpty && _probeCache.isNotEmpty) {
+      state = state.copyWith(nodes: _probeCache.values.toList(), status: SubStatus.ready);
     }
   }
 }
@@ -383,5 +354,5 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
 final subscriptionProvider =
     StateNotifierProvider<SubscriptionController, SubscriptionState>(
-  (_) => SubscriptionController(),
+  (ref) => SubscriptionController(ref),
 );
