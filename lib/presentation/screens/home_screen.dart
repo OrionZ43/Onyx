@@ -416,6 +416,12 @@ class _SidePanel extends ConsumerWidget {
           toggle('Автопереключение', settings.autoFailover, n.toggleAutoFailover),
           toggle('Приоритет AI-сервисов', settings.aiDirectLane, n.toggleAiDirectLane),
           toggle('Умная маршрутизация', settings.smartRouting, n.toggleSmartRouting),
+          if (settings.smartRouting) ...[
+            const SizedBox(height: 6),
+            const RegionSelector(),
+            const SizedBox(height: 6),
+          ],
+          toggle('Режим Discord', settings.discordMode, n.toggleDiscordMode),
         ], last: true),
       ],
     );

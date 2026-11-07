@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/glass_widget.dart';
 import '../providers/subscription_provider.dart';
+import '../widgets/preset_tile.dart';
 
 class SubscriptionManagerScreen extends ConsumerStatefulWidget {
   const SubscriptionManagerScreen({super.key});
@@ -217,6 +218,12 @@ class _SubscriptionManagerScreenState
                           ],
                         ),
                       ),
+
+                    // ── Встроенная подписка (#34): бесплатные серверы для Китая ──
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: PresetTile(),
+                    ),
 
                     // ── Список подписок ────────────────────────────────────
                     Expanded(

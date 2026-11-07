@@ -11,7 +11,11 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../core/theme/theme_kind.dart';
 import '../../infrastructure/platform_features.dart';
+import '../../domain/entities/vpn_state.dart';
 import '../providers/settings_provider.dart';
+import '../providers/vpn_provider.dart';
+import '../widgets/home_parts.dart' show RegionSelector;
+import '../widgets/onyx_toast.dart';
 import '../providers/theme_provider.dart';
 import '../util/platform_kind.dart';
 import '../widgets/country_flag.dart' show PolygonClipper;
@@ -88,6 +92,16 @@ class SettingsScreen extends ConsumerWidget {
                   value: settings.smartRouting,
                   onChanged: n.toggleSmartRouting,
                 ),
+                if (settings.smartRouting)
+                  const _RegionTile(),
+                _SwitchTile(
+                  glyph: OnyxGlyph.voice,
+                  title: 'Режим Discord',
+                  subtitle: 'Голос Discord и звонки — через туннель по UDP. Применится при следующем подключении.',
+                  value: settings.discordMode,
+                  onChanged: n.toggleDiscordMode,
+                ),
+                const _UdpCheckTile(),
                 if (uiIsAndroid) ...[
                   _SwitchTile(
                     glyph: OnyxGlyph.sliders,
@@ -470,6 +484,86 @@ class _Tile extends StatelessWidget {
           trailing,
         ]),
       ),
+    );
+  }
+}
+
+// ── Регион и проверка UDP (#34/#35) ─────────────────────────────────────────
+
+class _RegionTile extends StatelessWidget {
+  const _RegionTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const _Leading(OnyxGlyph.globe),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Регион маршрутизации',
+                  style: t.isMaterial
+                      ? Theme.of(context).textTheme.titleMedium
+                      : TextStyle(fontFamily: t.bodyFont, fontSize: t.isSignal ? 15.5 : 14.5, fontWeight: FontWeight.w500, color: t.text)),
+              const SizedBox(height: 2),
+              Text('Сайты выбранной страны идут напрямую. Применится при следующем подключении.',
+                  style: t.isMaterial
+                      ? Theme.of(context).textTheme.bodyMedium!.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)
+                      : TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, height: 1.35, color: t.textMuted)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        Padding(padding: EdgeInsets.only(left: t.isMaterial ? 56 : 40), child: const RegionSelector()),
+      ]),
+    );
+  }
+}
+
+/// «Проверить UDP»: 5 STUN-запросов через туннель (~1–4 с), итог — в тосте.
+class _UdpCheckTile extends ConsumerStatefulWidget {
+  const _UdpCheckTile();
+
+  @override
+  ConsumerState<_UdpCheckTile> createState() => _UdpCheckTileState();
+}
+
+class _UdpCheckTileState extends ConsumerState<_UdpCheckTile> {
+  bool _busy = false;
+  String? _last;
+
+  Future<void> _run() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final r = await ref.read(vpnControllerProvider.notifier).checkUdp();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _last = r.summary;
+    });
+    if (r.ok) {
+      HapticFeedback.lightImpact();
+    } else {
+      HapticFeedback.heavyImpact();
+    }
+    showOnyxToast(context, r.summary, glyph: r.ok ? OnyxGlyph.voice : OnyxGlyph.error);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    final connected = ref.watch(vpnControllerProvider) is VpnConnected;
+    return _Tile(
+      glyph: OnyxGlyph.refresh,
+      title: 'Проверить UDP (голос)',
+      subtitle: _last ?? (connected ? 'STUN через туннель, пара секунд' : 'Нужно активное подключение'),
+      onTap: _run,
+      trailing: _busy
+          ? SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 1.6, color: t.accent))
+          : OnyxIcon(OnyxGlyph.chevronRight, size: t.isMaterial ? 24 : 16, color: t.textFaint),
     );
   }
 }

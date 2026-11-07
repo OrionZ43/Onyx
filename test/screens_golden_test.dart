@@ -49,7 +49,7 @@ class FakeUpdate extends UpdateController {
   Future<UpdateInfo?> build() async => null;
 }
 
-Node node(String id, String name, int? ping, {bool ai = false, bool alive = true, bool verified = true}) => Node(
+Node node(String id, String name, int? ping, {bool ai = false, bool alive = true, bool verified = true, String proto = 'vless', bool udp = false}) => Node(
       id: id,
       name: name,
       host: 'h',
@@ -65,15 +65,17 @@ Node node(String id, String name, int? ping, {bool ai = false, bool alive = true
       isAlive: alive,
       isTrulyWorking: verified,
       aiReachable: ai,
+      protocol: proto,
+      udpSupported: udp,
     );
 
 final nodes = [
-  node('1', '🇳🇱 Амстердам AMS-03', 38, ai: true),
+  node('1', '🇳🇱 Амстердам AMS-03', 38, ai: true, udp: true),
   node('2', '🇳🇱 Амстердам AMS-01', 44, ai: true),
   node('3', '🇳🇱 Роттердам RTM-02', 52),
-  node('4', '🇫🇮 Хельсинки HEL-02', 29, ai: true),
+  node('4', '🇫🇮 Хельсинки HEL-02', 29, ai: true, proto: 'hysteria2', udp: true),
   node('5', '🇩🇪 Франкфурт FRA-01', 41, ai: true),
-  node('6', '🇩🇪 Франкфурт FRA-04', 63),
+  node('6', '🇩🇪 Франкфурт FRA-04', 63, proto: 'tuic', udp: true),
   node('7', '🇸🇪 Стокгольм STO-01', 47),
   node('8', '🇵🇱 Варшава WAW-01', 55, ai: true),
   node('9', '🇺🇸 Нью-Йорк NYC-02', 118, ai: true),
@@ -179,6 +181,12 @@ void main() {
     }
     testWidgets('${k.name} phone settings', (tester) async {
       await shot(tester, '${k.name}-phone-settings', app(k, vpnOf('off'), const SettingsScreen()), phone);
+    });
+    testWidgets('${k.name} phone settings protection', (tester) async {
+      await shot(tester, '${k.name}-phone-settings-protection', app(k, vpnOf('on'), const SettingsScreen()), phone, then: () async {
+        await tester.drag(find.byType(ListView).first, const Offset(0, -330));
+        await tester.pump(const Duration(milliseconds: 500));
+      });
     });
     for (final s in ['off', 'on']) {
       testWidgets('${k.name} desktop $s', (tester) async {

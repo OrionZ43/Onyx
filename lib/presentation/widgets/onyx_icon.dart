@@ -31,6 +31,7 @@ enum OnyxGlyph {
   qr('qr', Icons.qr_code_scanner_rounded),
   error('error', Icons.error_outline_rounded),
   ai('ai', Icons.auto_awesome_outlined),
+  voice('voice', Icons.mic_none_rounded),
   terminal('terminal', Icons.terminal_rounded),
   help('help', Icons.help_outline_rounded),
   star('star', Icons.star_outline_rounded),

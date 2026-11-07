@@ -8,6 +8,7 @@ import '../providers/subscription_provider.dart';
 import 'country_flag.dart' show PolygonClipper;
 import 'onyx_field.dart';
 import 'onyx_icon.dart';
+import 'preset_tile.dart';
 import 'signal/dot_matrix.dart';
 
 /// Пустое состояние «нет серверов»: вставить ссылку на подписку.
@@ -30,17 +31,16 @@ class _SubscriptionImportState extends ConsumerState<SubscriptionImport> {
     super.dispose();
   }
 
-  bool _looksLikeLink(String s) {
-    final v = s.trim();
-    return v.startsWith('http://') || v.startsWith('https://') || v.contains('://');
-  }
+  // Подходит URL подписки, сами ссылки серверов (vless://, hysteria2://…)
+  // и base64-блок — разбирает SubscriptionService.
+  bool _looksLikeLink(String s) => s.trim().length >= 12;
 
   Future<void> _paste() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text?.trim() ?? '';
     if (!mounted) return;
     if (!_looksLikeLink(text)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В буфере нет ссылки на подписку')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В буфере нет подписки или ссылок серверов')));
       return;
     }
     _ctl.text = text;
@@ -94,7 +94,7 @@ class _SubscriptionImportState extends ConsumerState<SubscriptionImport> {
           : TextStyle(fontFamily: t.displayFont, fontSize: 26, fontWeight: t.isSignal ? FontWeight.w500 : FontWeight.w300, letterSpacing: -0.6, color: t.text),
     );
     final body = Text(
-      'Вставьте ссылку на подписку — Onyx проверит каждый сервер, отметит AI-совместимые и выберет лучший.',
+      'Вставьте ссылку на подписку или сами ссылки серверов — Onyx проверит каждый сервер, отметит AI-совместимые и выберет лучший.',
       textAlign: TextAlign.center,
       style: t.isMaterial
           ? Theme.of(context).textTheme.bodyMedium!.copyWith(color: s.onSurfaceVariant)
@@ -137,7 +137,7 @@ class _SubscriptionImportState extends ConsumerState<SubscriptionImport> {
                 style: TextStyle(fontFamily: t.bodyFont, fontSize: 14, color: t.text),
                 decoration: onyxInputDecoration(
                   context,
-                  hint: 'https://… или vless://…',
+                  hint: 'Ссылка на подписку или vless://…',
                   prefix: OnyxIcon(OnyxGlyph.link, size: t.isMaterial ? 22 : 16, color: t.textFaint),
                   suffix: IconButton(
                     tooltip: 'Добавить',
@@ -154,6 +154,17 @@ class _SubscriptionImportState extends ConsumerState<SubscriptionImport> {
                 )
               else
                 pasteBtn,
+              const SizedBox(height: 22),
+              Row(children: [
+                Expanded(child: Divider(color: t.line)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(t.isSignal ? 'ИЛИ' : 'или', style: t.isSignal ? t.caps(size: 10, color: t.textFaint) : TextStyle(fontFamily: t.bodyFont, fontSize: 12, color: t.textFaint)),
+                ),
+                Expanded(child: Divider(color: t.line)),
+              ]),
+              const SizedBox(height: 14),
+              const PresetTile(),
               if (sub.error != null && sub.status == SubStatus.error) ...[
                 const SizedBox(height: 12),
                 Text(sub.error!, textAlign: TextAlign.center, style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, color: t.danger)),

@@ -18,6 +18,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/glass_widget.dart';
 import '../../core/cosmic_background.dart';
+import '../../domain/subscription_presets.dart';
 import '../providers/subscription_provider.dart';
 import 'home_screen.dart';
 import 'faq_screen.dart';
@@ -165,6 +166,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                         },
                         onExample: () {
                           _urlCtrl.text = _example;
+                          setState(() => _error = null);
+                        },
+                        onChinaPreset: () {
+                          _urlCtrl.text = SubscriptionPresets.chinaFree.url;
                           setState(() => _error = null);
                         },
                       ).animate().fadeIn(duration: 700.ms, delay: 250.ms),
@@ -342,11 +347,12 @@ class _UrlInput extends StatefulWidget {
     required this.focusNode,
     required this.onPaste,
     required this.onExample,
+    required this.onChinaPreset,
     this.error,
   });
   final TextEditingController controller;
   final FocusNode focusNode;
-  final VoidCallback onPaste, onExample;
+  final VoidCallback onPaste, onExample, onChinaPreset;
   final String? error;
 
   @override
@@ -420,7 +426,7 @@ class _UrlInputState extends State<_UrlInput> {
                         ),
                         decoration: InputDecoration(
                           border: InputBorder.none,
-                          hintText: 'https://example.com/subscription',
+                          hintText: 'Ссылка на подписку или vless://, hysteria2://…',
                           hintStyle: TextStyle(
                             color: AppColors.nebula2,
                             fontSize: 13,
@@ -489,6 +495,36 @@ class _UrlInputState extends State<_UrlInput> {
                   color: AppColors.plasma.withValues(alpha: 0.8),
                   decoration: TextDecoration.underline,
                   decorationColor: AppColors.plasma.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Встроенная подписка для Китая (#34): честно — бесплатные и нестабильные.
+        GestureDetector(
+          onTap: widget.onChinaPreset,
+          child: Row(
+            children: [
+              Icon(Icons.public_rounded, color: AppColors.plasma, size: 12),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(
+                      text: 'Бесплатные серверы для Китая',
+                      style: TextStyle(
+                        decoration: TextDecoration.underline,
+                        decorationColor: AppColors.plasma.withValues(alpha: 0.4),
+                        color: AppColors.plasma.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' · ${SubscriptionPresets.chinaFree.subtitle}',
+                      style: TextStyle(color: AppColors.nebula2),
+                    ),
+                  ]),
+                  style: TextStyle(fontFamily: AppFonts.body, fontSize: 12),
                 ),
               ),
             ],

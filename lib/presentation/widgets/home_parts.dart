@@ -428,7 +428,7 @@ class ServerCard extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (n?.aiReachable == true) ...[const AiBadge(), const SizedBox(width: 10)],
+              if (n != null) ...[NodeBadges(node: n), const SizedBox(width: 10)],
               if (t.isMaterial) PingIndicator(ms: n?.latencyMs) else PingText(ms: n?.latencyMs),
               const SizedBox(width: 6),
               OnyxIcon(locked ? OnyxGlyph.shield : OnyxGlyph.chevronRight, size: t.isMaterial ? 24 : 16, color: t.textFaint),
@@ -664,5 +664,135 @@ class TrafficStats extends StatelessWidget {
         style: TextStyle(fontFamily: t.isSignal ? t.monoFont : t.displayFont, fontSize: 12, color: t.textMuted),
       ),
     ]));
+  }
+}
+
+// ── Протокол и голос (#34/#35) ──────────────────────────────────────────────
+
+/// Метка протокола ноды: VLESS / HY2 / TUIC / SS / TROJAN / ANYTLS.
+/// Тише AI-бейджа: только текст капсом, без заливки.
+class ProtocolBadge extends StatelessWidget {
+  const ProtocolBadge({super.key, required this.protocol});
+  final String protocol;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    final label = NodeProtocol.label(protocol);
+    if (t.isMaterial) {
+      final s = Theme.of(context).colorScheme;
+      return Text(label, style: Theme.of(context).textTheme.labelSmall!.copyWith(color: s.onSurfaceVariant));
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        border: Border.all(color: t.isSignal ? t.lineStrong : t.line),
+        borderRadius: BorderRadius.circular(t.isSignal ? 4 : 6),
+      ),
+      child: Text(
+        label,
+        style: t.isSignal
+            ? TextStyle(fontFamily: t.monoFont, fontSize: 9.5, fontWeight: FontWeight.w500, letterSpacing: 0.6, color: t.textMuted)
+            : TextStyle(fontFamily: t.displayFont, fontSize: 9, fontWeight: FontWeight.w500, letterSpacing: 1.1, color: t.textMuted),
+      ),
+    );
+  }
+}
+
+/// Значок «голос» — нода пропускает UDP (проверено пробой): Discord, звонки.
+class VoiceBadge extends StatelessWidget {
+  const VoiceBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    return Tooltip(
+      message: 'UDP проходит — голос Discord и звонки работают',
+      child: OnyxIcon(
+        OnyxGlyph.voice,
+        size: t.isMaterial ? 20 : 14,
+        color: t.isMaterial ? Theme.of(context).colorScheme.tertiary : (t.isSignal ? t.text : t.accent),
+      ),
+    );
+  }
+}
+
+/// Протокол + голос + AI одной строкой (порядок одинаковый во всех темах).
+class NodeBadges extends StatelessWidget {
+  const NodeBadges({super.key, required this.node, this.showProtocol = true});
+  final Node node;
+  final bool showProtocol;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <Widget>[
+      // VLESS — протокол по умолчанию: метку показываем только для остальных,
+      // иначе она повторяется в каждой строке и съедает место под имя.
+      if (showProtocol && node.protocol != NodeProtocol.vless) ProtocolBadge(protocol: node.protocol),
+      if (node.udpSupported) const VoiceBadge(),
+      if (node.aiReachable) const AiBadge(),
+    ];
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < items.length; i++) ...[if (i > 0) const SizedBox(width: 6), items[i]],
+    ]);
+  }
+}
+
+// ── Регион маршрутизации (#34/#35) ──────────────────────────────────────────
+
+/// Выбор региона: «Россия/Беларусь» | «Китай». Сегменты в стиле темы;
+/// в Material — SegmentedButton. Применяется при следующем подключении.
+class RegionSelector extends ConsumerWidget {
+  const RegionSelector({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = OnyxTokens.of(context);
+    final region = ref.watch(settingsProvider.select((s) => s.routingRegion));
+    void set(RoutingRegion r) {
+      if (r == region) return;
+      HapticFeedback.selectionClick();
+      ref.read(settingsProvider.notifier).setRoutingRegion(r);
+    }
+
+    if (t.isMaterial) {
+      return SegmentedButton<RoutingRegion>(
+        segments: [for (final r in RoutingRegion.values) ButtonSegment(value: r, label: Text(r.label))],
+        selected: {region},
+        onSelectionChanged: (v) => set(v.first),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: t.isSignal ? t.surfaceHigh : t.bg,
+        borderRadius: BorderRadius.circular(t.isSignal ? 18 : 12),
+        border: t.isOnyx ? Border.all(color: t.line) : null,
+      ),
+      child: Row(children: [
+        for (final r in RoutingRegion.values)
+          Expanded(
+            child: GestureDetector(
+              onTap: () => set(r),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: r == region ? (t.isSignal ? t.text : t.surfaceTop) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(t.isSignal ? 15 : 9),
+                  border: r == region && t.isOnyx ? Border.all(color: t.lineStrong) : null,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  t.isSignal ? r.label.toUpperCase() : r.label,
+                  style: t.isSignal
+                      ? t.caps(size: 10.5, color: r == region ? t.bg : t.textMuted)
+                      : TextStyle(fontFamily: t.bodyFont, fontSize: 13, fontWeight: FontWeight.w500, color: r == region ? t.text : t.textMuted),
+                ),
+              ),
+            ),
+          ),
+      ]),
+    );
   }
 }
