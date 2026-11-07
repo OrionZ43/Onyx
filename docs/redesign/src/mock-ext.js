@@ -352,4 +352,4 @@ if (P.flags === '1') {
     ${s.ai?'<span class="ai">AI</span>':''}<span class="ping" style="width:48px;text-align:right${s.ping>150?';color:#B98B5E':''}">${s.ping}<small>мс</small></span></div>`;
 }
 
-build({c2: C2, m3: M3, m3b: M3B});
+build({c2: C2, m3: M3, m3b: M3B, a2s: A2S});
