@@ -113,13 +113,13 @@ class _SignalRingButtonState extends State<SignalRingButton> with TickerProvider
     final dot = r * 0.0175, gap = r * 0.0068;
     final phase = widget.phase;
     final Widget board = switch (phase) {
-      HeroPhase.on => DotMatrixText(_clockText(), dot: dot, gap: gap, on: t.text, off: const Color(0xFF141414)),
+      HeroPhase.on => DotMatrixText(_clockText(), dot: dot, gap: gap, on: t.text, off: const Color(0xFF0E0E0E)),
       HeroPhase.connecting => DotMatrixText(
           '${(_progress * 100).round()}'.padLeft(2, '0'),
           dot: dot * 1.25,
           gap: gap * 1.25,
           on: t.text,
-          off: const Color(0xFF141414),
+          off: const Color(0xFF0E0E0E),
         ),
       HeroPhase.error => DotMatrixText('ERR', dot: dot, gap: gap, on: AppTheme.signalRec, off: const Color(0xFF161010)),
       HeroPhase.off => DotMatrixText('--:--', dot: dot, gap: gap, on: const Color(0xFF5A5A5A), off: const Color(0xFF121212)),
