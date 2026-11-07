@@ -5,6 +5,7 @@ import '../core/log_service.dart';
 import 'entities/node.dart';
 import 'node_scorer.dart'; // ← NEW: Умная система весов
 import 'singbox_config_builder.dart';
+import 'udp_probe.dart';
 
 // ── TCP ProbeResult ───────────────────────────────────────────────────────────
 
@@ -94,6 +95,12 @@ class SmartProbe {
   }
 
   Future<Node> probeOne(Node node) async {
+    // Hysteria2/TUIC живут на UDP: TCP-порта нет, TCP-пинг всегда «мёртв».
+    // Считаем ноду кандидатом; реальную задержку и UDP проставит Deep Probe.
+    if (node.isQuic) {
+      log.d('~ ${node.name} — QUIC-нода, TCP-пинг пропущен', tag: 'PROBE');
+      return node.copyWith(isAlive: true);
+    }
     final r = await _tcpProbe(node);
     if (r.isAlive) {
       log.i('✓ ${node.name} — ${r.latencyMs}мс', tag: 'PROBE');
@@ -376,6 +383,8 @@ class DeepProbe {
     Process? process;
     bool basicOk = false;
     bool aiOk = false;
+    bool udpOk = false;
+    int? latency;
 
     try {
       await _writeProbeConfig(node, port, configPath);
@@ -393,10 +402,27 @@ class DeepProbe {
         return node.copyWith(isTrulyWorking: false, aiReachable: false);
       }
 
+      final sw = Stopwatch()..start();
       basicOk = await _httpsProbeViaSocks5(port, node.name).timeout(
         _httpTimeout,
         onTimeout: () => false,
       );
+      sw.stop();
+      if (basicOk && (node.isQuic || node.latencyMs == null)) {
+        // Для QUIC-нод TCP-пинга не было: берём время HTTPS-запроса
+        // через прокси (грубо, с запасом — включает TLS к cp.cloudflare.com).
+        latency = sw.elapsedMilliseconds;
+      }
+      if (basicOk) {
+        // UDP — то, на чём живут голос, камера и стримы Discord.
+        final udp = await UdpProbe.viaSocks5(
+          port,
+          attempts: 3,
+          timeout: const Duration(seconds: 3),
+        );
+        udpOk = udp.ok;
+        log.d('[${node.name}] UDP: ${udp.summary}', tag: 'DEEP');
+      }
 
       // AI проверяем только у живых нод — на мёртвой это пустая трата времени.
       if (basicOk) {
@@ -408,7 +434,7 @@ class DeepProbe {
 
       log.i(
         '${basicOk ? "✓" : "✗"} [${node.name}] '
-        'база=${basicOk ? "ok" : "нет"} AI=${aiOk ? "ok" : "нет"}',
+        'база=${basicOk ? "ok" : "нет"} AI=${aiOk ? "ok" : "нет"} UDP=${udpOk ? "ok" : "нет"}',
         tag: 'DEEP',
       );
     } catch (e) {
@@ -422,7 +448,12 @@ class DeepProbe {
       } catch (_) {}
     }
 
-    return node.copyWith(isTrulyWorking: basicOk, aiReachable: aiOk);
+    return node.copyWith(
+      isTrulyWorking: basicOk,
+      aiReachable: aiOk,
+      udpSupported: udpOk,
+      latencyMs: latency,
+    );
   }
 
   // ── Приватные методы ───────────────────────────────────────────────────────
@@ -545,6 +576,7 @@ class DeepProbe {
       }
       if (cancelled[0]) return;
 
+      final sw = Stopwatch()..start();
       final ok = await _httpsProbeViaSocks5(port, node.name).timeout(
         _httpTimeout,
         onTimeout: () {
@@ -558,7 +590,10 @@ class DeepProbe {
           '✓ [${node.name}] HTTP 204 через порт $port — нода рабочая!',
           tag: 'DEEP',
         );
-        winner = node.copyWith(isTrulyWorking: true);
+        winner = node.copyWith(
+          isTrulyWorking: true,
+          latencyMs: node.isQuic ? sw.elapsedMilliseconds : null,
+        );
       } else {
         log.w('✗ [${node.name}] HTTPS-проверка провалилась', tag: 'DEEP');
       }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_v2ray/flutter_v2ray.dart';
@@ -8,6 +9,10 @@ import '../core/log_service.dart';
 import '../domain/cidr_utils.dart';
 import '../domain/entities/node.dart';
 import '../domain/routing_domains.dart';
+import '../domain/routing_region.dart';
+import '../domain/singbox_config_builder.dart';
+import '../domain/udp_probe.dart';
+import 'binary_manager.dart';
 import 'singbox_bridge.dart';
 
 /// Android-мост поверх flutter_v2ray 1.0.10.
@@ -124,10 +129,12 @@ class SingboxBridgeAndroid implements SingboxBridge {
   @override
   Future<BridgeResult> start(
     Node node, {
-    bool smartRouting = true,
-    bool aiDirectLane = true,
+    List<Node> fallbacks = const [],
+    RoutingOptions routing = const RoutingOptions(),
     List<String> excludedApps = const [],
   }) async {
+    final smartRouting = routing.smartRouting;
+    final aiDirectLane = routing.aiDirectLane;
     if (_state == BridgeState.running || _state == BridgeState.starting) {
       return const BridgeResult(success: false, error: 'Уже запущен');
     }
@@ -168,49 +175,88 @@ class SingboxBridgeAndroid implements SingboxBridge {
         );
       }
 
-      // Resolve server IP before VPN starts to prevent routing loop
-      final resolvedIp = await _resolveServerIp(node.host);
-      log.i('Resolved ${node.host} → $resolvedIp', tag: 'BRIDGE');
+      // ── Выбор режима: Xray напрямую или цепочка Xray → sing-box ─────────
+      //
+      // Xray из flutter_v2ray умеет только то, что умел в 2024-м (VLESS и
+      // старые протоколы). Hysteria2/TUIC/AnyTLS, автопереключение
+      // транспорта и регион «Китай» (rule-set geosite-cn/geoip-cn)
+      // обслуживает sing-box из libsingbox.so, запущенный как локальный
+      // прокси. Проверенный VLESS-путь для России/Беларуси не меняем.
+      final useChain = node.protocol != NodeProtocol.vless ||
+          fallbacks.isNotEmpty ||
+          (smartRouting && routing.region == RoutingRegion.china);
 
-      // Build vless:// share link from Node and parse it
-      final shareLink = node.toShareLink();
-      log.d('Share link: $shareLink', tag: 'BRIDGE');
+      final String config;
+      List<String>? captureRoutes;
+      var blockedApps = List<String>.from(excludedApps);
 
-      final V2RayURL parsed = FlutterV2ray.parseFromURL(shareLink);
+      if (useChain) {
+        await _startChain(node, fallbacks, routing);
+        config = _buildChainXrayConfig();
+        // Своё приложение — мимо VPN: иначе сокеты sing-box (к серверу и
+        // direct) снова попадут в туннель и замкнутся в петлю.
+        blockedApps = {...blockedApps, _ownPackage}.toList();
+        // Захватываем всё: регион и обход решает sing-box (rule-set).
+        captureRoutes = null;
+        log.i(
+          'Режим цепочки: Xray → sing-box ($_chainPort) → '
+          '${[node, ...fallbacks].map((n) => NodeProtocol.label(n.protocol)).join(" + ")}',
+          tag: 'BRIDGE',
+        );
+      } else {
+        // Resolve server IP before VPN starts to prevent routing loop
+        final resolvedIp = await _resolveServerIp(node.host);
+        log.i('Resolved ${node.host} → $resolvedIp', tag: 'BRIDGE');
 
-      // DNS: только плоские IP (см. ограничение №1 в шапке файла).
-      parsed.dns = _buildDns();
+        // Build vless:// share link from Node and parse it
+        final shareLink = node.toShareLink();
+        log.d('Share link: $shareLink', tag: 'BRIDGE');
 
-      // Routing: без geoip/geosite (ограничение №4), с AI Direct Lane.
-      parsed.routing = _buildRouting(
-        resolvedServerIp: resolvedIp,
-        smartRouting: smartRouting,
-        aiDirectLane: aiDirectLane,
-      );
+        final V2RayURL parsed = FlutterV2ray.parseFromURL(shareLink);
 
-      final config = parsed.getFullConfiguration();
+        // Sniffing: без него Xray видит только IP от tun2socks и доменные
+        // правила (AI-lane, RU-CDN, Discord) не срабатывают. routeOnly —
+        // домен используется только для маршрутизации, адрес не подменяется.
+        parsed.inbound['sniffing'] = {
+          'enabled': true,
+          'destOverride': ['http', 'tls', 'quic'],
+          'routeOnly': true,
+        };
+
+        // DNS: только плоские IP (см. ограничение №1 в шапке файла).
+        parsed.dns = _buildDns();
+
+        // Routing: без geoip/geosite (ограничение №4), с AI Direct Lane.
+        parsed.routing = _buildRouting(
+          resolvedServerIp: resolvedIp,
+          smartRouting: smartRouting,
+          aiDirectLane: aiDirectLane,
+          discordMode: routing.discordMode,
+        );
+
+        config = parsed.getFullConfiguration();
+
+        // ── Исключение RU-подсетей на уровне VpnService ───────────────────
+        //
+        // ВНИМАНИЕ: bypassSubnets у плагина — allowlist захватываемых
+        // маршрутов (см. ограничение №3). Чтобы ИСКЛЮЧИТЬ RU-подсети из
+        // туннеля, передаём их комплемент: "всё пространство, кроме RU".
+        // При выключенной умной маршрутизации — null → плагин сам добавит
+        // маршрут 0.0.0.0/0 (захват всего трафика).
+        captureRoutes = smartRouting ? complementCidrs(kRuBypassSubnets) : null;
+        if (captureRoutes != null) {
+          log.d(
+            'VpnService-маршруты: ${captureRoutes.length} CIDR '
+            '(комплемент ${kRuBypassSubnets.length} RU-подсетей)',
+            tag: 'BRIDGE',
+          );
+        }
+      }
       log.d('V2Ray config: $config', tag: 'BRIDGE');
 
       // Подготовка к ожиданию реального CONNECTED (см. ниже).
       final connected = Completer<bool>();
       _connectedCompleter = connected;
-
-      // ── Исключение RU-подсетей на уровне VpnService ─────────────────────
-      //
-      // ВНИМАНИЕ: bypassSubnets у плагина — allowlist захватываемых
-      // маршрутов (см. ограничение №3). Чтобы ИСКЛЮЧИТЬ RU-подсети из
-      // туннеля, передаём их комплемент: "всё пространство, кроме RU".
-      // При выключенной умной маршрутизации — null → плагин сам добавит
-      // маршрут 0.0.0.0/0 (захват всего трафика).
-      final List<String>? captureRoutes =
-          smartRouting ? complementCidrs(kRuBypassSubnets) : null;
-      if (captureRoutes != null) {
-        log.d(
-          'VpnService-маршруты: ${captureRoutes.length} CIDR '
-          '(комплемент ${kRuBypassSubnets.length} RU-подсетей)',
-          tag: 'BRIDGE',
-        );
-      }
 
       await _v2ray.startV2Ray(
         remark: node.name,
@@ -218,7 +264,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
         // Split tunneling: плагин добавляет каждый пакет в
         // VpnService.Builder.addDisallowedApplication() — эти приложения
         // работают в обход VPN.
-        blockedApps: excludedApps.isEmpty ? null : excludedApps,
+        blockedApps: blockedApps.isEmpty ? null : blockedApps,
         bypassSubnets: captureRoutes,
         proxyOnly: false,
         // Кнопка "Отключить" в родном уведомлении плагина (то самое
@@ -253,6 +299,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
         try {
           await _v2ray.stopV2Ray();
         } catch (_) {}
+        await _stopChain();
         _setState(BridgeState.error);
         return const BridgeResult(
           success: false,
@@ -268,6 +315,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
       return const BridgeResult(success: true);
     } catch (e, stack) {
       _connectedCompleter = null;
+      await _stopChain();
       log.e('Start error: $e', tag: 'BRIDGE');
       log.d('Stack: $stack', tag: 'BRIDGE');
       _setState(BridgeState.error);
@@ -386,6 +434,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
     _statusWatchdog = null;
     _connectedCompleter = null;
     await _v2ray.stopV2Ray();
+    await _stopChain();
     _setState(BridgeState.idle);
   }
 
@@ -422,6 +471,154 @@ class SingboxBridgeAndroid implements SingboxBridge {
       RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
           host.contains(':');
 
+  // ── Цепочка Xray → sing-box ────────────────────────────────────────────
+
+  static const _ownPackage = 'z43.studios.onyx';
+  static const _chainPort = 2081;
+  static const _xraySocksPort = 10808;
+
+  Process? _chainProcess;
+
+  /// Запускает sing-box (libsingbox.so) как локальный mixed-прокси.
+  Future<void> _startChain(
+    Node node,
+    List<Node> fallbacks,
+    RoutingOptions routing,
+  ) async {
+    await _stopChain();
+    final binMgr = BinaryManager.instance;
+    await binMgr.ensureBinaries(); // rule-set → binDir
+    final dir = binMgr.binDir.path;
+    final config = const SingboxConfigBuilder().buildChainConfig(
+      node,
+      fallbacks: fallbacks,
+      listenPort: _chainPort,
+      routing: RoutingOptions(
+        smartRouting: routing.smartRouting,
+        region: routing.region,
+        aiDirectLane: routing.aiDirectLane,
+        discordMode: routing.discordMode,
+        ruleSetDir: dir,
+      ),
+      cacheFilePath: '$dir/chain-cache.db',
+    );
+    final file = File('$dir/chain.json');
+    await file.writeAsString(const SingboxConfigBuilder().buildJson(config), flush: true);
+
+    final proc = await Process.start(
+      binMgr.singboxExe.path,
+      ['run', '-c', file.path],
+      workingDirectory: dir,
+    );
+    _chainProcess = proc;
+    proc.stderr
+        .transform(const SystemEncoding().decoder)
+        .listen((l) => log.d(l.trim(), tag: 'SINGBOX'));
+    proc.stdout
+        .transform(const SystemEncoding().decoder)
+        .listen((l) => log.d(l.trim(), tag: 'SINGBOX'));
+    var exited = false;
+    unawaited(proc.exitCode.then((code) {
+      exited = true;
+      if (identical(_chainProcess, proc)) {
+        log.w('sing-box (цепочка) завершился с кодом $code', tag: 'BRIDGE');
+        if (_state == BridgeState.running) {
+          _errorCtrl.add('sing-box неожиданно завершился (код $code)');
+          _setState(BridgeState.error);
+        }
+      }
+    }));
+
+    // Ждём, пока mixed-inbound начнёт принимать соединения.
+    final deadline = DateTime.now().add(const Duration(seconds: 8));
+    while (DateTime.now().isBefore(deadline)) {
+      if (exited) {
+        throw Exception('sing-box не запустился — проверьте ноду (см. лог SINGBOX)');
+      }
+      try {
+        final s = await Socket.connect('127.0.0.1', _chainPort,
+            timeout: const Duration(milliseconds: 500));
+        s.destroy();
+        log.i('sing-box (цепочка) слушает 127.0.0.1:$_chainPort', tag: 'BRIDGE');
+        return;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 250));
+      }
+    }
+    await _stopChain();
+    throw Exception('sing-box не открыл порт $_chainPort за 8 секунд');
+  }
+
+  Future<void> _stopChain() async {
+    final p = _chainProcess;
+    _chainProcess = null;
+    if (p == null) return;
+    try {
+      p.kill();
+      await p.exitCode.timeout(const Duration(seconds: 2), onTimeout: () {
+        p.kill(ProcessSignal.sigkill);
+        return -1;
+      });
+    } catch (_) {}
+  }
+
+  /// Конфиг Xray для цепочки: всё из TUN → socks-outbound в sing-box.
+  /// Маршрутизацию (регион, Discord, ИИ) делает sing-box.
+  String _buildChainXrayConfig() {
+    final cfg = {
+      'log': {'loglevel': 'warning'},
+      'inbounds': [
+        {
+          'tag': 'in_proxy',
+          'port': _xraySocksPort,
+          'protocol': 'socks',
+          'listen': '127.0.0.1',
+          'settings': {'auth': 'noauth', 'udp': true, 'userLevel': 8},
+        },
+      ],
+      'outbounds': [
+        {
+          // ПЕРВЫЙ outbound: плагин читает из него адрес сервера
+          // (settings.servers[0]) для своего уведомления.
+          'tag': 'proxy',
+          'protocol': 'socks',
+          'settings': {
+            'servers': [
+              {'address': '127.0.0.1', 'port': _chainPort},
+            ],
+          },
+        },
+        {'tag': 'direct', 'protocol': 'freedom'},
+        {'tag': 'blackhole', 'protocol': 'blackhole'},
+      ],
+      // Только плоские IP — ограничение №1. DNS-пакеты к ним уходят в
+      // sing-box и перехватываются там (hijack-dns).
+      'dns': _buildDns(),
+      'routing': {
+        'domainStrategy': 'AsIs',
+        'rules': [
+          {
+            'type': 'field',
+            'ip': kPrivateCidrs,
+            'outboundTag': 'direct',
+          },
+        ],
+      },
+    };
+    return const JsonEncoder.withIndent('  ').convert(cfg);
+  }
+
+  @override
+  Future<UdpProbeResult> checkUdp() async {
+    if (_state != BridgeState.running) {
+      return const UdpProbeResult.failed('VPN не подключён');
+    }
+    // socks-inbound Xray (udp: true) — общий вход для обоих режимов.
+    // Наше приложение исключено из VPN только в режиме цепочки, а к
+    // 127.0.0.1 ходит напрямую в любом режиме.
+    return UdpProbe.viaSocks5(_xraySocksPort);
+  }
+
   // ── DNS ──────────────────────────────────────────────────────────────────
   //
   // ТОЛЬКО плоские IPv4-строки — жёсткое требование плагина (ограничение №1
@@ -446,8 +643,18 @@ class SingboxBridgeAndroid implements SingboxBridge {
     String? resolvedServerIp,
     bool smartRouting = true,
     bool aiDirectLane = true,
+    bool discordMode = true,
   }) {
     final rules = <Map<String, dynamic>>[
+      // Режим Discord: домены Discord — строго в туннель, раньше всего.
+      // (Голос идёт по IP voice-серверов и попадает в туннель и так:
+      // их адреса не входят в RU-исключения.)
+      if (discordMode)
+        {
+          'type': 'field',
+          'domain': [for (final d in kDiscordDomainSuffixes) 'domain:$d'],
+          'outboundTag': 'proxy',
+        },
       // ── AI Direct Lane: максимальный приоритет ──────────────────────────
       // Домены ИИ-сервисов всегда идут строго в 'proxy', раньше любых
       // direct-правил умной маршрутизации. DNS для них резолвится

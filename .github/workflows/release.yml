@@ -34,6 +34,11 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      # Ядро sing-box для Android (цепочка Hysteria2/TUIC и Deep Probe).
+      # В git не храним: ~80 МБ. Версия и SHA-256 — в tools/core/fetch-core.sh.
+      - name: Fetch sing-box core (Android)
+        run: bash tools/core/fetch-core.sh android
+
       - name: Build APK
         run: |
           VERSION="${{ github.ref_name }}"
@@ -98,6 +103,8 @@ jobs:
           Copy-Item "build\windows\x64\runner\Release\*" dist\ -Recurse -Force
           Copy-Item build\OnyxService.exe dist\
           Copy-Item build\OnyxUpdater.exe dist\
+          # Ядро в бандле: в Китае первый запуск не может скачать его с GitHub.
+          pwsh tools/core/fetch-core.ps1 -Out dist\core
           $tag = "${{ github.ref_name }}"
           Compress-Archive -Path dist\* -DestinationPath "Onyx_${tag}_payload.zip" -Force
 

@@ -1,4 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../domain/node_scorer.dart';
+import '../../domain/routing_region.dart';
+export '../../domain/routing_region.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsState {
@@ -8,7 +11,17 @@ class SettingsState {
     this.splitTunnelingEnabled = false,
     this.excludedApps = const <String>{},
     this.autoFailover = true,
+    this.routingRegion = RoutingRegion.russia,
+    this.discordMode = true,
   });
+
+  /// Регион умной маршрутизации (см. RoutingRegion): чьи «домашние» сайты
+  /// идут мимо туннеля. Имеет смысл только при [smartRouting].
+  final RoutingRegion routingRegion;
+
+  /// Режим Discord: домены и (на Windows) процесс Discord — строго через
+  /// туннель; при выборе сервера предпочитаются ноды с рабочим UDP.
+  final bool discordMode;
 
   final bool smartRouting;
 
@@ -38,6 +51,8 @@ class SettingsState {
     bool? splitTunnelingEnabled,
     Set<String>? excludedApps,
     bool? autoFailover,
+    RoutingRegion? routingRegion,
+    bool? discordMode,
   }) =>
       SettingsState(
         smartRouting: smartRouting ?? this.smartRouting,
@@ -46,6 +61,8 @@ class SettingsState {
             splitTunnelingEnabled ?? this.splitTunnelingEnabled,
         excludedApps: excludedApps ?? this.excludedApps,
         autoFailover: autoFailover ?? this.autoFailover,
+        routingRegion: routingRegion ?? this.routingRegion,
+        discordMode: discordMode ?? this.discordMode,
       );
 }
 
@@ -59,6 +76,8 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   static const _keySplitTunneling = 'settings_split_tunneling';
   static const _keyExcludedApps = 'settings_excluded_apps';
   static const _keyAutoFailover = 'settings_auto_failover';
+  static const _keyRoutingRegion = 'settings_routing_region';
+  static const _keyDiscordMode = 'settings_discord_mode';
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -70,7 +89,11 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       excludedApps:
           (prefs.getStringList(_keyExcludedApps) ?? const []).toSet(),
       autoFailover: prefs.getBool(_keyAutoFailover) ?? true,
+      routingRegion:
+          RoutingRegionLabel.parse(prefs.getString(_keyRoutingRegion)),
+      discordMode: prefs.getBool(_keyDiscordMode) ?? true,
     );
+    _applyScoring();
   }
 
   Future<void> toggleSmartRouting(bool value) async {
@@ -89,6 +112,26 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     state = state.copyWith(splitTunnelingEnabled: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keySplitTunneling, value);
+  }
+
+  /// Скоринг нод зависит от региона и режима Discord.
+  void _applyScoring() {
+    NodeScorer.region = state.routingRegion;
+    NodeScorer.preferUdp = state.discordMode;
+  }
+
+  Future<void> setRoutingRegion(RoutingRegion value) async {
+    state = state.copyWith(routingRegion: value);
+    _applyScoring();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyRoutingRegion, value.name);
+  }
+
+  Future<void> toggleDiscordMode(bool value) async {
+    state = state.copyWith(discordMode: value);
+    _applyScoring();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyDiscordMode, value);
   }
 
   Future<void> toggleAutoFailover(bool value) async {
