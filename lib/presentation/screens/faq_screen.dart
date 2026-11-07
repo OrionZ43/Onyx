@@ -13,11 +13,11 @@ class FaqScreen extends StatelessWidget {
       body: Stack(
         children: [
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF0D0420), Color(0xFF03020A)],
+                colors: [AppColors.void0, AppColors.void0],
               ),
             ),
           ),
@@ -28,7 +28,7 @@ class FaqScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     ClipRect(
-                      child: BackdropFilter(
+                      child: NoBackdrop(
                         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -36,7 +36,7 @@ class FaqScreen extends StatelessWidget {
                             vertical: 14,
                           ),
                           decoration: BoxDecoration(
-                            color: Color(0x99050410),
+                            color: AppColors.void0,
                             border: Border(
                               bottom: BorderSide(color: AppColors.glassBorder),
                             ),

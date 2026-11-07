@@ -22,7 +22,10 @@ import 'package:onyx/presentation/providers/theme_provider.dart';
 import 'package:onyx/presentation/providers/update_provider.dart';
 import 'package:onyx/presentation/providers/vpn_provider.dart';
 import 'package:onyx/presentation/screens/home_screen.dart';
+import 'package:onyx/presentation/screens/faq_screen.dart';
+import 'package:onyx/presentation/screens/onboarding_screen.dart';
 import 'package:onyx/presentation/screens/settings_screen.dart';
+import 'package:onyx/presentation/screens/subscription_manager_screen.dart';
 import 'package:onyx/presentation/widgets/country_flag.dart';
 import 'package:onyx/presentation/widgets/node_list_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -169,6 +172,11 @@ void main() {
     testWidgets('${k.name} phone empty', (tester) async {
       await shot(tester, '${k.name}-phone-empty', app(k, vpnOf('off'), const HomeScreen(), s: const SubscriptionState()), phone);
     });
+    for (final e in {'onboarding': const OnboardingScreen(), 'subs': const SubscriptionManagerScreen(), 'faq': const FaqScreen()}.entries) {
+      testWidgets('${k.name} phone ${e.key}', (tester) async {
+        await shot(tester, '${k.name}-phone-${e.key}', app(k, vpnOf('off'), e.value), phone);
+      });
+    }
     testWidgets('${k.name} phone settings', (tester) async {
       await shot(tester, '${k.name}-phone-settings', app(k, vpnOf('off'), const SettingsScreen()), phone);
     });

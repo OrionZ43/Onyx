@@ -34,16 +34,18 @@ class GlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
     final radius = BorderRadius.circular(borderRadius ?? t.radiusCard);
-    return Container(
-      margin: margin,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: t.surface,
+    // Material, а не цветной Container: ink-эффекты (ListTile, ExpansionTile)
+    // рисуются на ближайшем Material и иначе были бы скрыты фоном.
+    final card = Material(
+      color: t.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: radius,
-        border: border && t.isOnyx ? Border.all(color: t.line) : null,
+        side: border && t.isOnyx ? BorderSide(color: t.line) : BorderSide.none,
       ),
-      child: child,
+      clipBehavior: Clip.antiAlias,
+      child: padding == null ? child : Padding(padding: padding!, child: child),
     );
+    return margin == null ? card : Padding(padding: margin!, child: card);
   }
 }
 
@@ -100,4 +102,15 @@ class GlassIconBtn extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Замена `BackdropFilter` в старых шапках экранов: фон под ними теперь
+/// плотный, размывать нечего, а blur — самая дорогая операция GPU.
+class NoBackdrop extends StatelessWidget {
+  const NoBackdrop({super.key, this.filter, required this.child});
+  final Object? filter;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => child;
 }

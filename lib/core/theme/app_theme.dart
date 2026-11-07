@@ -208,23 +208,11 @@ abstract final class AppTheme {
           borderRadius: BorderRadius.vertical(top: Radius.circular(t.radiusSheet)),
         ),
       ),
+      // Старые экраны кладут поля в свои контейнеры — глобально поле без
+      // заливки и рамки; новые поля задают вид явно (onyxInputDecoration).
       inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: t.isSignal ? t.surfaceHigh : t.bg,
         hintStyle: TextStyle(color: t.textFaint),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(t.isSignal ? 24 : 22),
-          borderSide: t.isSignal ? BorderSide.none : BorderSide(color: t.line),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(t.isSignal ? 24 : 22),
-          borderSide: t.isSignal ? BorderSide.none : BorderSide(color: t.line),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(t.isSignal ? 24 : 22),
-          borderSide: BorderSide(color: t.lineStrong),
-        ),
+        border: InputBorder.none,
       ),
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: t.accent,

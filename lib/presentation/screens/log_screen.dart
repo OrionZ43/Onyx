@@ -56,14 +56,12 @@ class _LogScreenState extends ConsumerState<LogScreen> {
       body: Stack(
         children: [
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFF0D0420),
-                  Color(0xFF03020A),
-                  Color(0xFF02091A),
+                  AppColors.void0, AppColors.void0, AppColors.void0,
                 ],
               ),
             ),
@@ -76,11 +74,11 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                   children: [
                     // ── Шапка ───────────────────────────────────────────────
                     ClipRect(
-                      child: BackdropFilter(
+                      child: NoBackdrop(
                         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Color(0x99050410),
+                            color: AppColors.void0,
                             border: Border(
                               bottom: BorderSide(color: AppColors.glassBorder),
                             ),

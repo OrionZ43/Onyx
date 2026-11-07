@@ -30,6 +30,9 @@ abstract final class AppColors {
   static Color get plasmaGlow => active.accent.withValues(alpha: 0.25);
   static Color get plasmaTrace => active.accent.withValues(alpha: 0.08);
 
+  /// Текст и иконки поверх акцента (бывший `gradientPlasma`).
+  static Color get onPlasma => active.onAccent;
+
   /// «Подключено» — тот же единственный акцент.
   static Color get aurora => active.accent;
   static Color get auroraGlow => active.accent.withValues(alpha: 0.25);

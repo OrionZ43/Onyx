@@ -53,7 +53,7 @@ class _SetupScreenState extends State<SetupScreen>
     _bgCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),
-    )..repeat();
+    ); // фон статичный — не крутим
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
@@ -98,9 +98,9 @@ class _SetupScreenState extends State<SetupScreen>
                           ),
                         ],
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.download_rounded,
-                        color: Colors.white,
+                        color: AppColors.onPlasma,
                         size: 48,
                       ),
                     ),
@@ -118,7 +118,7 @@ class _SetupScreenState extends State<SetupScreen>
                       fontFamily: AppFonts.display,
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.nebula0,
+                      color: AppColors.onPlasma,
                     ),
                   ).animate().fadeIn(duration: 600.ms, delay: 100.ms),
 
@@ -238,7 +238,7 @@ class _SetupScreenState extends State<SetupScreen>
                               fontFamily: AppFonts.display,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              color: AppColors.onPlasma,
                             ),
                           ),
                         ),

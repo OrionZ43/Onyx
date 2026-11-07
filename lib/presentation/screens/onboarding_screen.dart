@@ -50,7 +50,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     _bgCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),
-    )..repeat();
+    ); // фон статичный — не крутим
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2200),
@@ -58,7 +58,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     _shineCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3500),
-    )..repeat();
+    );
   }
 
   @override
@@ -392,7 +392,7 @@ class _UrlInputState extends State<_UrlInput> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: BackdropFilter(
+            child: NoBackdrop(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: Container(
                 decoration: BoxDecoration(
@@ -607,7 +607,6 @@ class _ConnectButton extends StatelessWidget {
       child: AnimatedBuilder(
         animation: shineCtrl,
         builder: (_, __) {
-          final shine = shineCtrl.value;
           return Container(
             height: 58,
             decoration: BoxDecoration(
@@ -617,44 +616,17 @@ class _ConnectButton extends StatelessWidget {
                       colors: [AppColors.void3, AppColors.void3],
                     ),
               borderRadius: BorderRadius.circular(18),
-              boxShadow: onTap != null
-                  ? [
-                      BoxShadow(
-                        color: AppColors.plasma.withValues(alpha: 0.4),
-                        blurRadius: 24,
-                        spreadRadius: -2,
-                      ),
-                    ]
-                  : null,
             ),
             child: Stack(
               children: [
-                if (onTap != null)
-                  Positioned(
-                    left: (shine * 2 - 0.5) * 300 - 60,
-                    top: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 60,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            Color(0x1FFFFFFF),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
                 Center(
                   child: loading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: AppColors.onPlasma,
                           ),
                         )
                       : Text(
@@ -663,7 +635,7 @@ class _ConnectButton extends StatelessWidget {
                             fontFamily: AppFonts.display,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: AppColors.onPlasma,
                           ),
                         ),
                 ),

@@ -70,11 +70,11 @@ class _SubscriptionManagerScreenState
       body: Stack(
         children: [
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF0D0420), Color(0xFF03020A)],
+                colors: [AppColors.void0, AppColors.void0],
               ),
             ),
           ),
@@ -94,7 +94,7 @@ class _SubscriptionManagerScreenState
                             vertical: 14,
                           ),
                           decoration: BoxDecoration(
-                            color: Color(0x99050410),
+                            color: AppColors.void0,
                             border: Border(
                               bottom: BorderSide(color: AppColors.glassBorder),
                             ),
@@ -160,7 +160,7 @@ class _SubscriptionManagerScreenState
                                     children: [
                                       Icon(
                                         Icons.add_rounded,
-                                        color: Colors.white,
+                                        color: AppColors.onPlasma,
                                         size: 16,
                                       ),
                                       SizedBox(width: 6),
@@ -170,7 +170,7 @@ class _SubscriptionManagerScreenState
                                           fontFamily: AppFonts.display,
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
-                                          color: Colors.white,
+                                          color: AppColors.onPlasma,
                                         ),
                                       ),
                                     ],
@@ -384,7 +384,7 @@ class _SubscriptionManagerScreenState
                     fontFamily: AppFonts.display,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: AppColors.onPlasma,
                   ),
                 ),
               ),
@@ -526,7 +526,7 @@ class _EmptyState extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                    Icon(Icons.add_rounded, color: AppColors.onPlasma, size: 18),
                     SizedBox(width: 8),
                     Text(
                       'Добавить подписку',
@@ -534,7 +534,7 @@ class _EmptyState extends StatelessWidget {
                         fontFamily: AppFonts.display,
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: AppColors.onPlasma,
                       ),
                     ),
                   ],
@@ -589,7 +589,7 @@ class _SubCard extends StatelessWidget {
                 ),
                 child: Icon(
                   Icons.rss_feed_rounded,
-                  color: isActive ? Colors.white : AppColors.nebula2,
+                  color: isActive ? AppColors.onPlasma : AppColors.nebula2,
                   size: 18,
                 ),
               ),
@@ -606,7 +606,7 @@ class _SubCard extends StatelessWidget {
                         fontFamily: AppFonts.display,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: isActive ? AppColors.plasma : AppColors.nebula0,
+                        color: isActive ? AppColors.plasma : AppColors.onPlasma,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -685,7 +685,7 @@ class _SubCard extends StatelessWidget {
                           fontFamily: AppFonts.display,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: isActive ? AppColors.nebula2 : Colors.white,
+                          color: isActive ? AppColors.nebula2 : AppColors.onPlasma,
                         ),
                       ),
                     ),

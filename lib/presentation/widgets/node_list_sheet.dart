@@ -26,6 +26,7 @@ import '../screens/subscription_manager_screen.dart';
 import '../util/country.dart';
 import 'country_flag.dart';
 import 'home_parts.dart';
+import 'onyx_field.dart';
 import 'onyx_icon.dart';
 import 'onyx_switch.dart';
 import 'subscription_import.dart';
@@ -173,14 +174,10 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
             controller: _query,
             onChanged: (_) => setState(() {}),
             style: TextStyle(fontFamily: t.bodyFont, fontSize: t.isMaterial ? 16 : 14, color: t.text),
-            decoration: InputDecoration(
-              hintText: t.isMaterial ? 'Страна, город, сервер' : 'Страна, город или сервер',
-              isDense: !t.isMaterial,
-              prefixIcon: Padding(
-                padding: const EdgeInsets.only(left: 14, right: 10),
-                child: OnyxIcon(OnyxGlyph.search, size: t.isMaterial ? 24 : 16, color: t.textFaint),
-              ),
-              prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+            decoration: onyxInputDecoration(
+              context,
+              hint: t.isMaterial ? 'Страна, город, сервер' : 'Страна, город или сервер',
+              prefix: OnyxIcon(OnyxGlyph.search, size: t.isMaterial ? 24 : 16, color: t.textFaint),
             ),
           ),
         ),

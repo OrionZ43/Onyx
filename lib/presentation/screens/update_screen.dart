@@ -130,7 +130,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                         onPressed: _startUpdate,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.plasma,
-                          foregroundColor: Colors.white,
+                          foregroundColor: AppColors.onPlasma,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 32, vertical: 16),
                           shape: RoundedRectangleBorder(

@@ -6,6 +6,7 @@ import 'package:material_new_shapes/material_new_shapes.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../providers/subscription_provider.dart';
 import 'country_flag.dart' show PolygonClipper;
+import 'onyx_field.dart';
 import 'onyx_icon.dart';
 import 'signal/dot_matrix.dart';
 
@@ -134,14 +135,11 @@ class _SubscriptionImportState extends ConsumerState<SubscriptionImport> {
                 controller: _ctl,
                 onSubmitted: (_) => _submit(),
                 style: TextStyle(fontFamily: t.bodyFont, fontSize: 14, color: t.text),
-                decoration: InputDecoration(
-                  hintText: 'https://… или vless://…',
-                  prefixIcon: Padding(
-                    padding: const EdgeInsets.only(left: 14, right: 10),
-                    child: OnyxIcon(OnyxGlyph.link, size: t.isMaterial ? 22 : 16, color: t.textFaint),
-                  ),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-                  suffixIcon: IconButton(
+                decoration: onyxInputDecoration(
+                  context,
+                  hint: 'https://… или vless://…',
+                  prefix: OnyxIcon(OnyxGlyph.link, size: t.isMaterial ? 22 : 16, color: t.textFaint),
+                  suffix: IconButton(
                     tooltip: 'Добавить',
                     onPressed: loading ? null : _submit,
                     icon: OnyxIcon(OnyxGlyph.check, size: t.isMaterial ? 22 : 16, color: t.textMuted),
