@@ -135,6 +135,9 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   /// id нод, уже прошедших TCP-пинг (в этом запуске или раньше).
   final Set<String> _probedIds = {};
 
+  /// Кэш проб прочитан с диска.
+  bool _cacheLoaded = false;
+
   bool _busy = false;
 
   /// Идёт проверка нод (TCP/Deep Probe).
@@ -167,8 +170,11 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   /// любого изменения. [probeNew] — проверить ноды, которых ещё не пинговали.
   void syncFromSources({bool probeNew = true}) {
     if (!mounted) return;
-    // До загрузки источников пул не трогаем: на экране кэш прошлого запуска.
-    if (!_ref.read(sourcesProvider.notifier).isLoaded) return;
+    // До загрузки источников И кэша проб пул не трогаем: на экране кэш
+    // прошлого запуска. Иначе склейка без результатов проб перезаписала бы
+    // cached_nodes «непроверенными» нодами, и проверки терялись навсегда
+    // (после перезапуска «ни одного живого сервера»).
+    if (!_ref.read(sourcesProvider.notifier).isLoaded || !_cacheLoaded) return;
     final sources = _ref.read(sourcesProvider);
     final bySource = _ref.read(sourcesProvider.notifier).nodesBySource;
     final previous = {..._probeCache, for (final n in state.nodes) n.id: n};
@@ -398,6 +404,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
         if (n.isAlive || n.latencyMs != null || n.isTrulyWorking) _probedIds.add(n.id);
       } catch (_) {}
     }
+    _cacheLoaded = true;
     if (mounted && state.nodes.isEmpty && _probeCache.isNotEmpty) {
       state = state.copyWith(nodes: _probeCache.values.toList(), status: SubStatus.ready);
     }
