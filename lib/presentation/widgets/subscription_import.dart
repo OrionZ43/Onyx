@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
 
 import '../../core/theme/onyx_tokens.dart';
+import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import 'country_flag.dart' show PolygonClipper;
+import 'add_source_sheet.dart' show looksLikeSubscriptionUrl;
 import 'onyx_field.dart';
+import 'onyx_toast.dart';
 import 'onyx_icon.dart';
 import 'preset_tile.dart';
 import 'signal/dot_matrix.dart';
@@ -47,11 +50,19 @@ class _SubscriptionImportState extends ConsumerState<SubscriptionImport> {
     _submit();
   }
 
-  void _submit() {
-    final url = _ctl.text.trim();
-    if (!_looksLikeLink(url)) return;
+  // Добавляет источник (#40): URL — подписка, иначе — набор ссылок.
+  Future<void> _submit() async {
+    final raw = _ctl.text.trim();
+    if (!_looksLikeLink(raw)) return;
     HapticFeedback.lightImpact();
-    ref.read(subscriptionProvider.notifier).loadFromUrl(url);
+    final ctl = ref.read(sourcesProvider.notifier);
+    final res = looksLikeSubscriptionUrl(raw) ? await ctl.addSubscription(raw) : await ctl.addLinks(raw);
+    if (!mounted) return;
+    if (res == null) {
+      showOnyxToast(context, 'Не удалось добавить: проверьте ссылку', glyph: OnyxGlyph.error);
+    } else {
+      _ctl.clear();
+    }
   }
 
   @override

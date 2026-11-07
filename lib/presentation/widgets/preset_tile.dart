@@ -5,35 +5,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/subscription_presets.dart';
 import '../providers/settings_provider.dart';
-import '../providers/subscription_provider.dart';
+import '../../domain/entities/subscription_source.dart';
+import '../providers/sources_provider.dart';
 import 'country_flag.dart';
 import 'onyx_icon.dart';
 import 'onyx_toast.dart';
 
-/// Загрузить встроенную подписку [preset].
-///
-/// Подписка в Onyx одна активная — если уже загружена другая, спрашиваем.
-/// Для пресета Китая предлагаем включить регион «Китай» (сами не переключаем).
+/// Добавить встроенную подписку [preset] как ещё один источник (#40):
+/// ничего не заменяет; повторное добавление возвращает существующий.
 Future<bool> loadPreset(BuildContext context, WidgetRef ref, SubscriptionPreset preset) async {
-  final sub = ref.read(subscriptionProvider);
-  if (sub.url.isNotEmpty && sub.url != preset.url) {
-    final current = SubscriptionPresets.byUrl(sub.url)?.title ?? 'текущую подписку';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(preset.title),
-        content: Text('Подписка в Onyx одна. «${preset.title}» заменит $current.\n\n${preset.subtitle}.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Отмена')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Заменить')),
-        ],
-      ),
-    );
-    if (ok != true) return false;
-  }
   HapticFeedback.lightImpact();
-  await ref.read(subscriptionProvider.notifier).loadFromUrl(preset.url);
-  return true;
+  final src = await ref.read(sourcesProvider.notifier).addPreset(preset);
+  if (src == null && context.mounted) {
+    showOnyxToast(context, 'Не удалось загрузить «»', glyph: OnyxGlyph.error);
+  }
+  return src != null;
 }
 
 /// Плитка встроенной подписки: флаг, название, честная подпись, действие.
@@ -48,10 +34,11 @@ class PresetTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = OnyxTokens.of(context);
     final s = Theme.of(context).colorScheme;
-    final sub = ref.watch(subscriptionProvider);
+    final sources = ref.watch(sourcesProvider);
     final region = ref.watch(settingsProvider.select((x) => x.routingRegion));
-    final active = sub.url == preset.url;
-    final busy = active && sub.status == SubStatus.fetching;
+    final src = sources.where((x) => x.presetId == preset.id).firstOrNull;
+    final active = src != null;
+    final busy = src?.status == SourceStatus.fetching;
     final needRegion = _isChina && region != RoutingRegion.china;
 
     final title = Text(

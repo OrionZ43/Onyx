@@ -19,11 +19,15 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
+import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
+import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/vpn_provider.dart';
+import '../screens/groups_screen.dart';
 import '../screens/subscription_manager_screen.dart';
 import '../util/country.dart';
+import 'add_source_sheet.dart';
 import 'country_flag.dart';
 import 'home_parts.dart';
 import 'onyx_field.dart';
@@ -75,7 +79,18 @@ class NodeListSheet extends StatelessWidget {
   }
 }
 
-enum _Filter { all, ai, verified }
+/// Автофильтры листа: комбинируются (И), «Страны» — один выбранный код.
+class _Facets {
+  const _Facets({this.voice = false, this.ai = false, this.country});
+  final bool voice, ai;
+  final String? country;
+  bool get any => voice || ai || country != null;
+  _Facets copy({bool? voice, bool? ai, String? country, bool clearCountry = false}) => _Facets(
+        voice: voice ?? this.voice,
+        ai: ai ?? this.ai,
+        country: clearCountry ? null : (country ?? this.country),
+      );
+}
 
 class NodeListPanel extends ConsumerStatefulWidget {
   const NodeListPanel({super.key, this.inSheet = false});
@@ -87,7 +102,10 @@ class NodeListPanel extends ConsumerStatefulWidget {
 
 class _NodeListPanelState extends ConsumerState<NodeListPanel> {
   final _query = TextEditingController();
-  _Filter _filter = _Filter.all;
+  _Facets _facets = const _Facets();
+
+  /// Вкладка-группа: null — «Все», 'auto:fav' — «Избранное», иначе id группы.
+  String? _tab;
 
   @override
   void dispose() {
@@ -108,12 +126,74 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
   }
 
   void _setAuto(bool auto) {
-    final sub = ref.read(subscriptionProvider);
+    final best = ref.read(autoNodeProvider);
     if (auto) {
       ref.read(nodeSelectionProvider.notifier).clear();
-    } else if (sub.bestNode != null) {
-      ref.read(nodeSelectionProvider.notifier).select(sub.bestNode!);
+    } else if (best != null) {
+      ref.read(nodeSelectionProvider.notifier).select(best);
     }
+  }
+
+  Future<void> _pickAutoGroup() async {
+    final t = OnyxTokens.of(context);
+    final groups = ref.read(groupsProvider);
+    final cur = ref.read(autoGroupProvider);
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: t.isMaterial ? null : t.surface,
+      builder: (c) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          for (final e in [...kAutoGroups.entries.map((e) => (e.key, e.value)), ...groups.map((g) => (g.id, g.name))])
+            ListTile(
+              title: Text(e.$2, style: TextStyle(fontFamily: t.bodyFont, color: t.text)),
+              trailing: e.$1 == cur ? OnyxIcon(OnyxGlyph.check, size: 18, color: t.accent) : null,
+              onTap: () => Navigator.pop(c, e.$1 ?? '*'),
+            ),
+        ]),
+      ),
+    );
+    if (v != null) ref.read(autoGroupProvider.notifier).setAutoGroup(v == '*' ? null : v);
+  }
+
+  Future<void> _nodeMenu(Node node) async {
+    final t = OnyxTokens.of(context);
+    final groups = ref.read(groupsProvider);
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: t.isMaterial ? null : t.surface,
+      builder: (c) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(displayNodeName(node.name), style: TextStyle(fontFamily: t.bodyFont, fontSize: 15, fontWeight: FontWeight.w500, color: t.text)),
+          ),
+          for (final g in groups)
+            ListTile(
+              leading: OnyxIcon(g.nodeIds.contains(node.id) ? OnyxGlyph.check : OnyxGlyph.plus, size: 18, color: t.textMuted),
+              title: Text(g.nodeIds.contains(node.id) ? 'Убрать из «${g.name}»' : 'В группу «${g.name}»', style: TextStyle(fontFamily: t.bodyFont, color: t.text)),
+              onTap: () => Navigator.pop(c, g.id),
+            ),
+          ListTile(
+            leading: OnyxIcon(OnyxGlyph.plus, size: 18, color: t.accent),
+            title: Text('Новая группа…', style: TextStyle(fontFamily: t.bodyFont, color: t.accent)),
+            onTap: () => Navigator.pop(c, '+'),
+          ),
+        ]),
+      ),
+    );
+    if (v == null || !mounted) return;
+    final ctl = ref.read(groupsProvider.notifier);
+    if (v == '+') {
+      final name = await askGroupName(context);
+      if (name == null || name.trim().isEmpty) return;
+      final g = await ctl.create(name.trim());
+      await ctl.addNodes(g.id, [node.id]);
+      return;
+    }
+    final g = groups.firstWhere((x) => x.id == v);
+    g.nodeIds.contains(node.id) ? ctl.removeNode(g.id, node.id) : ctl.addNodes(g.id, [node.id]);
   }
 
   @override
@@ -122,7 +202,15 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
     final sub = ref.watch(subscriptionProvider);
     final picked = ref.watch(nodeSelectionProvider);
     final vpn = ref.watch(vpnControllerProvider);
-    final current = vpn is VpnConnected ? vpn.node : (picked ?? sub.bestNode);
+    final auto = ref.watch(autoNodeProvider);
+    final current = vpn is VpnConnected ? vpn.node : (picked ?? auto);
+    final favs = ref.watch(favoritesProvider);
+    final userGroups = ref.watch(groupsProvider);
+    final autoGroup = ref.watch(autoGroupProvider);
+    final sourceCount = ref.watch(sourcesProvider.select((l) => l.length));
+    // Вкладка удалена (группу стёрли) — возвращаемся во «Все».
+    final tab = _tab == null || _tab == 'auto:fav' || userGroups.any((g) => g.id == _tab) ? _tab : null;
+    final base = tab == null ? sub.nodes : ref.watch(groupNodesProvider(tab));
     final pad = t.isMaterial ? 16.0 : 20.0;
 
     if (sub.nodes.isEmpty && sub.status != SubStatus.fetching) {
@@ -133,11 +221,12 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
     }
 
     final q = _query.text.trim().toLowerCase();
-    final nodes = sub.nodes.where((n) {
-      if (_filter == _Filter.ai && !n.aiReachable) return false;
-      if (_filter == _Filter.verified && !n.isTrulyWorking) return false;
-      if (q.isEmpty) return true;
+    final nodes = base.where((n) {
       final c = countryOfName(n.name);
+      if (_facets.voice && !n.udpSupported) return false;
+      if (_facets.ai && !n.aiReachable) return false;
+      if (_facets.country != null && c.code != _facets.country) return false;
+      if (q.isEmpty) return true;
       return n.name.toLowerCase().contains(q) || c.name.toLowerCase().contains(q);
     }).toList()
       ..sort((a, b) {
@@ -154,7 +243,12 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
       names[c.code] = c.name;
     }
     final aiCount = sub.nodes.where((n) => n.aiReachable).length;
-    final verified = sub.nodes.where((n) => n.isTrulyWorking).length;
+    final voiceCount = sub.nodes.where((n) => n.udpSupported).length;
+    final countries = <String, String>{};
+    for (final n in sub.nodes) {
+      final c = countryOfName(n.name);
+      countries[c.code] = c.name;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -162,16 +256,27 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
         _Header(
           pad: pad,
           busy: sub.status == SubStatus.fetching || sub.status == SubStatus.probing || sub.status == SubStatus.deepProbing,
-          onRefresh: () {
-            final url = ref.read(subscriptionProvider).url;
-            if (url.isNotEmpty) ref.read(subscriptionProvider.notifier).loadFromUrl(url);
-          },
-          onAdd: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscriptionManagerScreen())),
+          onRefresh: () => ref.read(sourcesProvider.notifier).refreshAll(),
+          onAdd: () => showAddSourceSheet(context),
         ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: pad),
-          child: TextField(
-            controller: _query,
+        _GroupTabs(
+          pad: pad,
+          value: tab,
+          tabs: [
+            (null, 'Все', sub.nodes.length),
+            ('auto:fav', t.isSignal ? '★ Избранное' : 'Избранное', favs.length),
+            for (final g in userGroups) (g.id, g.name, ref.watch(groupNodesProvider(g.id)).length),
+          ],
+          onChanged: (v) => setState(() => _tab = v),
+          onAdd: () async {
+            final name = await askGroupName(context);
+            if (name == null || name.trim().isEmpty) return;
+            final g = await ref.read(groupsProvider.notifier).create(name.trim());
+            if (mounted) setState(() => _tab = g.id);
+          },
+        ),
+        const SizedBox(height: 12),
+$1
             onChanged: (_) => setState(() {}),
             style: TextStyle(fontFamily: t.bodyFont, fontSize: t.isMaterial ? 16 : 14, color: t.text),
             decoration: onyxInputDecoration(
@@ -183,25 +288,52 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
         ),
         Padding(
           padding: EdgeInsets.fromLTRB(pad, 12, pad, 4),
-          child: _FilterRow(
-            value: _filter,
-            counts: {_Filter.all: sub.nodes.length, _Filter.ai: aiCount, _Filter.verified: verified},
-            onChanged: (f) => setState(() => _filter = f),
+          child: _FacetRow(
+            value: _facets,
+            voiceCount: voiceCount,
+            aiCount: aiCount,
+            countries: countries,
+            onChanged: (f) => setState(() => _facets = f),
           ),
         ),
         Expanded(
           child: ListView(
             padding: EdgeInsets.only(top: 6, bottom: 16, left: t.isMaterial ? pad : 0, right: t.isMaterial ? pad : 0),
             children: [
-              _AutoRow(pad: t.isMaterial ? 0 : pad, auto: picked == null, onChanged: _setAuto),
+              _AutoRow(
+                pad: t.isMaterial ? 0 : pad,
+                auto: picked == null,
+                group: groupLabel(autoGroup, userGroups),
+                onChanged: _setAuto,
+                onPickGroup: _pickAutoGroup,
+              ),
+              if (tab == 'auto:fav' && base.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                  child: Text('Отмечайте серверы звёздочкой — они соберутся здесь.', textAlign: TextAlign.center, style: TextStyle(fontFamily: t.bodyFont, color: t.textMuted)),
+                ),
               for (final e in groups.entries) ...[
                 _GroupHeader(name: names[e.key]!, count: e.value.length, pad: t.isMaterial ? 0 : pad),
                 if (t.isMaterial)
                   _MaterialSegment(
-                    children: [for (final n in e.value) _NodeRow(node: n, selected: n.id == current?.id, onTap: () => _select(n))],
+                    children: [for (final n in e.value) _NodeRow(
+                        node: n,
+                        selected: n.id == current?.id,
+                        favorite: favs.contains(n.id),
+                        onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),
+                        onLongPress: () => _nodeMenu(n),
+                        onTap: () => _select(n),
+                      )],
                   )
                 else
-                  for (final n in e.value) _NodeRow(node: n, selected: n.id == current?.id, onTap: () => _select(n)),
+                  for (final n in e.value) _NodeRow(
+                        node: n,
+                        selected: n.id == current?.id,
+                        favorite: favs.contains(n.id),
+                        onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),
+                        onLongPress: () => _nodeMenu(n),
+                        onTap: () => _select(n),
+                      ),
               ],
               if (nodes.isEmpty)
                 Padding(
@@ -211,7 +343,12 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
             ],
           ),
         ),
-        _Footer(pad: pad, total: sub.nodes.length, ai: aiCount, fetchedAt: sub.lastFetchedAt),
+        _Footer(
+          pad: pad,
+          total: sub.nodes.length,
+          sources: sourceCount,
+          onSources: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscriptionManagerScreen())),
+        ),
       ],
     );
   }
@@ -287,46 +424,83 @@ class _RoundButton extends StatelessWidget {
 
 // ── Фильтр ──────────────────────────────────────────────────────────────────
 
-class _FilterRow extends StatelessWidget {
-  const _FilterRow({required this.value, required this.counts, required this.onChanged});
-  final _Filter value;
-  final Map<_Filter, int> counts;
-  final ValueChanged<_Filter> onChanged;
+class _FacetRow extends StatelessWidget {
+  const _FacetRow({required this.value, required this.voiceCount, required this.aiCount, required this.countries, required this.onChanged});
+  final _Facets value;
+  final int voiceCount, aiCount;
 
-  static const _labels = {_Filter.all: 'Все', _Filter.ai: 'AI', _Filter.verified: 'Проверенные'};
+  /// Код → название; '' — «Другие».
+  final Map<String, String> countries;
+  final ValueChanged<_Facets> onChanged;
+
+  Future<void> _pickCountry(BuildContext context) async {
+    final t = OnyxTokens.of(context);
+    final box = context.findRenderObject() as RenderBox?;
+    final pos = box == null ? Offset.zero : box.localToGlobal(Offset.zero);
+    final sorted = countries.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
+    final picked = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(pos.dx + 120, pos.dy + 40, pos.dx + 360, 0),
+      color: t.isMaterial ? null : t.surfaceHigh,
+      items: [
+        PopupMenuItem(value: '*', child: Text('Все страны', style: TextStyle(fontFamily: t.bodyFont, color: t.text))),
+        for (final e in sorted)
+          PopupMenuItem(
+            value: e.key,
+            child: Row(children: [
+              CountryFlag(code: e.key, size: 20),
+              const SizedBox(width: 10),
+              Text(e.value, style: TextStyle(fontFamily: t.bodyFont, color: t.text)),
+            ]),
+          ),
+      ],
+    );
+    if (picked == null) return;
+    onChanged(picked == '*' ? value.copy(clearCountry: true) : value.copy(country: picked));
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
+    final countryLabel = value.country == null ? 'Страны' : (countries[value.country] ?? 'Страна');
+    final chips = <(String, bool, VoidCallback, OnyxGlyph?)>[
+      ('Голос · $voiceCount', value.voice, () => onChanged(value.copy(voice: !value.voice)), OnyxGlyph.voice),
+      ('AI · $aiCount', value.ai, () => onChanged(value.copy(ai: !value.ai)), null),
+      ('$countryLabel ▾', value.country != null, () => _pickCountry(context), null),
+    ];
     if (t.isMaterial) {
       return Wrap(spacing: 8, children: [
-        for (final f in _Filter.values)
+        for (final c in chips)
           FilterChip(
-            label: Text(f == _Filter.ai ? 'AI-проба' : _labels[f]!),
-            avatar: f == _Filter.ai && value != f ? const Icon(Icons.auto_awesome_outlined, size: 18) : null,
-            selected: value == f,
-            onSelected: (_) => onChanged(f),
+            label: Text(c.$1),
+            avatar: c.$4 != null && !c.$2 ? Icon(c.$4!.material, size: 18) : null,
+            selected: c.$2,
+            onSelected: (_) => c.$3(),
           ),
       ]);
     }
     return Wrap(spacing: t.isSignal ? 8 : 6, runSpacing: 6, children: [
-      for (final f in _Filter.values)
+      for (final c in chips)
         GestureDetector(
-          onTap: () => onChanged(f),
+          onTap: c.$3,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: EdgeInsets.symmetric(horizontal: 14, vertical: t.isSignal ? 8 : 7),
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: t.isSignal ? 8 : 6),
             decoration: BoxDecoration(
-              color: value == f ? t.text : (t.isSignal ? t.surfaceHigh : Colors.transparent),
-              borderRadius: BorderRadius.circular(18),
-              border: t.isOnyx ? Border.all(color: value == f ? t.text : t.line) : null,
+              color: c.$2 && t.isSignal ? t.text : (t.isSignal ? t.surfaceHigh : Colors.transparent),
+              borderRadius: BorderRadius.circular(16),
+              border: t.isOnyx ? Border.all(color: c.$2 ? const Color(0xFF3A3326) : t.line) : null,
             ),
-            child: Text(
-              t.isSignal ? '${_labels[f]!.toUpperCase()} ${counts[f]}' : '${_labels[f]} · ${counts[f]}',
-              style: t.isSignal
-                  ? t.caps(size: 11, color: value == f ? t.bg : t.textMuted)
-                  : TextStyle(fontFamily: t.bodyFont, fontSize: 12, fontWeight: FontWeight.w500, color: value == f ? t.bg : t.textMuted),
-            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (c.$4 != null) ...[
+                OnyxIcon(c.$4!, size: 12, color: c.$2 ? (t.isSignal ? t.bg : t.accent) : t.textFaint),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                c.$1.toUpperCase(),
+                style: t.caps(size: 10.5, color: c.$2 ? (t.isSignal ? t.bg : t.accent) : t.textMuted),
+              ),
+            ]),
           ),
         ),
     ]);
@@ -336,10 +510,14 @@ class _FilterRow extends StatelessWidget {
 // ── «Автовыбор» ─────────────────────────────────────────────────────────────
 
 class _AutoRow extends StatelessWidget {
-  const _AutoRow({required this.pad, required this.auto, required this.onChanged});
+  const _AutoRow({required this.pad, required this.auto, required this.group, required this.onChanged, required this.onPickGroup});
   final double pad;
   final bool auto;
   final ValueChanged<bool> onChanged;
+
+  /// Из какой группы автовыбор берёт сервер.
+  final String group;
+  final VoidCallback onPickGroup;
 
   @override
   Widget build(BuildContext context) {
@@ -362,7 +540,7 @@ class _AutoRow extends StatelessWidget {
                 alignment: Alignment.center,
                 child: OnyxIcon(OnyxGlyph.zap, size: 15, color: t.accent),
               );
-    final subtitle = 'Лучший по задержке и AI-пробе';
+    final subtitle = 'Из «$group» · лучший по пингу и AI';
     return Padding(
       padding: EdgeInsets.fromLTRB(pad, 6, pad, 4),
       child: Material(
@@ -391,6 +569,12 @@ class _AutoRow extends StatelessWidget {
                               ? t.caps(size: 9.5, color: t.textFaint)
                               : TextStyle(fontFamily: t.bodyFont, fontSize: 12, color: t.textMuted)),
                 ]),
+              ),
+              IconButton(
+                tooltip: 'Группа для автовыбора',
+                visualDensity: VisualDensity.compact,
+                onPressed: onPickGroup,
+                icon: OnyxIcon(OnyxGlyph.sliders, size: t.isMaterial ? 22 : 16, color: t.textMuted),
               ),
               OnyxSwitch(value: auto, onChanged: onChanged),
             ]),
@@ -458,11 +642,21 @@ class _SegmentPosition extends InheritedWidget {
   bool updateShouldNotify(_SegmentPosition old) => old.first != first || old.last != last;
 }
 
-class _NodeRow extends StatelessWidget {
-  const _NodeRow({required this.node, required this.selected, required this.onTap});
-  final Node node;
-  final bool selected;
-  final VoidCallback onTap;
+$1  final VoidCallback onTap;
+  final bool favorite;
+  final VoidCallback onFavorite, onLongPress;
+
+  Widget _star(OnyxTokens t) => IconButton(
+        tooltip: favorite ? 'Убрать из избранного' : 'В избранное',
+        visualDensity: VisualDensity.compact,
+        onPressed: () {
+          HapticFeedback.selectionClick();
+          onFavorite();
+        },
+        icon: favorite
+            ? Icon(Icons.star_rounded, size: t.isMaterial ? 22 : 16, color: t.isSignal ? t.text : t.accent)
+            : OnyxIcon(OnyxGlyph.star, size: t.isMaterial ? 22 : 16, color: t.isSignal ? t.lineStrong : t.line),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -481,6 +675,7 @@ class _NodeRow extends StatelessWidget {
         child: InkWell(
           borderRadius: r,
           onTap: onTap,
+          onLongPress: onLongPress,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 64),
             child: Padding(
@@ -498,6 +693,8 @@ class _NodeRow extends StatelessWidget {
                 NodeBadges(node: node),
                 const SizedBox(width: 10),
                 PingIndicator(ms: dead ? null : node.latencyMs),
+            _star(t),
+                _star(t),
                 if (selected) ...[const SizedBox(width: 10), Icon(Icons.check_rounded, size: 22, color: s.onSecondaryContainer)],
               ]),
             ),
@@ -509,6 +706,7 @@ class _NodeRow extends StatelessWidget {
     if (t.isSignal) {
       return InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Container(
           color: selected ? t.surface : null,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -542,6 +740,7 @@ class _NodeRow extends StatelessWidget {
     // Onyx
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: selected
@@ -560,6 +759,7 @@ class _NodeRow extends StatelessWidget {
           NodeBadges(node: node),
           const SizedBox(width: 12),
           PingText(ms: dead ? null : node.latencyMs, width: 52),
+          _star(t),
         ]),
       ),
     );
@@ -569,36 +769,105 @@ class _NodeRow extends StatelessWidget {
 // ── Подвал ──────────────────────────────────────────────────────────────────
 
 class _Footer extends StatelessWidget {
-  const _Footer({required this.pad, required this.total, required this.ai, required this.fetchedAt});
+  const _Footer({required this.pad, required this.total, required this.sources, required this.onSources});
   final double pad;
-  final int total, ai;
-  final DateTime? fetchedAt;
+  final int total, sources;
+  final VoidCallback onSources;
 
   @override
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
-    final ago = fetchedAt == null ? '' : _ago(DateTime.now().difference(fetchedAt!));
-    final left = '$total серверов · $ai AI';
-    final right = ago.isEmpty ? '' : 'Проверено $ago';
+    final left = '$total серверов · $sources ${sources == 1 ? 'источник' : (sources > 1 && sources < 5 ? 'источника' : 'источников')}';
     final style = t.isSignal
         ? t.caps(size: 10, color: t.textFaint)
         : t.isMaterial
             ? Theme.of(context).textTheme.bodySmall!.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)
             : TextStyle(fontFamily: t.bodyFont, fontSize: 12, color: t.textMuted);
     return Container(
-      padding: EdgeInsets.fromLTRB(pad, 12, pad, 14 + MediaQuery.paddingOf(context).bottom),
+      padding: EdgeInsets.fromLTRB(pad, 4, pad - 8, 6 + MediaQuery.paddingOf(context).bottom),
       decoration: t.isMaterial ? null : BoxDecoration(border: Border(top: BorderSide(color: t.line))),
       child: Row(children: [
         Expanded(child: Text(t.isSignal ? left.toUpperCase() : left, style: style)),
-        Text(t.isSignal ? right.toUpperCase() : right, style: style),
+        TextButton.icon(
+          onPressed: onSources,
+          icon: OnyxIcon(OnyxGlyph.sliders, size: 14, color: t.textMuted),
+          label: Text(t.isSignal ? 'ПОДПИСКИ' : 'Подписки и серверы', style: style),
+        ),
       ]),
     );
   }
+}
 
-  static String _ago(Duration d) {
-    if (d.inMinutes < 1) return 'только что';
-    if (d.inHours < 1) return '${d.inMinutes} мин назад';
-    if (d.inDays < 1) return '${d.inHours} ч назад';
-    return '${d.inDays} дн назад';
+// ── Вкладки групп ───────────────────────────────────────────────────────────
+
+class _GroupTabs extends StatelessWidget {
+  const _GroupTabs({required this.pad, required this.value, required this.tabs, required this.onChanged, required this.onAdd});
+  final double pad;
+  final String? value;
+  final List<(String?, String, int)> tabs;
+  final ValueChanged<String?> onChanged;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    Widget tab((String?, String, int) e) {
+      final on = e.$1 == value;
+      if (t.isMaterial) {
+        return ChoiceChip(label: Text('${e.$2} · ${e.$3}'), selected: on, onSelected: (_) => onChanged(e.$1));
+      }
+      return GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onChanged(e.$1);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: t.isSignal ? 8 : 7),
+          decoration: BoxDecoration(
+            color: on ? t.text : (t.isSignal ? t.surfaceHigh : Colors.transparent),
+            borderRadius: BorderRadius.circular(18),
+            border: t.isOnyx ? Border.all(color: on ? t.text : t.line) : null,
+          ),
+          child: Text.rich(
+            TextSpan(children: [
+              TextSpan(text: t.isSignal ? e.$2.toUpperCase() : e.$2),
+              TextSpan(text: '  ${e.$3}', style: TextStyle(color: on ? t.textFaint : t.textFaint)),
+            ]),
+            style: t.isSignal
+                ? t.caps(size: 11, color: on ? t.bg : t.textMuted)
+                : TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, fontWeight: FontWeight.w500, color: on ? t.bg : t.textMuted),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: t.isMaterial ? 40 : 34,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: pad),
+        children: [
+          for (final e in tabs) ...[tab(e), const SizedBox(width: 6)],
+          Tooltip(
+            message: 'Новая группа',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: onAdd,
+              child: Container(
+                width: t.isMaterial ? 40 : 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  color: t.isSignal ? t.surfaceHigh : null,
+                  border: t.isOnyx || t.isMaterial ? Border.all(color: t.line) : null,
+                ),
+                child: OnyxIcon(OnyxGlyph.plus, size: 14, color: t.textMuted),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

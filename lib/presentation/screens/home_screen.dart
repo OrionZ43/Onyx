@@ -22,8 +22,10 @@ import '../../core/cosmic_background.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
+import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/update_provider.dart';
 import '../providers/vpn_provider.dart';
@@ -70,9 +72,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final vpn = ref.read(vpnControllerProvider.notifier);
     switch (state) {
       case VpnDisconnected() || VpnError():
-        // Приоритет: выбранный пользователем сервер → bestNode
+        // Приоритет: выбранный пользователем сервер → лучший из группы автовыбора (autoNodeProvider)
         final picked = ref.read(nodeSelectionProvider);
-        final node = picked ?? sub.bestNode;
+        final node = picked ?? ref.read(autoNodeProvider);
         if (node != null) {
           vpn.connect(node);
         } else {
@@ -139,12 +141,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final updateInfo = ref.watch(updateControllerProvider).valueOrNull;
     final Node? node = switch (vpn) {
       VpnConnected(node: final n) || VpnConnecting(node: final n) || VpnDisconnecting(node: final n) => n,
-      _ => picked ?? sub.bestNode,
+      _ => picked ?? ref.watch(autoNodeProvider),
     };
     final phase = heroPhaseOf(vpn);
     final isConnected = vpn is VpnConnected;
     final showStale = sub.isSubscriptionStale &&
-        sub.url.isNotEmpty &&
+        sub.nodes.isNotEmpty &&
         !isConnected &&
         sub.status != SubStatus.fetching &&
         sub.status != SubStatus.probing &&
@@ -161,9 +163,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 final wide = box.maxWidth >= wideBreakpoint;
                 final banners = [
                   if (updateInfo != null) UpdateBanner(updateInfo: updateInfo),
-                  if (showStale) _StaleBanner(onRefresh: () => ref.read(subscriptionProvider.notifier).loadFromUrl(sub.url)),
+                  if (showStale) _StaleBanner(onRefresh: () => ref.read(sourcesProvider.notifier).refreshAll()),
                 ];
-                final empty = sub.nodes.isEmpty && sub.url.isEmpty && sub.status != SubStatus.fetching;
+                final empty = sub.nodes.isEmpty && ref.watch(sourcesProvider).isEmpty && sub.status != SubStatus.fetching;
                 if (wide) {
                   return _wide(context, vpn, sub, node, phase, banners, empty);
                 }

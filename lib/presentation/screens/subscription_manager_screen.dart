@@ -1,757 +1,462 @@
 // lib/presentation/screens/subscription_manager_screen.dart
 //
-// ИСПРАВЛЕНИЯ:
-//  1. Убраны ВСЕ WidgetsBinding.instance.addPostFrameCallback при навигации.
-//     Используется прямой Navigator.of(context).pop() с проверкой mounted.
-//  2. Desktop-first layout: ConstrainedBox maxWidth 700, центрированный.
-//  3. Диалоги добавления/редактирования уже используют showDialog — ок.
+// «Подписки и серверы» (#40): несколько источников — URL-подписки и наборы
+// вставленных ссылок. Источники добавляются, а не заменяют друг друга;
+// включаются/выключаются, обновляются, переименовываются, удаляются и
+// сортируются перетаскиванием. Встроенные пресеты — внизу, добавляются
+// одним касанием. Данные — sourcesProvider («Оникс», домен).
+//
+// Имя класса прежнее (SubscriptionManagerScreen), чтобы не менять навигацию.
 
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/theme/app_colors.dart';
-import '../../core/glass_widget.dart';
-import '../providers/subscription_provider.dart';
-import '../widgets/preset_tile.dart';
 
-class SubscriptionManagerScreen extends ConsumerStatefulWidget {
+import '../../core/theme/onyx_tokens.dart';
+import '../../domain/entities/subscription_source.dart';
+import '../../domain/subscription_presets.dart';
+import '../providers/sources_provider.dart';
+import '../providers/subscription_provider.dart';
+import '../widgets/add_source_sheet.dart';
+import '../widgets/country_flag.dart';
+import '../widgets/onyx_icon.dart';
+import '../widgets/onyx_switch.dart';
+import '../widgets/onyx_toast.dart';
+import '../widgets/preset_tile.dart';
+import 'groups_screen.dart';
+
+class SubscriptionManagerScreen extends ConsumerWidget {
   const SubscriptionManagerScreen({super.key});
 
   @override
-  ConsumerState<SubscriptionManagerScreen> createState() =>
-      _SubscriptionManagerScreenState();
-}
-
-class _SubscriptionManagerScreenState
-    extends ConsumerState<SubscriptionManagerScreen> {
-  List<_SubEntry> _entries = [];
-  bool _loading = true;
-
-  static const _subsKey = 'saved_subscriptions';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadEntries();
-  }
-
-  Future<void> _loadEntries() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList(_subsKey) ?? [];
-
-    setState(() {
-      _entries = saved.map((s) {
-        final parts = s.split('||');
-        return _SubEntry(
-          name: parts.length > 1 ? parts[0] : 'Подписка',
-          url: parts.length > 1 ? parts[1] : parts[0],
-        );
-      }).toList();
-      _loading = false;
-    });
-  }
-
-  Future<void> _saveEntries() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _subsKey,
-      _entries.map((e) => '${e.name}||${e.url}').toList(),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final sub = ref.watch(subscriptionProvider);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = OnyxTokens.of(context);
+    final sources = ref.watch(sourcesProvider);
+    final nodes = ref.watch(subscriptionProvider.select((s) => s.nodes));
+    final total = nodes.length;
 
     return Scaffold(
-      backgroundColor: AppColors.void0,
-      body: Stack(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.void0, AppColors.void0],
-              ),
-            ),
+      backgroundColor: t.bg,
+      appBar: AppBar(
+        backgroundColor: t.bg,
+        leading: IconButton(
+          tooltip: 'Назад',
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: OnyxIcon(OnyxGlyph.back, size: t.isMaterial ? 24 : 18, color: t.isMaterial ? null : t.text),
+        ),
+        title: Text(
+          'Подписки и серверы',
+          style: t.isMaterial
+              ? null
+              : TextStyle(fontFamily: t.displayFont, fontSize: 20, fontWeight: t.isSignal ? FontWeight.w500 : FontWeight.w400, color: t.text),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Обновить все',
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              ref.read(sourcesProvider.notifier).refreshAll();
+            },
+            icon: OnyxIcon(OnyxGlyph.refresh, size: t.isMaterial ? 24 : 18, color: t.isMaterial ? null : t.textMuted),
           ),
-          SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 700),
-                child: Column(
-                  children: [
-                    // ── Шапка ─────────────────────────────────────────────
-                    ClipRect(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.void0,
-                            border: Border(
-                              bottom: BorderSide(color: AppColors.glassBorder),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              // ── БАГ-ФИX: убран addPostFrameCallback ──────
-                              GestureDetector(
-                                onTap: () {
-                                  if (!context.mounted) return;
-                                  Navigator.of(context).pop();
-                                },
-                                child: Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.glass,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: AppColors.glassBorder,
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    Icons.arrow_back_ios_rounded,
-                                    size: 14,
-                                    color: AppColors.nebula1,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Text(
-                                'Подписки',
-                                style: TextStyle(
-                                  fontFamily: AppFonts.display,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.nebula0,
-                                ),
-                              ),
-                              const Spacer(),
-                              // Добавить
-                              GestureDetector(
-                                onTap: _showAddDialog,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: AppColors.gradientPlasma,
-                                    borderRadius: BorderRadius.circular(10),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.plasma.withValues(
-                                          alpha: 0.35,
-                                        ),
-                                        blurRadius: 12,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.add_rounded,
-                                        color: AppColors.onPlasma,
-                                        size: 16,
-                                      ),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        'Добавить',
-                                        style: TextStyle(
-                                          fontFamily: AppFonts.display,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppColors.onPlasma,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // ── Статус текущей загрузки ───────────────────────────
-                    if (sub.status == SubStatus.fetching ||
-                        sub.status == SubStatus.probing)
-                      Container(
-                        color: AppColors.plasma.withValues(alpha: 0.06),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.5,
-                                color: AppColors.plasma,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              sub.status == SubStatus.fetching
-                                  ? 'Загружаем серверы...'
-                                  : 'Проверяем серверы... '
-                                      '${sub.probedCount}/${sub.nodes.length}',
-                              style: TextStyle(
-                                fontFamily: AppFonts.body,
-                                fontSize: 12,
-                                color: AppColors.nebula1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    // ── Встроенная подписка (#34): бесплатные серверы для Китая ──
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      child: PresetTile(),
-                    ),
-
-                    // ── Список подписок ────────────────────────────────────
-                    Expanded(
-                      child: _loading
-                          ? Center(
-                              child: CircularProgressIndicator(
-                                color: AppColors.plasma,
-                              ),
-                            )
-                          : _entries.isEmpty
-                              ? _EmptyState(onAdd: _showAddDialog)
-                              : ListView.separated(
-                                  padding: const EdgeInsets.all(16),
-                                  itemCount: _entries.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 10),
-                                  itemBuilder: (_, i) => _SubCard(
-                                    entry: _entries[i],
-                                    isActive: sub.url == _entries[i].url,
-                                    nodeCount: sub.url == _entries[i].url
-                                        ? sub.nodes.length
-                                        : null,
-                                    aliveCount: sub.url == _entries[i].url
-                                        ? sub.aliveNodes.length
-                                        : null,
-                                    onLoad: () => _loadSub(_entries[i]),
-                                    onDelete: () => _deleteSub(i),
-                                    onEdit: () => _showEditDialog(i),
-                                  )
-                                      .animate(delay: (i * 60).ms)
-                                      .fadeIn(duration: 300.ms)
-                                      .slideY(begin: 0.15),
-                                ),
-                    ),
-
-                    // ── Подсказка ──────────────────────────────────────────
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        20,
-                        8,
-                        20,
-                        MediaQuery.of(context).padding.bottom + 12,
-                      ),
-                      child: Text(
-                        'Поддерживаются ссылки на VLESS-подписки '
-                        'и прямые base64-строки',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: AppFonts.body,
-                          fontSize: 11,
-                          color: AppColors.nebula2,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          PopupMenuButton<String>(
+            tooltip: 'Ещё',
+            icon: OnyxIcon(OnyxGlyph.more, size: t.isMaterial ? 24 : 18, color: t.isMaterial ? null : t.textMuted),
+            color: t.isMaterial ? null : t.surfaceHigh,
+            onSelected: (v) => _menu(context, ref, v),
+            itemBuilder: (_) => [
+              _item(t, 'groups', 'Группы'),
+              _item(t, 'export', 'Скопировать настройки'),
+              _item(t, 'import', 'Вставить настройки'),
+            ],
           ),
+          const SizedBox(width: 4),
         ],
       ),
-    );
-  }
-
-  void _loadSub(_SubEntry entry) {
-    ref.read(subscriptionProvider.notifier).loadFromUrl(entry.url);
-    // БАГ-ФИX: убран addPostFrameCallback
-    if (!context.mounted) return;
-    Navigator.of(context).pop();
-  }
-
-  Future<void> _deleteSub(int index) async {
-    setState(() => _entries.removeAt(index));
-    await _saveEntries();
-  }
-
-  void _showAddDialog() => _showSubDialog();
-  void _showEditDialog(int index) =>
-      _showSubDialog(existing: _entries[index], editIndex: index);
-
-  Future<void> _showSubDialog({_SubEntry? existing, int? editIndex}) async {
-    final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    final urlCtrl = TextEditingController(text: existing?.url ?? '');
-
-    final result = await showDialog<_SubEntry>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: AlertDialog(
-          backgroundColor: AppColors.void2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: AppColors.glassBorder),
-          ),
-          title: Text(
-            existing == null ? 'Добавить подписку' : 'Изменить подписку',
-            style: TextStyle(
-              fontFamily: AppFonts.display,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.nebula0,
-            ),
-          ),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _DialogField(
-                  controller: nameCtrl,
-                  label: 'Название',
-                  hint: 'Мой VPN',
-                  icon: Icons.label_outline_rounded,
-                ),
-                const SizedBox(height: 12),
-                _DialogField(
-                  controller: urlCtrl,
-                  label: 'URL подписки',
-                  hint: 'https://example.com/sub',
-                  icon: Icons.link_rounded,
-                  keyboardType: TextInputType.url,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(
-                'Отмена',
-                style: TextStyle(
-                  color: AppColors.nebula1,
-                  fontFamily: AppFonts.body,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(t.isMaterial ? 16 : 20, 6, t.isMaterial ? 16 : 20, 0),
+                sliver: SliverToBoxAdapter(child: _AddBar()),
+              ),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(t.isMaterial ? 16 : 20, 20, t.isMaterial ? 16 : 20, 8),
+                sliver: SliverToBoxAdapter(
+                  child: Row(children: [
+                    Expanded(child: _caption(context, 'Источники · ${sources.length}')),
+                    _caption(context, '$total серверов'),
+                  ]),
                 ),
               ),
-            ),
-            GestureDetector(
-              onTap: () {
-                final url = urlCtrl.text.trim();
-                final name = nameCtrl.text.trim();
-                if (url.isEmpty) return;
-                Navigator.of(ctx).pop(
-                  _SubEntry(name: name.isEmpty ? 'Подписка' : name, url: url),
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  gradient: AppColors.gradientPlasma,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.plasma.withValues(alpha: 0.3),
-                      blurRadius: 12,
+              if (sources.isEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    child: Text(
+                      'Источников пока нет. Добавьте подписку по ссылке или вставьте ссылки серверов.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontFamily: t.bodyFont, fontSize: 13.5, color: t.textMuted),
                     ),
-                  ],
-                ),
-                child: Text(
-                  existing == null ? 'Добавить' : 'Сохранить',
-                  style: TextStyle(
-                    fontFamily: AppFonts.display,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.onPlasma,
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: t.isMaterial ? 16 : 20),
+                  sliver: SliverReorderableList(
+                    itemCount: sources.length,
+                    onReorder: (a, b) => ref.read(sourcesProvider.notifier).reorder(a, b),
+                    itemBuilder: (context, i) => ReorderableDelayedDragStartListener(
+                      key: ValueKey(sources[i].id),
+                      index: i,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _SourceTile(source: sources[i]),
+                      ),
+                    ),
                   ),
                 ),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(t.isMaterial ? 16 : 20, 20, t.isMaterial ? 16 : 20, 8),
+                sliver: SliverToBoxAdapter(child: _caption(context, 'Встроенные')),
               ),
-            ),
-          ],
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(t.isMaterial ? 16 : 20, 0, t.isMaterial ? 16 : 20, 32),
+                sliver: SliverList.separated(
+                  itemCount: SubscriptionPresets.all.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (_, i) => PresetTile(preset: SubscriptionPresets.all[i]),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
 
-    if (result == null) return;
-    setState(() {
-      if (editIndex != null) {
-        _entries[editIndex] = result;
-      } else {
-        _entries.add(result);
+  PopupMenuItem<String> _item(OnyxTokens t, String v, String label) => PopupMenuItem(
+        value: v,
+        child: Text(label, style: TextStyle(fontFamily: t.bodyFont, color: t.text)),
+      );
+
+  Widget _caption(BuildContext context, String s) {
+    final t = OnyxTokens.of(context);
+    return Text(
+      t.isMaterial ? s : s.toUpperCase(),
+      style: t.isMaterial
+          ? Theme.of(context).textTheme.titleSmall!.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)
+          : t.caps(size: 10.5, color: t.textFaint),
+    );
+  }
+
+  Future<void> _menu(BuildContext context, WidgetRef ref, String v) async {
+    switch (v) {
+      case 'groups':
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GroupsScreen()));
+      case 'export':
+        await Clipboard.setData(ClipboardData(text: ref.read(sourcesProvider.notifier).exportJson()));
+        if (context.mounted) showOnyxToast(context, 'Источники, группы и избранное скопированы', glyph: OnyxGlyph.copy);
+      case 'import':
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final text = data?.text ?? '';
+        if (text.trim().isEmpty) {
+          if (context.mounted) showOnyxToast(context, 'В буфере пусто', glyph: OnyxGlyph.error);
+          return;
+        }
+        final r = await ref.read(sourcesProvider.notifier).importJson(text);
+        if (!context.mounted) return;
+        showOnyxToast(
+          context,
+          r.error ?? 'Добавлено: источников ${r.sources}, групп ${r.groups}',
+          glyph: r.error == null ? OnyxGlyph.check : OnyxGlyph.error,
+        );
+    }
+  }
+}
+
+// ── Кнопки добавления ───────────────────────────────────────────────────────
+
+class _AddBar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    Widget btn(String label, OnyxGlyph g, AddSourceMode mode, {bool primary = false}) {
+      final fg = primary ? (t.isMaterial ? Theme.of(context).colorScheme.onPrimary : t.bg) : t.text;
+      final child = Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+        OnyxIcon(g, size: t.isMaterial ? 20 : 16, color: fg),
+        const SizedBox(width: 8),
+        Flexible(child: Text(t.isSignal ? label.toUpperCase() : label, overflow: TextOverflow.ellipsis)),
+      ]);
+      void open() => showAddSourceSheet(context, mode: mode);
+      if (t.isMaterial) {
+        return primary ? FilledButton(onPressed: open, child: child) : FilledButton.tonal(onPressed: open, child: child);
       }
-    });
-    await _saveEntries();
+      return primary
+          ? FilledButton(
+              onPressed: open,
+              style: FilledButton.styleFrom(
+                backgroundColor: t.text,
+                foregroundColor: t.bg,
+                minimumSize: const Size(0, 44),
+                shape: const StadiumBorder(),
+                textStyle: t.isSignal ? t.caps(size: 11, weight: FontWeight.w600) : TextStyle(fontFamily: t.bodyFont, fontSize: 13.5, fontWeight: FontWeight.w500),
+              ),
+              child: child,
+            )
+          : OutlinedButton(
+              onPressed: open,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: t.text,
+                backgroundColor: t.isSignal ? t.surfaceHigh : null,
+                side: t.isOnyx ? BorderSide(color: t.line) : BorderSide.none,
+                minimumSize: const Size(0, 44),
+                shape: const StadiumBorder(),
+                textStyle: t.isSignal ? t.caps(size: 11, weight: FontWeight.w600) : TextStyle(fontFamily: t.bodyFont, fontSize: 13.5, fontWeight: FontWeight.w500),
+              ),
+              child: child,
+            );
+    }
+
+    return Row(children: [
+      Expanded(child: btn('Подписка', OnyxGlyph.plus, AddSourceMode.subscription, primary: true)),
+      const SizedBox(width: 8),
+      Expanded(child: btn('Ссылки', OnyxGlyph.link, AddSourceMode.links)),
+    ]);
   }
 }
 
-// ── Dialog field ──────────────────────────────────────────────────────────
+// ── Плитка источника ────────────────────────────────────────────────────────
 
-class _DialogField extends StatelessWidget {
-  const _DialogField({
-    required this.controller,
-    required this.label,
-    required this.hint,
-    required this.icon,
-    this.keyboardType,
-  });
-  final TextEditingController controller;
-  final String label, hint;
-  final IconData icon;
-  final TextInputType? keyboardType;
+class _SourceTile extends ConsumerWidget {
+  const _SourceTile({required this.source});
+  final SubscriptionSource source;
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: AppFonts.body,
-              fontSize: 12,
-              color: AppColors.nebula1,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.void3,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.glassBorder),
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 12),
-                Icon(icon, size: 16, color: AppColors.nebula2),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    keyboardType: keyboardType,
-                    autocorrect: false,
-                    style: TextStyle(
-                      fontFamily: AppFonts.body,
-                      fontSize: 13,
-                      color: AppColors.nebula0,
-                    ),
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      hintText: hint,
-                      hintStyle: TextStyle(
-                        color: AppColors.nebula2,
-                        fontSize: 13,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-            ),
-          ),
-        ],
-      );
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = OnyxTokens.of(context);
+    final s = Theme.of(context).colorScheme;
+    final ctl = ref.read(sourcesProvider.notifier);
+    final nodes = ref.watch(subscriptionProvider.select((x) => x.nodes));
+    final mine = nodes.where((n) => n.sourceIds.contains(source.id));
+    final alive = mine.where((n) => n.isAlive).length;
+    final busy = source.status == SourceStatus.fetching;
+    final err = source.status == SourceStatus.error;
 
-// ── Empty state ───────────────────────────────────────────────────────────
+    final kindLabel = source.kind == SourceKind.links ? 'Ссылки' : 'Подписка';
+    final meta = source.isPreset
+        ? (SubscriptionPresets.all.where((p) => p.id == source.presetId).firstOrNull?.subtitle ?? 'встроенная')
+        : source.kind == SourceKind.links
+            ? '${source.nodeCount} ${_plural(source.nodeCount, 'ссылка', 'ссылки', 'ссылок')}'
+            : (Uri.tryParse(source.url ?? '')?.host ?? source.url ?? '');
+    final status = err
+        ? 'Ошибка${source.error == null ? '' : ': ${source.error}'}'
+        : busy
+            ? 'Обновляется…'
+            : '$alive из ${source.nodeCount} работают${source.lastUpdatedAt == null ? '' : ' · ${_ago(DateTime.now().difference(source.lastUpdatedAt!))}'}';
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onAdd});
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 64),
-            const SizedBox(height: 20),
-            Text(
-              'Нет подписок',
-              style: TextStyle(
-                fontFamily: AppFonts.display,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.nebula1,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Добавьте ссылку на VLESS-подписку\nчтобы начать',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: AppFonts.body,
-                fontSize: 13,
-                color: AppColors.nebula2,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 28),
-            GestureDetector(
-              onTap: onAdd,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                decoration: BoxDecoration(
-                  gradient: AppColors.gradientPlasma,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.plasma.withValues(alpha: 0.35),
-                      blurRadius: 20,
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.add_rounded, color: AppColors.onPlasma, size: 18),
-                    SizedBox(width: 8),
-                    Text(
-                      'Добавить подписку',
-                      style: TextStyle(
-                        fontFamily: AppFonts.display,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.onPlasma,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+    final title = Row(children: [
+      Flexible(
+        child: Text(
+          source.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: t.isMaterial
+              ? Theme.of(context).textTheme.bodyLarge
+              : TextStyle(fontFamily: t.bodyFont, fontSize: 15, fontWeight: FontWeight.w500, color: t.text),
         ),
-      );
+      ),
+      const SizedBox(width: 8),
+      _KindBadge(label: kindLabel),
+    ]);
+
+    final Widget lead = source.presetId == SubscriptionPresets.chinaFree.id
+        ? CountryFlag(code: 'cn', size: t.isMaterial ? 40 : 34)
+        : Container(
+            width: t.isMaterial ? 40 : 34,
+            height: t.isMaterial ? 40 : 34,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: t.isMaterial ? s.secondaryContainer : t.surfaceHigh,
+              border: t.isOnyx ? Border.all(color: t.lineStrong) : null,
+            ),
+            alignment: Alignment.center,
+            child: OnyxIcon(source.kind == SourceKind.links ? OnyxGlyph.link : OnyxGlyph.globe,
+                size: 16, color: t.isMaterial ? s.onSecondaryContainer : t.textMuted),
+          );
+
+    final radius = BorderRadius.circular(t.isMaterial ? 16 : 18);
+    return Opacity(
+      opacity: source.enabled ? 1 : 0.55,
+      child: Material(
+        color: t.isMaterial ? s.surfaceContainer : t.surface,
+        borderRadius: radius,
+        child: InkWell(
+          borderRadius: radius,
+          onTap: () => _actions(context, ref),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 10, 12),
+            decoration: t.isOnyx ? BoxDecoration(borderRadius: radius, border: Border.all(color: t.line)) : null,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              lead,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  title,
+                  const SizedBox(height: 2),
+                  Text(meta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.isMaterial
+                          ? Theme.of(context).textTheme.bodyMedium!.copyWith(color: s.onSurfaceVariant)
+                          : TextStyle(fontFamily: t.bodyFont, fontSize: 12, color: t.textMuted)),
+                  if (busy) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(minHeight: 2, color: t.accent, backgroundColor: t.line),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: err ? t.danger : (busy ? t.accentMuted : t.accent)),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        t.isMaterial ? status : status.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.isMaterial
+                            ? Theme.of(context).textTheme.labelMedium!.copyWith(color: err ? s.error : s.onSurfaceVariant)
+                            : t.caps(size: 10, color: err ? t.danger : t.textFaint),
+                      ),
+                    ),
+                  ]),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Column(children: [
+                OnyxSwitch(value: source.enabled, onChanged: (v) => ctl.setEnabled(source.id, v)),
+                const SizedBox(height: 10),
+                IconButton(
+                  tooltip: 'Действия',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _actions(context, ref),
+                  icon: OnyxIcon(OnyxGlyph.more, size: 16, color: t.textFaint),
+                ),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _actions(BuildContext context, WidgetRef ref) async {
+    final t = OnyxTokens.of(context);
+    final ctl = ref.read(sourcesProvider.notifier);
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: t.isMaterial ? null : t.surface,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final (key, label, glyph) in [
+            ('refresh', 'Обновить', OnyxGlyph.refresh),
+            ('rename', 'Переименовать', OnyxGlyph.sliders),
+            ('auto', 'Автообновление: ${source.autoUpdateHours == 0 ? 'выкл' : 'каждые ${source.autoUpdateHours} ч'}', OnyxGlyph.clock),
+            if (source.url != null) ('copy', 'Скопировать ссылку', OnyxGlyph.copy),
+            ('delete', 'Удалить', OnyxGlyph.trash),
+          ])
+            ListTile(
+              leading: OnyxIcon(glyph, size: 20, color: key == 'delete' ? t.danger : t.textMuted),
+              title: Text(label, style: TextStyle(fontFamily: t.bodyFont, color: key == 'delete' ? t.danger : t.text)),
+              onTap: () => Navigator.pop(c, key),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (v == null || !context.mounted) return;
+    switch (v) {
+      case 'refresh':
+        ctl.refresh(source.id);
+      case 'rename':
+        final name = await _askName(context, source.name);
+        if (name != null && name.trim().isNotEmpty) ctl.rename(source.id, name.trim());
+      case 'auto':
+        final next = switch (source.autoUpdateHours) { 0 => 6, 6 => 24, _ => 0 };
+        ctl.setAutoUpdate(source.id, next);
+        showOnyxToast(context, next == 0 ? 'Автообновление выключено' : 'Обновлять каждые $next ч', glyph: OnyxGlyph.clock);
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: source.url!));
+        if (context.mounted) showOnyxToast(context, 'Ссылка скопирована', glyph: OnyxGlyph.copy);
+      case 'delete':
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: Text('Удалить «${source.name}»?'),
+            content: Text('Серверы этого источника пропадут из списка и групп.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Отмена')),
+              FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Удалить')),
+            ],
+          ),
+        );
+        if (ok == true) ctl.remove(source.id);
+    }
+  }
 }
 
-// ── Sub card ──────────────────────────────────────────────────────────────
+Future<String?> _askName(BuildContext context, String current) {
+  final ctl = TextEditingController(text: current);
+  return showDialog<String>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Название'),
+      content: TextField(controller: ctl, autofocus: true, onSubmitted: (v) => Navigator.pop(c, v)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Отмена')),
+        FilledButton(onPressed: () => Navigator.pop(c, ctl.text), child: const Text('Сохранить')),
+      ],
+    ),
+  );
+}
 
-class _SubCard extends StatelessWidget {
-  const _SubCard({
-    required this.entry,
-    required this.isActive,
-    required this.nodeCount,
-    required this.aliveCount,
-    required this.onLoad,
-    required this.onDelete,
-    required this.onEdit,
-  });
-
-  final _SubEntry entry;
-  final bool isActive;
-  final int? nodeCount, aliveCount;
-  final VoidCallback onLoad, onDelete, onEdit;
+class _KindBadge extends StatelessWidget {
+  const _KindBadge({required this.label});
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      padding: const EdgeInsets.all(16),
-      borderRadius: 18,
-      glowColor: isActive ? AppColors.plasma.withValues(alpha: 0.2) : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Иконка
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  gradient: isActive
-                      ? AppColors.gradientPlasma
-                      : LinearGradient(
-                          colors: [AppColors.void3, AppColors.void3],
-                        ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.rss_feed_rounded,
-                  color: isActive ? AppColors.onPlasma : AppColors.nebula2,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              // Название + URL
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.name,
-                      style: TextStyle(
-                        fontFamily: AppFonts.display,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: isActive ? AppColors.plasma : AppColors.nebula0,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      entry.url,
-                      style: TextStyle(
-                        fontFamily: AppFonts.body,
-                        fontSize: 11,
-                        color: AppColors.nebula2,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-
-              // Активный бейдж
-              if (isActive && nodeCount != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.plasma.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppColors.plasma.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Text(
-                    '$aliveCount/$nodeCount нод',
-                    style: TextStyle(
-                      fontFamily: AppFonts.mono,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.plasma,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Кнопки действий
-          Row(
-            children: [
-              // Загрузить / Активна
-              Expanded(
-                child: GestureDetector(
-                  onTap: isActive ? null : onLoad,
-                  child: Container(
-                    height: 36,
-                    decoration: BoxDecoration(
-                      gradient: isActive ? null : AppColors.gradientPlasma,
-                      color: isActive ? AppColors.void3 : null,
-                      borderRadius: BorderRadius.circular(10),
-                      border: isActive
-                          ? Border.all(color: AppColors.glassBorder)
-                          : null,
-                      boxShadow: isActive
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: AppColors.plasma.withValues(alpha: 0.25),
-                                blurRadius: 10,
-                              ),
-                            ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        isActive ? '✓ Активна' : 'Загрузить',
-                        style: TextStyle(
-                          fontFamily: AppFonts.display,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: isActive ? AppColors.nebula2 : AppColors.onPlasma,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // Редактировать
-              _ActionBtn(
-                icon: Icons.edit_outlined,
-                onTap: onEdit,
-                color: AppColors.nebula1,
-              ),
-              const SizedBox(width: 6),
-
-              // Удалить
-              _ActionBtn(
-                icon: Icons.delete_outline_rounded,
-                onTap: onDelete,
-                color: AppColors.nova,
-              ),
-            ],
-          ),
-        ],
-      ),
+    final t = OnyxTokens.of(context);
+    if (t.isMaterial) {
+      return Text(label, style: Theme.of(context).textTheme.labelSmall!.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant));
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(border: Border.all(color: t.lineStrong), borderRadius: BorderRadius.circular(t.isSignal ? 4 : 6)),
+      child: Text(label.toUpperCase(), style: t.caps(size: 8.5, color: t.textMuted)),
     );
   }
 }
 
-class _ActionBtn extends StatelessWidget {
-  const _ActionBtn({
-    required this.icon,
-    required this.onTap,
-    required this.color,
-  });
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withValues(alpha: 0.2)),
-          ),
-          child: Icon(icon, size: 16, color: color),
-        ),
-      );
+String _plural(int n, String one, String few, String many) {
+  final m10 = n % 10, m100 = n % 100;
+  if (m10 == 1 && m100 != 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
 }
 
-// ── Data class ────────────────────────────────────────────────────────────
-
-class _SubEntry {
-  const _SubEntry({required this.name, required this.url});
-  final String name, url;
+String _ago(Duration d) {
+  if (d.inMinutes < 1) return 'только что';
+  if (d.inHours < 1) return '${d.inMinutes} мин назад';
+  if (d.inDays < 1) return '${d.inHours} ч назад';
+  return '${d.inDays} дн назад';
 }

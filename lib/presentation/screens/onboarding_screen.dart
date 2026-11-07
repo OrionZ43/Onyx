@@ -265,7 +265,7 @@ class _OnyxLogo extends StatelessWidget {
                 style: TextStyle(
                   fontFamily: AppFonts.body,
                   fontSize: 12,
-                  color: AppColors.nebula2,
+                  color: AppColors.nebula1,
                   decoration: TextDecoration.underline,
                   decorationColor: AppColors.nebula2.withValues(alpha: 0.4),
                 ),
@@ -428,7 +428,7 @@ class _UrlInputState extends State<_UrlInput> {
                           border: InputBorder.none,
                           hintText: 'Ссылка на подписку или vless://, hysteria2://…',
                           hintStyle: TextStyle(
-                            color: AppColors.nebula2,
+                            color: AppColors.nebula1,
                             fontSize: 13,
                           ),
                           contentPadding: EdgeInsets.symmetric(vertical: 16),
@@ -521,7 +521,7 @@ class _UrlInputState extends State<_UrlInput> {
                     ),
                     TextSpan(
                       text: ' · ${SubscriptionPresets.chinaFree.subtitle}',
-                      style: TextStyle(color: AppColors.nebula2),
+                      style: TextStyle(color: AppColors.nebula1),
                     ),
                   ]),
                   style: TextStyle(fontFamily: AppFonts.body, fontSize: 12),
@@ -537,7 +537,7 @@ class _UrlInputState extends State<_UrlInput> {
             style: TextStyle(
               fontFamily: AppFonts.body,
               fontSize: 11,
-              color: AppColors.nebula2.withValues(alpha: 0.7),
+              color: AppColors.nebula1,
             ),
           ),
         ),

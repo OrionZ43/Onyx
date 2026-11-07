@@ -89,14 +89,6 @@ class _SetupScreenState extends State<SetupScreen>
                       decoration: BoxDecoration(
                         gradient: AppColors.gradientPlasma,
                         borderRadius: BorderRadius.circular(28),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.plasma.withValues(
-                              alpha: 0.3 + 0.2 * _pulseCtrl.value,
-                            ),
-                            blurRadius: 32 + 16 * _pulseCtrl.value,
-                          ),
-                        ],
                       ),
                       child: Icon(
                         Icons.download_rounded,
@@ -114,10 +106,14 @@ class _SetupScreenState extends State<SetupScreen>
                   // Заголовок
                   Text(
                     'Первый запуск',
+                    textAlign: TextAlign.center,
+                    // Крупный и жирный: Inter Tight SemiBold (Onyx), Onest SemiBold (Signal).
                     style: TextStyle(
                       fontFamily: AppFonts.display,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 36,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -1.0,
                       color: AppColors.nebula0,
                     ),
                   ).animate().fadeIn(duration: 600.ms, delay: 100.ms),
@@ -254,7 +250,7 @@ class _SetupScreenState extends State<SetupScreen>
                       style: TextStyle(
                         fontFamily: AppFonts.body,
                         fontSize: 12,
-                        color: AppColors.nebula2,
+                        color: AppColors.nebula1,
                       ),
                     ).animate().fadeIn(duration: 600.ms, delay: 400.ms),
                   ],

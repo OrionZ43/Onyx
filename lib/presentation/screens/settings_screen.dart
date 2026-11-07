@@ -22,6 +22,7 @@ import '../widgets/country_flag.dart' show PolygonClipper;
 import '../widgets/onyx_icon.dart';
 import '../widgets/onyx_switch.dart';
 import 'faq_screen.dart';
+import 'groups_screen.dart';
 import 'log_screen.dart';
 import 'split_tunneling_screen.dart';
 import 'subscription_manager_screen.dart';
@@ -130,9 +131,15 @@ class SettingsScreen extends ConsumerWidget {
               _Group(children: [
                 _NavTile(
                   glyph: OnyxGlyph.link,
-                  title: 'Подписки',
-                  subtitle: 'Ссылки на списки серверов, обновление.',
+                  title: 'Подписки и серверы',
+                  subtitle: 'Источники: подписки и ссылки, обновление, встроенные пресеты.',
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscriptionManagerScreen())),
+                ),
+                _NavTile(
+                  glyph: OnyxGlyph.star,
+                  title: 'Группы',
+                  subtitle: 'Свои наборы серверов и группа для автовыбора.',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GroupsScreen())),
                 ),
               ]),
               const _Section('Диагностика'),
