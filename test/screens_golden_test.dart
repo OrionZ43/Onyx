@@ -15,8 +15,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/core/theme/app_theme.dart';
 import 'package:onyx/core/theme/theme_kind.dart';
 import 'package:onyx/domain/entities/node.dart';
-import 'package:onyx/domain/entities/node_group.dart';
-import 'package:onyx/domain/entities/subscription_source.dart';
 import 'package:onyx/domain/entities/vpn_state.dart';
 import 'package:onyx/infrastructure/update_service.dart';
 import 'package:onyx/presentation/providers/groups_provider.dart';
@@ -25,6 +23,7 @@ import 'package:onyx/presentation/providers/subscription_provider.dart';
 import 'package:onyx/presentation/providers/theme_provider.dart';
 import 'package:onyx/presentation/providers/update_provider.dart';
 import 'package:onyx/presentation/providers/vpn_provider.dart';
+import 'package:onyx/presentation/screens/about_screen.dart';
 import 'package:onyx/presentation/screens/home_screen.dart';
 import 'package:onyx/presentation/screens/faq_screen.dart';
 import 'package:onyx/presentation/screens/onboarding_screen.dart';
@@ -235,6 +234,9 @@ void main() {
     });
     testWidgets('${k.name} phone add', (tester) async {
       await shot(tester, '${k.name}-phone-add', app(k, vpnOf('off'), const Scaffold(body: SafeArea(child: AddSourcePanel(mode: AddSourceMode.links, inline: true, initial: 'vless://8f1c@203.0.113.7:443?security=reality#Мой VPS\nhysteria2://k3y@203.0.113.7:8443#VPS HY2')))), phone);
+    });
+    testWidgets('${k.name} phone about', (tester) async {
+      await shot(tester, '${k.name}-phone-about', app(k, vpnOf('off'), const AboutScreen()), phone);
     });
     testWidgets('${k.name} phone setup', (tester) async {
       await shot(tester, '${k.name}-phone-setup', app(k, vpnOf('off'), SetupScreen(onComplete: () {})), phone);

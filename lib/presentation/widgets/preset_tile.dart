@@ -3,9 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/onyx_tokens.dart';
-import '../../domain/subscription_presets.dart';
 import '../providers/settings_provider.dart';
-import '../../domain/entities/subscription_source.dart';
 import '../providers/sources_provider.dart';
 import 'country_flag.dart';
 import 'onyx_icon.dart';

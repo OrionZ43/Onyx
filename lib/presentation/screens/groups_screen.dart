@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
-import '../../domain/entities/node_group.dart';
 import '../providers/groups_provider.dart';
 import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';

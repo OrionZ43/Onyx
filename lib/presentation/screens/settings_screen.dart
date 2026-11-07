@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
@@ -17,10 +16,13 @@ import '../providers/vpn_provider.dart';
 import '../widgets/home_parts.dart' show RegionSelector;
 import '../widgets/onyx_toast.dart';
 import '../providers/theme_provider.dart';
+import '../providers/window_prefs_provider.dart';
 import '../util/platform_kind.dart';
 import '../widgets/country_flag.dart' show PolygonClipper;
 import '../widgets/onyx_icon.dart';
 import '../widgets/onyx_switch.dart';
+import '../../infrastructure/update_service.dart';
+import 'about_screen.dart';
 import 'faq_screen.dart';
 import 'groups_screen.dart';
 import 'log_screen.dart';
@@ -127,6 +129,18 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ]),
+              if (uiIsWindows) ...[
+                const _Section('Окно'),
+                _Group(children: [
+                  _SwitchTile(
+                    glyph: OnyxGlyph.minimize,
+                    title: 'Запускать свёрнутым в трей',
+                    subtitle: 'Onyx стартует без окна; открыть — кликом по лисе в трее.',
+                    value: ref.watch(startMinimizedProvider),
+                    onChanged: (v) => ref.read(startMinimizedProvider.notifier).set(v),
+                  ),
+                ]),
+              ],
               const _Section('Серверы'),
               _Group(children: [
                 _NavTile(
@@ -159,9 +173,9 @@ class SettingsScreen extends ConsumerWidget {
               _Group(children: [
                 _NavTile(
                   glyph: OnyxGlyph.info,
-                  title: 'Onyx · Z43 Studios',
-                  subtitle: 'by Orion_Z43',
-                  onTap: () => launchUrl(Uri.parse('https://t.me/Orion_Z43'), mode: LaunchMode.externalApplication),
+                  title: 'О программе',
+                  subtitle: 'Onyx ${UpdateService.currentVersion} · Z43 Studios',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutScreen())),
                 ),
                 _NavTile(
                   glyph: OnyxGlyph.copy,

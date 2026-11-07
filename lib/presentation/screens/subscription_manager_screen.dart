@@ -13,8 +13,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/onyx_tokens.dart';
-import '../../domain/entities/subscription_source.dart';
-import '../../domain/subscription_presets.dart';
 import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../widgets/add_source_sheet.dart';

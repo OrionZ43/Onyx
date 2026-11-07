@@ -73,6 +73,7 @@ flutter:
 
   assets:
     - assets/rules/
+    - assets/tray/
     - assets/icons/onyx/
     - assets/icons/signal/
     - assets/flags/circle/
