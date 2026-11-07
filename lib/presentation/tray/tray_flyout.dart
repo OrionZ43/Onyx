@@ -5,8 +5,9 @@
 // у значка трея; скругление и тень даёт Windows 11). Поэтому провайдеры и
 // логика общие с главным экраном — здесь только вид.
 //
-// Страницы: главная (статус, мини-кнопка, сервер, Discord, регион, трафик,
-// «Открыть Onyx», «Выход») и выбор сервера (группы, автовыбор, список).
+// Страницы: главная — «одна кнопка» (статус, мини-«Линза», таймер и трафик,
+// сервер, «Открыть Onyx», «Выход»; Discord и регион — только в Настройках,
+// #47) и выбор сервера (группы, автовыбор, список).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,7 +19,6 @@ import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
-import '../providers/settings_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/vpn_provider.dart';
 import '../screens/groups_screen.dart' show kAutoGroups, groupLabel;
@@ -29,7 +29,6 @@ import '../widgets/hero/hero_button.dart';
 import '../widgets/hero/hero_state.dart';
 import '../widgets/home_parts.dart';
 import '../widgets/onyx_icon.dart';
-import '../widgets/onyx_switch.dart';
 import '../widgets/onyx_toast.dart';
 import '../widgets/onyx_wordmark.dart';
 
@@ -52,9 +51,7 @@ class TrayFlyout extends ConsumerStatefulWidget {
   /// Меняется при каждом показе — перезапускает анимацию появления.
   final int showId;
 
-  /// Размер панели. Без выбора региона (умная маршрутизация выключена) —
-  /// ниже на высоту переключателя, чтобы над кнопками не было пустоты.
-  static Size sizeFor({required bool region}) => Size(360, region ? 420 : 364);
+  static const Size size = Size(360, 396);
 
   @override
   ConsumerState<TrayFlyout> createState() => _TrayFlyoutState();
@@ -148,7 +145,6 @@ class _MainPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = OnyxTokens.of(context);
     final vpn = ref.watch(vpnControllerProvider);
-    final settings = ref.watch(settingsProvider);
     final picked = ref.watch(nodeSelectionProvider);
     final auto = ref.watch(autoNodeProvider);
     final autoGroup = ref.watch(autoGroupProvider);
@@ -189,39 +185,36 @@ class _MainPage extends ConsumerWidget {
           const SizedBox(width: 7),
           Text(key.toUpperCase(), style: t.caps(size: 10, color: keyColor)),
         ]),
-        const SizedBox(height: 16),
-        // Кнопка и статус.
-        Row(children: [
-          HeroButton(vpn: vpn, size: 112, compact: true, onTap: toggle),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (vpn is VpnConnected)
-                SecondTicker(active: true, builder: (_) => Text(formatClock(vpn.uptime), style: t.numbers(size: 26)))
-              else
-                Text(
-                  switch (phase) {
-                    HeroPhase.connecting => node == null ? '…' : displayNodeName(node.name),
-                    HeroPhase.error => 'Сервер не ответил',
-                    _ => 'Трафик открыт',
-                  },
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontFamily: t.displayFont, fontSize: 20, height: 1.15, fontWeight: t.isSignal ? FontWeight.w500 : FontWeight.w300, letterSpacing: -0.4, color: t.text),
-                ),
-              const SizedBox(height: 8),
-              if (vpn is VpnConnected)
-                Text('↓ ${formatBytes(vpn.rxBytes)}   ↑ ${formatBytes(vpn.txBytes)}',
-                    style: t.caps(size: 10, color: t.textMuted).copyWith(fontFeatures: const [FontFeature.tabularFigures()]))
-              else
-                Text(
-                  phase == HeroPhase.off ? 'Нажмите, чтобы подключиться' : (phase == HeroPhase.error ? 'Нажмите, чтобы повторить' : 'Нажмите, чтобы отменить'),
-                  style: TextStyle(fontFamily: t.bodyFont, fontSize: 12, color: t.textMuted),
-                ),
-            ]),
+        const Spacer(),
+        // «Одна кнопка» и под ней — таймер с трафиком или состояние.
+        Center(child: HeroButton(vpn: vpn, size: 128, compact: true, onTap: toggle)),
+        const SizedBox(height: 14),
+        if (vpn is VpnConnected) ...[
+          SecondTicker(active: true, builder: (_) => Text(formatClock(vpn.uptime), textAlign: TextAlign.center, style: t.numbers(size: 26))),
+          const SizedBox(height: 4),
+          Text('↓ ${formatBytes(vpn.rxBytes)}   ↑ ${formatBytes(vpn.txBytes)}',
+              textAlign: TextAlign.center,
+              style: t.caps(size: 10, color: t.textMuted).copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
+        ] else ...[
+          Text(
+            switch (phase) {
+              HeroPhase.connecting => node == null ? '…' : displayNodeName(node.name),
+              HeroPhase.error => 'Сервер не ответил',
+              _ => 'Трафик открыт',
+            },
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: t.displayFont, fontSize: 20, height: 1.2, fontWeight: t.isSignal ? FontWeight.w500 : FontWeight.w300, letterSpacing: -0.4, color: t.text),
           ),
-        ]),
-        const SizedBox(height: 16),
+          const SizedBox(height: 4),
+          Text(
+            phase == HeroPhase.off ? 'Нажмите, чтобы подключиться' : (phase == HeroPhase.error ? 'Нажмите, чтобы повторить' : 'Нажмите, чтобы отменить'),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontFamily: t.bodyFont, fontSize: 12, color: t.textMuted),
+          ),
+        ],
+        const Spacer(),
         // Сервер → выбор.
         _Tile(
           onTap: onServers,
@@ -247,23 +240,7 @@ class _MainPage extends ConsumerWidget {
             OnyxIcon(OnyxGlyph.chevronRight, size: 14, color: t.textFaint),
           ]),
         ),
-        const SizedBox(height: 10),
-        // Discord и регион.
-        _Tile(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              OnyxIcon(OnyxGlyph.voice, size: 15, color: t.textMuted),
-              const SizedBox(width: 10),
-              Expanded(child: Text('Режим Discord', style: TextStyle(fontFamily: t.bodyFont, fontSize: 13.5, color: t.text))),
-              OnyxSwitch(value: settings.discordMode, onChanged: (v) => ref.read(settingsProvider.notifier).toggleDiscordMode(v)),
-            ]),
-            if (settings.smartRouting) ...[
-              const SizedBox(height: 12),
-              const RegionSelector(),
-            ],
-          ]),
-        ),
-        const Spacer(),
+        const SizedBox(height: 12),
         // Низ: открыть приложение / выход.
         Row(children: [
           Expanded(

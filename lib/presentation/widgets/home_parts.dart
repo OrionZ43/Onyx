@@ -1,18 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
-import '../../infrastructure/platform_features.dart';
-import '../providers/settings_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../util/country.dart';
-import '../util/platform_kind.dart';
 import 'country_flag.dart';
 import 'hero/hero_state.dart';
 import 'onyx_icon.dart';
@@ -79,14 +75,19 @@ class _SecondTickerState extends State<SecondTicker> {
 // ── Статус над кнопкой ──────────────────────────────────────────────────────
 
 class StatusHeader extends StatelessWidget {
-  const StatusHeader({super.key, required this.vpn, this.compact = false});
+  const StatusHeader({super.key, required this.vpn, this.compact = false, this.phase, this.title, this.detail});
   final VpnState vpn;
   final bool compact;
+
+  /// Этап автоподключения (#47) поверх состояния VPN: фаза «Линзы», крупная
+  /// строка и подпись — «Проверяю серверы», «3 из 20».
+  final HeroPhase? phase;
+  final String? title, detail;
 
   @override
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
-    final phase = heroPhaseOf(vpn);
+    final phase = this.phase ?? heroPhaseOf(vpn);
     final nodeName = switch (vpn) {
       VpnConnecting(node: final n) || VpnDisconnecting(node: final n) => displayNodeName(n.name),
       VpnError(node: final n?) => displayNodeName(n.name),
@@ -102,17 +103,21 @@ class StatusHeader extends StatelessWidget {
       HeroPhase.on => t.isSignal ? 'Защита активна' : 'Защищено',
       HeroPhase.error => 'Нет соединения',
     };
-    final String big = switch (phase) {
-      HeroPhase.off => 'Трафик открыт',
-      HeroPhase.connecting => nodeName.isEmpty ? '…' : nodeName,
-      HeroPhase.on => '', // таймер — ниже
-      HeroPhase.error => 'Сервер не ответил',
-    };
-    final String sub = switch (phase) {
-      HeroPhase.connecting => disconnecting ? 'Закрываем туннель' : 'Устанавливаем туннель',
-      HeroPhase.error => errorText,
-      _ => '',
-    };
+    final String big = title ??
+        switch (phase) {
+          HeroPhase.off => 'Трафик открыт',
+          HeroPhase.connecting => nodeName.isEmpty ? '…' : nodeName,
+          HeroPhase.on => '', // таймер — ниже
+          HeroPhase.error => 'Сервер не ответил',
+        };
+    var sub = detail ??
+        switch (phase) {
+          HeroPhase.connecting => disconnecting ? 'Закрываем туннель' : 'Устанавливаем туннель',
+          HeroPhase.error => errorText,
+          _ => '',
+        };
+    // В Signal крупной строки нет — этап идёт в подпись.
+    if (t.isSignal && title != null) sub = detail == null ? title! : '$title · $detail';
 
     if (t.isMaterial) return _materialHeader(context, phase, key, sub);
 
@@ -440,138 +445,51 @@ class ServerCard extends ConsumerWidget {
   }
 }
 
-// ── Чипы спрятанных функций ─────────────────────────────────────────────────
+// ── Действия при неудачном автоподключении (#47) ───────────────────────────
 
-class FeatureChips extends ConsumerWidget {
-  const FeatureChips({super.key, required this.connected});
-  final bool connected;
+/// Кнопки под «Линзой», когда автоподключение не удалось: «Обновить и
+/// повторить», «Добавить сервер», «Инструкция». Первая — главная.
+class PhaseActions extends StatelessWidget {
+  const PhaseActions({super.key, required this.actions});
+  final List<(String, VoidCallback)> actions;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
-    final settings = ref.watch(settingsProvider);
-    final n = ref.read(settingsProvider.notifier);
-    final chips = <_ChipData>[
-      _ChipData('Авто', settings.autoFailover, 'Автопереключение', () => n.toggleAutoFailover(!settings.autoFailover)),
-      _ChipData(t.isSignal ? 'AI' : 'AI-канал', settings.aiDirectLane, 'Приоритет для ИИ-сервисов', () => n.toggleAiDirectLane(!settings.aiDirectLane)),
-      if (uiIsAndroid)
-        _ChipData(t.isSignal ? 'Kill' : 'Kill switch', null, 'Системный Always-on VPN', () => PlatformFeatures.instance.openVpnSettings())
-      else
-        _ChipData('Маршруты', settings.smartRouting, 'Умная маршрутизация', () => n.toggleSmartRouting(!settings.smartRouting)),
-    ];
-    if (t.isSignal) {
-      return Row(
-        children: [
-          for (var i = 0; i < chips.length; i++) ...[
-            if (i > 0) const SizedBox(width: 6),
-            Expanded(child: _SignalGlyph(chips[i])),
-          ],
-        ],
+    Widget button(int i) {
+      final (label, onTap) = actions[i];
+      final primary = i == 0;
+      if (t.isMaterial) {
+        return primary
+            ? FilledButton(onPressed: onTap, child: Text(label))
+            : OutlinedButton(onPressed: onTap, child: Text(label));
+      }
+      final fg = t.isSignal ? (primary ? t.bg : t.text) : (primary ? t.accent : t.text);
+      return TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          foregroundColor: fg,
+          backgroundColor: t.isSignal ? (primary ? t.text : t.surfaceHigh) : Colors.transparent,
+          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          shape: StadiumBorder(
+            side: t.isOnyx ? BorderSide(color: primary ? const Color(0xFF5A4E38) : t.line) : BorderSide.none,
+          ),
+        ),
+        child: Text(
+          t.isSignal ? label.toUpperCase() : label,
+          style: t.isSignal
+              ? t.caps(size: 10.5, color: fg, weight: FontWeight.w600)
+              : TextStyle(fontFamily: t.bodyFont, fontSize: 13, fontWeight: FontWeight.w500, color: fg),
+        ),
       );
     }
+
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: 8,
       runSpacing: 8,
-      children: [for (final c in chips) t.isMaterial ? _MaterialChip(c) : _OnyxChip(c)],
-    );
-  }
-}
-
-class _ChipData {
-  _ChipData(this.label, this.on, this.tooltip, this.onTap);
-  final String label;
-
-  /// null — состояние неизвестно (системная настройка), просто ссылка.
-  final bool? on;
-  final String tooltip;
-  final VoidCallback onTap;
-}
-
-class _OnyxChip extends StatelessWidget {
-  const _OnyxChip(this.c);
-  final _ChipData c;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = OnyxTokens.of(context);
-    final lit = c.on == true;
-    return Tooltip(
-      message: c.tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () {
-          HapticFeedback.selectionClick();
-          c.onTap();
-        },
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(9, 6, 10, 6),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: t.line)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 240),
-              width: 5,
-              height: 5,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: lit ? t.accent : t.textFaint),
-            ),
-            const SizedBox(width: 6),
-            Text(c.label.toUpperCase(), style: t.caps(size: 10.5, color: lit ? t.textMuted : t.textFaint)),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _SignalGlyph extends StatelessWidget {
-  const _SignalGlyph(this.c);
-  final _ChipData c;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = OnyxTokens.of(context);
-    final lit = c.on == true;
-    return Tooltip(
-      message: c.tooltip,
-      child: Material(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            HapticFeedback.selectionClick();
-            c.onTap();
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            child: Row(children: [
-              Expanded(child: Text(c.label.toUpperCase(), style: t.caps(size: 10, color: lit ? t.text : t.textFaint))),
-              Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: lit ? t.text : t.textFaint)),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MaterialChip extends StatelessWidget {
-  const _MaterialChip(this.c);
-  final _ChipData c;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: c.tooltip,
-      child: FilterChip(
-        label: Text(c.label),
-        selected: c.on == true,
-        showCheckmark: true,
-        onSelected: (_) {
-          HapticFeedback.selectionClick();
-          c.onTap();
-        },
-      ),
+      children: [for (var i = 0; i < actions.length; i++) button(i)],
     );
   }
 }
@@ -735,64 +653,5 @@ class NodeBadges extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       for (var i = 0; i < items.length; i++) ...[if (i > 0) const SizedBox(width: 6), items[i]],
     ]);
-  }
-}
-
-// ── Регион маршрутизации (#34/#35) ──────────────────────────────────────────
-
-/// Выбор региона: «Россия/Беларусь» | «Китай». Сегменты в стиле темы;
-/// в Material — SegmentedButton. Применяется при следующем подключении.
-class RegionSelector extends ConsumerWidget {
-  const RegionSelector({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = OnyxTokens.of(context);
-    final region = ref.watch(settingsProvider.select((s) => s.routingRegion));
-    void set(RoutingRegion r) {
-      if (r == region) return;
-      HapticFeedback.selectionClick();
-      ref.read(settingsProvider.notifier).setRoutingRegion(r);
-    }
-
-    if (t.isMaterial) {
-      return SegmentedButton<RoutingRegion>(
-        segments: [for (final r in RoutingRegion.values) ButtonSegment(value: r, label: Text(r.label))],
-        selected: {region},
-        onSelectionChanged: (v) => set(v.first),
-      );
-    }
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: t.isSignal ? t.surfaceHigh : t.bg,
-        borderRadius: BorderRadius.circular(t.isSignal ? 18 : 12),
-        border: t.isOnyx ? Border.all(color: t.line) : null,
-      ),
-      child: Row(children: [
-        for (final r in RoutingRegion.values)
-          Expanded(
-            child: GestureDetector(
-              onTap: () => set(r),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: r == region ? (t.isSignal ? t.text : t.surfaceTop) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(t.isSignal ? 15 : 9),
-                  border: r == region && t.isOnyx ? Border.all(color: t.lineStrong) : null,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  t.isSignal ? r.label.toUpperCase() : r.label,
-                  style: t.isSignal
-                      ? t.caps(size: 10.5, color: r == region ? t.bg : t.textMuted)
-                      : TextStyle(fontFamily: t.bodyFont, fontSize: 13, fontWeight: FontWeight.w500, color: r == region ? t.text : t.textMuted),
-                ),
-              ),
-            ),
-          ),
-      ]),
-    );
   }
 }

@@ -1,12 +1,13 @@
 // lib/presentation/screens/home_screen.dart
 //
-// Главный экран: одна кнопка-«герой», статус, текущий сервер и строка тихих
-// индикаторов. Вид — по активной теме (Onyx / Signal / Material 3 Expressive),
-// см. docs/redesign/concepts.md.
+// Главный экран — «одна кнопка» (#47): статус, «Линза», трафик и текущий
+// сервер. Тумблеры (Discord, регион, автопереключение, AI-канал, маршруты,
+// Kill switch) — только в Настройках. Вид — по активной теме (Onyx / Signal /
+// Material 3 Expressive), см. docs/redesign/concepts.md.
 //
 // * Телефон и узкое окно — одна колонка.
-// * Окно шире 860 — две колонки: кнопка слева, справа панель
-//   «Сервер / Сессия / Защита» или список серверов.
+// * Окно шире 860 — та же колонка по центру; список серверов выезжает
+//   справа по кнопке «Серверы» или по карточке сервера.
 //
 // Из прежней версии сохранено: приоритет ручного выбора сервера над bestNode,
 // баннеры обновления и устаревшей подписки, навигация без
@@ -24,7 +25,6 @@ import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
-import '../providers/settings_provider.dart';
 import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/update_provider.dart';
@@ -37,7 +37,6 @@ import '../widgets/hero/hero_state.dart';
 import '../widgets/home_parts.dart';
 import '../widgets/node_list_sheet.dart';
 import '../widgets/onyx_icon.dart';
-import '../widgets/onyx_switch.dart';
 import '../widgets/onyx_toast.dart';
 import '../widgets/onyx_wordmark.dart';
 import '../widgets/subscription_import.dart';
@@ -202,9 +201,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         SizedBox(height: t.isOnyx ? 20 : 8),
                       ],
                       ServerCard(node: node, sub: sub, locked: vpn is VpnConnected, onTap: () => _openServers(context, false)),
-                      SizedBox(height: t.isSignal ? 8 : 14),
-                      FeatureChips(connected: vpn is VpnConnected),
-                      SizedBox(height: t.isSignal ? 20 : 24),
+                      SizedBox(height: t.isSignal ? 20 : 28),
                     ],
                   ),
                 ),
@@ -214,58 +211,71 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   // ── Окно Windows ──────────────────────────────────────────────────────────
+  // «Одна кнопка» (#47): колонка по центру — статус, «Линза», трафик, сервер.
+  // Список серверов — справа, по кнопке «Серверы» или по карточке сервера.
+  // Тумблеры (Discord, регион, автопереключение…) — только в Настройках.
   Widget _wide(BuildContext context, VpnState vpn, SubscriptionState sub, Node? node, HeroPhase phase, List<Widget> banners, bool empty) {
     final t = OnyxTokens.of(context);
+    final connected = vpn is VpnConnected;
     final left = empty
         ? const Padding(padding: EdgeInsets.all(32), child: SubscriptionImport())
-        : Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              StatusHeader(vpn: vpn),
-              const SizedBox(height: 40),
-              HeroButton(vpn: vpn, size: t.isMaterial ? 260 : 320, onTap: () => _handleTap(vpn, sub)),
-              if (t.isMaterial) ...[const SizedBox(height: 18), HeroCaption(phase: phase)],
-              const SizedBox(height: 36),
-              ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: FeatureChips(connected: vpn is VpnConnected)),
-            ],
-          );
-    final Widget right = _showServers || t.isMaterial
-        ? const NodeListPanel()
-        : _SidePanel(
-            vpn: vpn,
-            sub: sub,
-            node: node,
-            onServers: () => setState(() => _showServers = true),
-          );
-    final panel = t.isMaterial
-        ? Padding(
-            padding: const EdgeInsets.fromLTRB(0, 8, 16, 16),
-            child: Container(
-              width: 420,
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow, borderRadius: BorderRadius.circular(28)),
-              clipBehavior: Clip.antiAlias,
-              child: Column(children: [
-                if (vpn is VpnConnected) Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 4), child: TrafficStats(state: vpn)),
-                const SizedBox(height: 8),
-                Expanded(child: right),
-              ]),
-            ),
-          )
-        : Container(
-            width: 392,
-            decoration: BoxDecoration(
-              color: t.isSignal ? t.bg : const Color(0xFF08080A),
-              border: t.isOnyx ? Border(left: BorderSide(color: t.line)) : null,
-            ),
-            padding: t.isSignal ? const EdgeInsets.fromLTRB(0, 8, 16, 16) : EdgeInsets.zero,
-            child: t.isSignal
-                ? Container(
-                    decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(24)),
-                    clipBehavior: Clip.antiAlias,
-                    child: right,
-                  )
-                : right,
-          );
+        : LayoutBuilder(builder: (context, box) {
+            // Кнопка — по высоте окна: в минимальном окне 800×600 всё помещается.
+            final rest = t.isMaterial ? 210.0 : (connected ? 330.0 : 250.0);
+            final hero = (box.maxHeight - rest).clamp(200.0, t.isMaterial ? 260.0 : 300.0);
+            return Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    StatusHeader(vpn: vpn),
+                    SizedBox(height: t.isSignal ? 28 : 34),
+                    HeroButton(vpn: vpn, size: hero, onTap: () => _handleTap(vpn, sub)),
+                    if (t.isMaterial) ...[const SizedBox(height: 18), HeroCaption(phase: phase)],
+                    if (!t.isMaterial) ...[
+                      SizedBox(height: t.isSignal ? 28 : 34),
+                      if (connected) ...[TrafficStats(state: vpn), SizedBox(height: t.isOnyx ? 20 : 8)],
+                      ServerCard(node: node, sub: sub, locked: connected, onTap: () => setState(() => _showServers = !_showServers)),
+                    ],
+                  ]),
+                ),
+              ),
+            );
+          });
+    final bool showPanel = _showServers || t.isMaterial;
+    const Widget right = NodeListPanel();
+    final Widget? panel = !showPanel
+        ? null
+        : t.isMaterial
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(0, 8, 16, 16),
+                child: Container(
+                  width: 420,
+                  decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow, borderRadius: BorderRadius.circular(28)),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(children: [
+                    if (vpn is VpnConnected) Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 4), child: TrafficStats(state: vpn)),
+                    const SizedBox(height: 8),
+                    const Expanded(child: right),
+                  ]),
+                ),
+              )
+            : Container(
+                width: 392,
+                decoration: BoxDecoration(
+                  color: t.isSignal ? t.bg : const Color(0xFF08080A),
+                  border: t.isOnyx ? Border(left: BorderSide(color: t.line)) : null,
+                ),
+                padding: t.isSignal ? const EdgeInsets.fromLTRB(0, 8, 16, 16) : EdgeInsets.zero,
+                child: t.isSignal
+                    ? Container(
+                        decoration: BoxDecoration(color: t.surface, borderRadius: BorderRadius.circular(24)),
+                        clipBehavior: Clip.antiAlias,
+                        child: right,
+                      )
+                    : right,
+              );
     return Column(
       children: [
         ...banners,
@@ -291,7 +301,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ]),
               ),
-              panel,
+              if (panel != null) panel,
             ],
           ),
         ),
@@ -345,80 +355,6 @@ class _TopIcon extends StatelessWidget {
           shape: CircleBorder(side: t.isOnyx ? BorderSide(color: t.line) : BorderSide.none),
         ),
       ),
-    );
-  }
-}
-
-// ── Правая панель Windows: Сервер / Сессия / Защита ─────────────────────────
-
-class _SidePanel extends ConsumerWidget {
-  const _SidePanel({required this.vpn, required this.sub, required this.node, required this.onServers});
-  final VpnState vpn;
-  final SubscriptionState sub;
-  final Node? node;
-  final VoidCallback onServers;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = OnyxTokens.of(context);
-    final settings = ref.watch(settingsProvider);
-    final n = ref.read(settingsProvider.notifier);
-    final connected = vpn is VpnConnected;
-    Widget section(String title, List<Widget> children, {String? trailing, bool last = false}) => Container(
-          padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
-          decoration: BoxDecoration(border: last || t.isSignal ? null : Border(bottom: BorderSide(color: t.line))),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              Expanded(child: Text(title.toUpperCase(), style: t.caps(size: 10.5, color: t.textFaint))),
-              if (trailing != null) Text(trailing, style: t.caps(size: 10.5, color: t.textFaint)),
-            ]),
-            const SizedBox(height: 14),
-            ...children,
-          ]),
-        );
-    Widget kv(String k, String v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(children: [
-            Expanded(child: Text(k, style: TextStyle(fontFamily: t.bodyFont, fontSize: 13.5, color: t.textMuted))),
-            Text(v, style: TextStyle(fontFamily: t.bodyFont, fontSize: 13.5, fontWeight: FontWeight.w500, color: t.text, fontFeatures: const [FontFeature.tabularFigures()])),
-          ]),
-        );
-    Widget toggle(String k, bool v, ValueChanged<bool> f) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(children: [
-            Expanded(child: Text(k, style: TextStyle(fontFamily: t.bodyFont, fontSize: 13.5, color: t.isSignal ? t.text : t.textMuted))),
-            OnyxSwitch(value: v, onChanged: f),
-          ]),
-        );
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        section('Сервер', [ServerCard(node: node, sub: sub, locked: connected, onTap: onServers)]),
-        section(
-          'Сессия',
-          [
-            SecondTicker(
-              active: connected,
-              builder: (_) => Column(children: [
-                kv('Время', connected ? formatClock((vpn as VpnConnected).uptime) : '—'),
-                kv('Получено', connected ? formatBytes((vpn as VpnConnected).rxBytes) : '—'),
-                kv('Отправлено', connected ? formatBytes((vpn as VpnConnected).txBytes) : '—'),
-              ]),
-            ),
-          ],
-        ),
-        section('Защита', [
-          toggle('Автопереключение', settings.autoFailover, n.toggleAutoFailover),
-          toggle('Приоритет AI-сервисов', settings.aiDirectLane, n.toggleAiDirectLane),
-          toggle('Умная маршрутизация', settings.smartRouting, n.toggleSmartRouting),
-          if (settings.smartRouting) ...[
-            const SizedBox(height: 6),
-            const RegionSelector(),
-            const SizedBox(height: 6),
-          ],
-          toggle('Режим Discord', settings.discordMode, n.toggleDiscordMode),
-        ], last: true),
-      ],
     );
   }
 }

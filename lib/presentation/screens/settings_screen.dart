@@ -13,7 +13,6 @@ import '../../infrastructure/platform_features.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../providers/settings_provider.dart';
 import '../providers/vpn_provider.dart';
-import '../widgets/home_parts.dart' show RegionSelector;
 import '../widgets/onyx_toast.dart';
 import '../providers/theme_provider.dart';
 import '../providers/window_prefs_provider.dart';
@@ -100,7 +99,7 @@ class SettingsScreen extends ConsumerWidget {
                 _SwitchTile(
                   glyph: OnyxGlyph.voice,
                   title: 'Режим Discord',
-                  subtitle: 'Голос Discord и звонки — через туннель по UDP. Применится при следующем подключении.',
+                  subtitle: 'Голос и звонки Discord — через туннель по UDP. По умолчанию включён.',
                   value: settings.discordMode,
                   onChanged: n.toggleDiscordMode,
                 ),
@@ -511,36 +510,65 @@ class _Tile extends StatelessWidget {
 
 // ── Регион и проверка UDP (#34/#35) ─────────────────────────────────────────
 
-class _RegionTile extends StatelessWidget {
+/// Регион маршрутизации (#47): пункт со значением, выбор — в листе. По
+/// умолчанию — РФ/Беларусь (или «Авто» по часовому поясу, когда домен его
+/// даст); на главном экране и в мини-панели регион не показывается.
+class _RegionTile extends ConsumerWidget {
   const _RegionTile();
 
+  // Через name, а не значения enum: «Авто» добавляет домен («Оникс»).
+  static String _short(RoutingRegion r) => switch (r.name) {
+        'auto' => 'Авто',
+        'russia' => 'РФ/РБ',
+        _ => r.label,
+      };
+  static String _hint(RoutingRegion r) => switch (r.name) {
+        'auto' => 'По часовому поясу и языку системы',
+        'china' => 'Китайские сайты и сервисы — напрямую',
+        _ => 'Российские и белорусские сайты — напрямую',
+      };
+
   @override
-  Widget build(BuildContext context) {
-    final t = OnyxTokens.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const _Leading(OnyxGlyph.globe),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Регион маршрутизации',
-                  style: t.isMaterial
-                      ? Theme.of(context).textTheme.titleMedium
-                      : TextStyle(fontFamily: t.bodyFont, fontSize: t.isSignal ? 15.5 : 14.5, fontWeight: FontWeight.w500, color: t.text)),
-              const SizedBox(height: 2),
-              Text('Сайты выбранной страны идут напрямую. Применится при следующем подключении.',
-                  style: t.isMaterial
-                      ? Theme.of(context).textTheme.bodyMedium!.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)
-                      : TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, height: 1.35, color: t.textMuted)),
-            ]),
-          ),
-        ]),
-        const SizedBox(height: 12),
-        Padding(padding: EdgeInsets.only(left: t.isMaterial ? 56 : 40), child: const RegionSelector()),
-      ]),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final region = ref.watch(settingsProvider.select((s) => s.routingRegion));
+    return _NavTile(
+      glyph: OnyxGlyph.globe,
+      title: 'Регион маршрутизации',
+      subtitle: 'Сайты этой страны — напрямую, мимо туннеля.',
+      trailing: _short(region),
+      onTap: () => _pick(context, ref, region),
     );
+  }
+
+  Future<void> _pick(BuildContext context, WidgetRef ref, RoutingRegion current) async {
+    final t = OnyxTokens.of(context);
+    final v = await showModalBottomSheet<RoutingRegion>(
+      context: context,
+      backgroundColor: t.isMaterial ? null : t.surface,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(t.isSignal ? 'РЕГИОН МАРШРУТИЗАЦИИ' : 'Регион маршрутизации',
+                style: t.isSignal ? t.caps(size: 11) : TextStyle(fontFamily: t.displayFont, fontSize: 18, color: t.text)),
+          ),
+          for (final r in RoutingRegion.values)
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              title: Text(r.label, style: TextStyle(fontFamily: t.bodyFont, fontSize: 14.5, fontWeight: FontWeight.w500, color: t.text)),
+              subtitle: Text(_hint(r), style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, color: t.textMuted)),
+              trailing: r == current ? OnyxIcon(OnyxGlyph.check, size: 18, color: t.isSignal ? AppTheme.signalRec : t.accent) : null,
+              onTap: () => Navigator.pop(c, r),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (v == null || v == current) return;
+    HapticFeedback.selectionClick();
+    await ref.read(settingsProvider.notifier).setRoutingRegion(v);
+    if (context.mounted) showOnyxToast(context, 'Регион: ${v.label} — применится при следующем подключении', glyph: OnyxGlyph.globe);
   }
 }
 

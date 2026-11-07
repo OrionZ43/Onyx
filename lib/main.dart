@@ -154,8 +154,7 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
   /// панели задач. Если значок не нашёлся — правый нижний угол основного
   /// монитора.
   Future<Rect> _flyoutRect() async {
-    final s = TrayFlyout.sizeFor(region: ref.read(settingsProvider).smartRouting);
-    const m = 12.0;
+    const s = TrayFlyout.size, m = 12.0;
     final (primary, areas) = await _workAreas();
     Rect? icon;
     try {
