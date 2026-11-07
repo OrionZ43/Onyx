@@ -8,6 +8,7 @@ import '../../domain/node_sanitizer.dart';
 import '../../infrastructure/singbox_bridge_windows.dart';
 import '../../infrastructure/singbox_bridge_android.dart';
 import '../../infrastructure/vpn_notification_service.dart';
+import '../../infrastructure/exit_ip.dart';
 import 'subscription_provider.dart';
 import 'groups_provider.dart';
 import 'connect_phase.dart';
@@ -137,10 +138,42 @@ class VpnController extends StateNotifier<VpnState> {
   /// Этапы — в [connectPhaseProvider]. Ручной выбор сервера — [connect].
   Future<void> smartConnect() async {
     if (state is VpnConnecting || state is VpnConnected) return;
+    if (_smartActive) return; // уже идёт прогон
+    final run = ++_smartRun;
+    _smartActive = true;
+    try {
+      await _smartConnect(run);
+    } finally {
+      if (run == _smartRun) _smartActive = false;
+    }
+  }
+
+  /// Номер текущего прогона автопилота. Любая отмена (cancelSmartConnect,
+  /// disconnect) его увеличивает — после каждого await прогон проверяет,
+  /// не отменили ли его, и тихо выходит: не переподключается против воли
+  /// пользователя и не отправляет живой сервер на карантин.
+  int _smartRun = 0;
+  bool _smartActive = false;
+
+  /// Идёт ли сейчас прогон автопилота (для кнопки «Отмена»).
+  bool get isSmartConnecting => _smartActive;
+
+  /// Остановить автопилот на любом этапе. Если туннель уже поднимается —
+  /// отключиться.
+  Future<void> cancelSmartConnect() async {
+    _smartRun++;
+    _smartActive = false;
+    ref.read(connectPhaseProvider.notifier).state = ConnectPhase.idle;
+    if (state is VpnConnecting || state is VpnConnected) await disconnect();
+  }
+
+  Future<void> _smartConnect(int run) async {
+    bool cancelled() => run != _smartRun;
     final phase = ref.read(connectPhaseProvider.notifier);
     final srcCtl = ref.read(sourcesProvider.notifier);
     final subCtl = ref.read(subscriptionProvider.notifier);
     await srcCtl.ready;
+    if (cancelled()) return;
 
     void fail(ConnectFailure r, String msg, List<ConnectAction> a) {
       log.w('Автопилот: $msg', tag: 'VPN');
@@ -167,6 +200,7 @@ class VpnController extends StateNotifier<VpnState> {
       phase.state = ConnectPhase.updating;
       for (final s in (stale.isEmpty ? enabled : stale)) {
         await srcCtl.refresh(s.id, probe: false);
+        if (cancelled()) return;
       }
     }
     if (ref.read(subscriptionProvider).nodes.isEmpty) {
@@ -198,6 +232,7 @@ class VpnController extends StateNotifier<VpnState> {
       final deadline = DateTime.now().add(_probeWaitLimit);
       await Future.delayed(const Duration(milliseconds: 300));
       while (DateTime.now().isBefore(deadline) && candidate() == null) {
+        if (cancelled()) return;
         final s = ref.read(subscriptionProvider);
         final deep = s.status == SubStatus.deepProbing;
         phase.state = ConnectPhase.checking(
@@ -207,6 +242,7 @@ class VpnController extends StateNotifier<VpnState> {
         if (!subCtl.isProbing) break;
         await Future.delayed(const Duration(milliseconds: 500));
       }
+      if (cancelled()) return;
     }
 
     // 3–4. Выбор и подключение; до 3 попыток на разных серверах.
@@ -215,6 +251,8 @@ class VpnController extends StateNotifier<VpnState> {
       if (node == null) break;
       phase.state = ConnectPhase.connecting(node.name);
       await connect(node);
+      // Отменили во время подключения — никаких повторов и карантина.
+      if (cancelled()) return;
       if (state is VpnConnected) {
         final noUdp = discord && !node.udpSupported;
         phase.state = noUdp
@@ -254,6 +292,13 @@ class VpnController extends StateNotifier<VpnState> {
         .toList();
   }
 
+  /// Внешний IP выхода через туннель (для «IP выхода» в UI). null — VPN
+  /// не подключён или сервисы определения IP не ответили. ~1–6 с.
+  Future<String?> exitIp() async {
+    if (state is! VpnConnected) return null;
+    return ExitIp.fetch();
+  }
+
   /// Проверка UDP через активный туннель (голос/видео Discord).
   /// Нужен статус «подключено»; длится до ~4 с.
   Future<UdpProbeResult> checkUdp() async {
@@ -274,6 +319,12 @@ class VpnController extends StateNotifier<VpnState> {
   // ── Отключение ────────────────────────────────────────────────────────
 
   Future<void> disconnect() async {
+    // Отключение пользователем отменяет и автопилот (если он идёт).
+    if (_smartActive) {
+      _smartRun++;
+      _smartActive = false;
+      ref.read(connectPhaseProvider.notifier).state = ConnectPhase.idle;
+    }
     final current = state;
     if (current is! VpnConnected && current is! VpnConnecting) return;
 

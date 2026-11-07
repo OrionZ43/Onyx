@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:onyx/domain/routing_region.dart';
 import 'package:onyx/domain/subscription_parser.dart';
 import 'package:onyx/presentation/providers/connect_phase.dart';
 import 'package:onyx/presentation/providers/settings_provider.dart';
@@ -131,6 +130,32 @@ void main() {
       expect((p as ConnectFailed).reason, ConnectFailure.allDead);
       expect(p.actions, contains(ConnectAction.refresh));
       expect(p.label, contains('Ни один сервер'));
+    });
+
+    test('cancelSmartConnect во время проверки: прогон тихо выходит, фаза idle, без карантина', () async {
+      await c.read(sourcesProvider.notifier).addLinks(
+            'vless://$_uuid@127.0.0.1:3?security=reality#c',
+          );
+      final vpn = c.read(vpnControllerProvider.notifier);
+      final run = vpn.smartConnect();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(vpn.isSmartConnecting, isTrue);
+      await vpn.cancelSmartConnect();
+      expect(c.read(connectPhaseProvider), isA<ConnectIdle>());
+      await run;
+      expect(c.read(connectPhaseProvider), isA<ConnectIdle>()); // не перезаписан в failed
+      expect(c.read(subscriptionProvider).quarantined, isEmpty);
+      expect(vpn.isSmartConnecting, isFalse);
+    });
+
+    test('второй тап во время прогона не запускает второй прогон', () async {
+      final vpn = c.read(vpnControllerProvider.notifier);
+      await c.read(sourcesProvider.notifier).addLinks('vless://$_uuid@127.0.0.1:4?security=reality#d');
+      final a = vpn.smartConnect();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await vpn.smartConnect(); // сразу выходит
+      await a;
+      expect(c.read(connectPhaseProvider), isA<ConnectFailed>());
     });
 
     test('ConnectPhase.label', () {
