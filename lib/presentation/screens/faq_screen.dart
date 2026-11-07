@@ -35,7 +35,7 @@ class FaqScreen extends StatelessWidget {
                             horizontal: 20,
                             vertical: 14,
                           ),
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: Color(0x99050410),
                             border: Border(
                               bottom: BorderSide(color: AppColors.glassBorder),
@@ -55,7 +55,7 @@ class FaqScreen extends StatelessWidget {
                                       color: AppColors.glassBorder,
                                     ),
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.arrow_back_ios_new_rounded,
                                     size: 14,
                                     color: AppColors.nebula1,
@@ -63,10 +63,10 @@ class FaqScreen extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 14),
-                              const Text(
+                              Text(
                                 'FAQ / Справка',
                                 style: TextStyle(
-                                  fontFamily: 'Syne',
+                                  fontFamily: AppFonts.display,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.nebula0,
@@ -84,8 +84,8 @@ class FaqScreen extends StatelessWidget {
                               Colors.transparent, // Hides ExpansionTile borders
                         ),
                         child: ListView(
-                          padding: const EdgeInsets.all(24),
-                          children: const [
+                          padding: EdgeInsets.all(24),
+                          children: [
                             _CategoryHeader(title: '📚 Базовые понятия'),
                             SizedBox(height: 12),
                             _FaqAccordion(
@@ -191,7 +191,7 @@ class FaqScreen extends StatelessWidget {
                                   Text(
                                     'Благодарность',
                                     style: TextStyle(
-                                      fontFamily: 'Syne',
+                                      fontFamily: AppFonts.display,
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.nebula0,
@@ -202,7 +202,7 @@ class FaqScreen extends StatelessWidget {
                                     'Огромная благодарность энтузиасту zieng2 за создание и поддержку бесплатной универсальной подписки VLESS, которая используется в нашем приложении в качестве тестовой!',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      fontFamily: 'DM Sans',
+                                      fontFamily: AppFonts.body,
                                       fontSize: 13,
                                       color: AppColors.nebula1,
                                       height: 1.5,
@@ -236,8 +236,8 @@ class _CategoryHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Text(
         title,
-        style: const TextStyle(
-          fontFamily: 'Syne',
+        style: TextStyle(
+          fontFamily: AppFonts.display,
           fontSize: 16,
           fontWeight: FontWeight.w700,
           color: AppColors.nebula1,
@@ -259,8 +259,8 @@ class _FaqAccordion extends StatelessWidget {
       child: ExpansionTile(
         title: Text(
           question,
-          style: const TextStyle(
-            fontFamily: 'Syne',
+          style: TextStyle(
+            fontFamily: AppFonts.display,
             fontSize: 15,
             fontWeight: FontWeight.w700,
             color: AppColors.nebula0,
@@ -271,14 +271,14 @@ class _FaqAccordion extends StatelessWidget {
         childrenPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(bottom: 12),
             child: Divider(color: AppColors.horizon, height: 1),
           ),
           Text(
             answer,
-            style: const TextStyle(
-              fontFamily: 'DM Sans',
+            style: TextStyle(
+              fontFamily: AppFonts.body,
               fontSize: 13,
               color: AppColors.nebula1,
               height: 1.5,

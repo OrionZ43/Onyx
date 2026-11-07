@@ -234,10 +234,10 @@ class _OnyxLogo extends StatelessWidget {
               shaderCallback: (b) => AppColors.gradientPlasma.createShader(
                 Rect.fromLTWH(0, 0, b.width, b.height),
               ),
-              child: const Text(
+              child: Text(
                 'ONYX',
                 style: TextStyle(
-                  fontFamily: 'Syne',
+                  fontFamily: AppFonts.display,
                   fontSize: 48,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 10,
@@ -258,7 +258,7 @@ class _OnyxLogo extends StatelessWidget {
               child: Text(
                 'by Orion_Z43',
                 style: TextStyle(
-                  fontFamily: 'DM Sans',
+                  fontFamily: AppFonts.body,
                   fontSize: 12,
                   color: AppColors.nebula2,
                   decoration: TextDecoration.underline,
@@ -287,10 +287,10 @@ class _Headline extends StatelessWidget {
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: const Text(
+          child: Text(
             'Один тап —',
             style: TextStyle(
-              fontFamily: 'Syne',
+              fontFamily: AppFonts.display,
               fontSize: 42,
               fontWeight: FontWeight.w800,
               color: AppColors.nebula0,
@@ -306,10 +306,10 @@ class _Headline extends StatelessWidget {
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: const Text(
+            child: Text(
               'полная защита.',
               style: TextStyle(
-                fontFamily: 'Syne',
+                fontFamily: AppFonts.display,
                 fontSize: 42,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
@@ -319,11 +319,11 @@ class _Headline extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Вставьте ссылку на подписку — приложение\n'
           'выберет лучший сервер автоматически.',
           style: TextStyle(
-            fontFamily: 'DM Sans',
+            fontFamily: AppFonts.body,
             fontSize: 15,
             color: AppColors.nebula1,
             height: 1.55,
@@ -413,12 +413,12 @@ class _UrlInputState extends State<_UrlInput> {
                       child: TextField(
                         controller: widget.controller,
                         focusNode: widget.focusNode,
-                        style: const TextStyle(
-                          fontFamily: 'DM Sans',
+                        style: TextStyle(
+                          fontFamily: AppFonts.body,
                           color: AppColors.nebula0,
                           fontSize: 13,
                         ),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: InputBorder.none,
                           hintText: 'https://example.com/subscription',
                           hintStyle: TextStyle(
@@ -432,7 +432,7 @@ class _UrlInputState extends State<_UrlInput> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.content_paste_rounded,
                         color: AppColors.nebula2,
                         size: 18,
@@ -451,7 +451,7 @@ class _UrlInputState extends State<_UrlInput> {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.error_outline_rounded,
                 color: AppColors.nova,
                 size: 14,
@@ -460,9 +460,9 @@ class _UrlInputState extends State<_UrlInput> {
               Expanded(
                 child: Text(
                   widget.error!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.nova,
-                    fontFamily: 'DM Sans',
+                    fontFamily: AppFonts.body,
                     fontSize: 12,
                   ),
                 ),
@@ -475,7 +475,7 @@ class _UrlInputState extends State<_UrlInput> {
           onTap: widget.onExample,
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.auto_awesome_rounded,
                 color: AppColors.plasma,
                 size: 12,
@@ -484,7 +484,7 @@ class _UrlInputState extends State<_UrlInput> {
               Text(
                 'Вставить тестовую подписку',
                 style: TextStyle(
-                  fontFamily: 'DM Sans',
+                  fontFamily: AppFonts.body,
                   fontSize: 12,
                   color: AppColors.plasma.withValues(alpha: 0.8),
                   decoration: TextDecoration.underline,
@@ -499,7 +499,7 @@ class _UrlInputState extends State<_UrlInput> {
           child: Text(
             '🤍 Спасибо zieng2 за тестовые серверы',
             style: TextStyle(
-              fontFamily: 'DM Sans',
+              fontFamily: AppFonts.body,
               fontSize: 11,
               color: AppColors.nebula2.withValues(alpha: 0.7),
             ),
@@ -561,8 +561,8 @@ class _ProgressBlock extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
-                    fontFamily: 'DM Sans',
+                  style: TextStyle(
+                    fontFamily: AppFonts.body,
                     fontSize: 12,
                     color: AppColors.nebula1,
                   ),
@@ -613,7 +613,7 @@ class _ConnectButton extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: onTap != null
                   ? AppColors.gradientPlasma
-                  : const LinearGradient(
+                  : LinearGradient(
                       colors: [AppColors.void3, AppColors.void3],
                     ),
               borderRadius: BorderRadius.circular(18),
@@ -657,10 +657,10 @@ class _ConnectButton extends StatelessWidget {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
+                      : Text(
                           'Подключиться',
                           style: TextStyle(
-                            fontFamily: 'Syne',
+                            fontFamily: AppFonts.display,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,

@@ -79,7 +79,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                         child: Container(
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: Color(0x99050410),
                             border: Border(
                               bottom: BorderSide(color: AppColors.glassBorder),
@@ -107,7 +107,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                                       color: AppColors.glassBorder,
                                     ),
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.arrow_back_ios_rounded,
                                     size: 14,
                                     color: AppColors.nebula1,
@@ -128,10 +128,10 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                                 ),
                               ),
                               const SizedBox(width: 10),
-                              const Text(
+                              Text(
                                 'Консоль отладки',
                                 style: TextStyle(
-                                  fontFamily: 'Syne',
+                                  fontFamily: AppFonts.display,
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.nebula0,
@@ -147,8 +147,8 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                                 ),
                                 child: Text(
                                   '${entries.length}',
-                                  style: const TextStyle(
-                                    fontFamily: 'DM Sans',
+                                  style: TextStyle(
+                                    fontFamily: AppFonts.body,
                                     fontSize: 11,
                                     color: AppColors.plasmaLight,
                                     fontWeight: FontWeight.w700,
@@ -201,26 +201,26 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.circle,
                             size: 6,
                             color: AppColors.aurora,
                           ),
                           const SizedBox(width: 8),
-                          const Text(
+                          Text(
                             'Onyx Debug Console v0.1',
                             style: TextStyle(
-                              fontFamily: 'DM Sans',
+                              fontFamily: AppFonts.body,
                               fontSize: 10,
                               color: AppColors.nebula2,
                               fontStyle: FontStyle.italic,
                             ),
                           ),
                           const Spacer(),
-                          const Text(
+                          Text(
                             'Авто-прокрутка',
                             style: TextStyle(
-                              fontFamily: 'DM Sans',
+                              fontFamily: AppFonts.body,
                               fontSize: 10,
                               color: AppColors.nebula2,
                             ),
@@ -306,7 +306,7 @@ class _FilterBtn extends StatelessWidget {
         color: AppColors.void2,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.glassBorder),
+          side: BorderSide(color: AppColors.glassBorder),
         ),
         onSelected: onChanged,
         child: Container(
@@ -334,7 +334,7 @@ class _FilterBtn extends StatelessWidget {
               value: l,
               child: Text(
                 l.name.toUpperCase(),
-                style: const TextStyle(fontFamily: 'DM Mono', fontSize: 12),
+                style: TextStyle(fontFamily: AppFonts.mono, fontSize: 12),
               ),
             ),
           ),
@@ -354,19 +354,19 @@ class _EmptyState extends StatelessWidget {
           children: [
             Icon(Icons.terminal_rounded, color: AppColors.nebula2, size: 48),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Логов нет',
               style: TextStyle(
-                fontFamily: 'Syne',
+                fontFamily: AppFonts.display,
                 fontSize: 18,
                 color: AppColors.nebula1,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'События появятся при подключении',
               style: TextStyle(
-                fontFamily: 'DM Sans',
+                fontFamily: AppFonts.body,
                 fontSize: 12,
                 color: AppColors.nebula2,
               ),
@@ -405,8 +405,8 @@ class _LogRow extends StatelessWidget {
         children: [
           Text(
             entry.timeStr,
-            style: const TextStyle(
-              fontFamily: 'DM Mono',
+            style: TextStyle(
+              fontFamily: AppFonts.mono,
               fontSize: 10,
               color: AppColors.nebula2,
             ),
@@ -423,7 +423,7 @@ class _LogRow extends StatelessWidget {
               entry.levelLabel,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontFamily: 'DM Mono',
+                fontFamily: AppFonts.mono,
                 fontSize: 9,
                 fontWeight: FontWeight.w700,
                 color: _levelColor,
@@ -434,7 +434,7 @@ class _LogRow extends StatelessWidget {
           Text(
             '[${entry.tag}]',
             style: TextStyle(
-              fontFamily: 'DM Mono',
+              fontFamily: AppFonts.mono,
               fontSize: 10,
               color: AppColors.plasma.withValues(alpha: 0.5),
             ),
@@ -444,7 +444,7 @@ class _LogRow extends StatelessWidget {
             child: Text(
               entry.message,
               style: TextStyle(
-                fontFamily: 'DM Mono',
+                fontFamily: AppFonts.mono,
                 fontSize: 11,
                 color: _levelColor == AppColors.nebula2
                     ? AppColors.nebula1

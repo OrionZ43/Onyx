@@ -1,88 +1,74 @@
 import 'package:flutter/material.dart';
 
+import 'onyx_tokens.dart';
+
+/// Совместимость для экранов, ещё не переведённых на [OnyxTokens].
+///
+/// Раньше здесь была «космическая» палитра (plasma / aurora / nebula). Теперь
+/// это фасад над токенами активной темы: [AppTheme.build] выставляет [active],
+/// а при смене темы `MaterialApp` перестраивается целиком (см. `main.dart`).
+/// Новый код берёт цвета из `OnyxTokens.of(context)`.
 abstract final class AppColors {
-  // ── Void (backgrounds) ────────────────────────────────────────────────────
-  static const void0 = Color(0xFF03020A); // абсолютная тьма
-  static const void1 = Color(0xFF07060F); // основной фон
-  static const void2 = Color(0xFF0C0B18); // поверхность карточек
-  static const void3 = Color(0xFF121020); // приподнятые элементы
+  static late OnyxTokens active;
 
-  // ── Glass (жидкое стекло) ─────────────────────────────────────────────────
-  static const glass = Color(0x14FFFFFF); // стеклянная подложка
-  static const glassBorder = Color(0x22FFFFFF); // обводка стекла
-  static const glassShine = Color(0x08FFFFFF); // блик сверху
-  static const glassDeep = Color(0x0A8080FF); // синеватое свечение стекла
+  // ── Фоны ──────────────────────────────────────────────────────────────────
+  static Color get void0 => active.bg;
+  static Color get void1 => active.bg;
+  static Color get void2 => active.surface;
+  static Color get void3 => active.surfaceHigh;
 
-  // ── Plasma (главный акцент — электрический индиго) ────────────────────────
-  static const plasma = Color(0xFF7B6FFF); // основной CTA
-  static const plasmaLight = Color(0xFFADA3FF); // светлый вариант
-  static const plasmaDim = Color(0xFF4A41CC); // тёмный вариант
-  static const plasmaGlow = Color(0x557B6FFF); // свечение
-  static const plasmaTrace = Color(0x1A7B6FFF); // еле заметный след
+  // ── Бывшее «стекло» — теперь плотные поверхности с хайрлайном ─────────────
+  static Color get glass => active.surface;
+  static Color get glassBorder => active.line;
+  static Color get glassShine => Colors.transparent;
+  static Color get glassDeep => Colors.transparent;
 
-  // ── Aurora (подключено — живое зелёное) ───────────────────────────────────
-  static const aurora = Color(0xFF00F5B4); // connected
-  static const auroraGlow = Color(0x4400F5B4);
-  static const auroraDim = Color(0xFF00A87B);
+  // ── Акцент ────────────────────────────────────────────────────────────────
+  static Color get plasma => active.accent;
+  static Color get plasmaLight => active.accent;
+  static Color get plasmaDim => active.accentMuted;
+  static Color get plasmaGlow => active.accent.withValues(alpha: 0.25);
+  static Color get plasmaTrace => active.accent.withValues(alpha: 0.08);
 
-  // ── Ember (переходное состояние) ──────────────────────────────────────────
-  static const ember = Color(0xFFFFAA44);
-  static const emberGlow = Color(0x44FFAA44);
+  /// «Подключено» — тот же единственный акцент.
+  static Color get aurora => active.accent;
+  static Color get auroraGlow => active.accent.withValues(alpha: 0.25);
+  static Color get auroraDim => active.accentMuted;
 
-  // ── Nova (ошибка) ─────────────────────────────────────────────────────────
-  static const nova = Color(0xFFFF4D6D);
-  static const novaGlow = Color(0x44FF4D6D);
+  /// Переходное состояние.
+  static Color get ember => active.accentMuted;
+  static Color get emberGlow => active.accentMuted.withValues(alpha: 0.25);
 
-  // ── Nebula (текст) ────────────────────────────────────────────────────────
-  static const nebula0 = Color(0xFFEEEDFF); // primary text
-  static const nebula1 = Color(0xFF8B89B0); // secondary text
-  static const nebula2 = Color(0xFF3D3B5E); // disabled text
+  /// Ошибка.
+  static Color get nova => active.danger;
+  static Color get novaGlow => active.danger.withValues(alpha: 0.25);
 
-  // ── Horizon (разделители) ─────────────────────────────────────────────────
-  static const horizon = Color(0xFF1A1830); // border
-  static const horizonGlow = Color(0x337B6FFF); // glowing border
+  // ── Текст ─────────────────────────────────────────────────────────────────
+  static Color get nebula0 => active.text;
+  static Color get nebula1 => active.textMuted;
+  static Color get nebula2 => active.textFaint;
 
-  // ── Gradients ─────────────────────────────────────────────────────────────
+  // ── Разделители ───────────────────────────────────────────────────────────
+  static Color get horizon => active.line;
+  static Color get horizonGlow => active.lineStrong;
 
-  /// Глубокий космос — фон всего приложения
-  static const gradientVoid = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF0D0420), Color(0xFF03020A), Color(0xFF02071A)],
-    stops: [0.0, 0.5, 1.0],
-  );
+  // ── Бывшие градиенты — теперь плоские ─────────────────────────────────────
+  static LinearGradient get gradientVoid =>
+      LinearGradient(colors: [active.bg, active.bg]);
+  static LinearGradient get gradientPlasma =>
+      LinearGradient(colors: [active.accent, active.accent]);
+  static LinearGradient get gradientAurora =>
+      LinearGradient(colors: [active.accent, active.accent]);
+  static LinearGradient gradientGlass({double opacity = 1.0}) =>
+      LinearGradient(colors: [active.surface, active.surface]);
+  static RadialGradient get gradientNebula =>
+      RadialGradient(colors: [active.bg, active.bg]);
+}
 
-  /// Плазменный — кнопки, CTA
-  static const gradientPlasma = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF9B8FFF), Color(0xFF6B5FEF), Color(0xFF5040CC)],
-    stops: [0.0, 0.5, 1.0],
-  );
-
-  /// Аврора — подключено
-  static const gradientAurora = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF00F5B4), Color(0xFF00C4D4)],
-  );
-
-  /// Стекло — карточки
-  static LinearGradient gradientGlass({double opacity = 1.0}) => LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          // ИСПРАВЛЕНО: добавлен const к конструкторам Color
-          const Color(0x18FFFFFF).withValues(alpha: 0.09 * opacity),
-          const Color(0x06FFFFFF).withValues(alpha: 0.03 * opacity),
-        ],
-      );
-
-  /// Туманность — фоновые пятна
-  static const gradientNebula = RadialGradient(
-    center: Alignment(0, -0.25),
-    radius: 1.3,
-    colors: [Color(0xFF1E0A45), Color(0xFF07060F), Color(0xFF020B1E)],
-    stops: [0.0, 0.55, 1.0],
-  );
+/// Шрифты для старых экранов: раньше были прописаны 'Syne' / 'DM Sans' /
+/// 'DM Mono', которые в приложение не встраивались (задача #31).
+abstract final class AppFonts {
+  static String get display => AppColors.active.displayFont;
+  static String get body => AppColors.active.bodyFont;
+  static String get mono => AppColors.active.monoFont;
 }

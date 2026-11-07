@@ -82,8 +82,8 @@ class _Stat extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           value,
-          style: const TextStyle(
-            fontFamily: 'Syne',
+          style: TextStyle(
+            fontFamily: AppFonts.display,
             fontSize: 14,
             fontWeight: FontWeight.w700,
             color: AppColors.nebula0,
@@ -92,8 +92,8 @@ class _Stat extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(
-            fontFamily: 'DM Sans',
+          style: TextStyle(
+            fontFamily: AppFonts.body,
             fontSize: 10,
             color: AppColors.nebula2,
           ),

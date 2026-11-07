@@ -5,7 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:local_notifier/local_notifier.dart';
+import 'package:dynamic_color/dynamic_color.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_kind.dart';
+import 'presentation/providers/theme_provider.dart';
+import 'presentation/widgets/window_title_bar.dart';
 import 'core/log_service.dart';
 import 'infrastructure/binary_manager.dart';
 import 'infrastructure/singbox_bridge_windows.dart';
@@ -24,7 +29,8 @@ void main() async {
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.normal,
+      // Свой тайтлбар в стиле темы (WindowTitleBar), системный скрыт.
+      titleBarStyle: TitleBarStyle.hidden,
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
@@ -44,7 +50,7 @@ void main() async {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF03020A),
+      systemNavigationBarColor: Color(0xFF050506),
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
@@ -55,17 +61,26 @@ void main() async {
   await BinaryManager.instance.init();
   log.i('BinaryManager инициализирован', tag: 'MAIN');
 
-  runApp(const ProviderScope(child: OnyxApp()));
+  // Тему читаем до первого кадра, чтобы не мигала тема по умолчанию.
+  final prefs = await SharedPreferences.getInstance();
+  final themeKind = AppThemeKind.byName(prefs.getString(ThemeKindNotifier.key));
+
+  runApp(ProviderScope(
+    overrides: [
+      themeKindProvider.overrideWith((ref) => ThemeKindNotifier(themeKind)),
+    ],
+    child: const OnyxApp(),
+  ));
 }
 
-class OnyxApp extends StatefulWidget {
+class OnyxApp extends ConsumerStatefulWidget {
   const OnyxApp({super.key});
 
   @override
-  State<OnyxApp> createState() => _OnyxAppState();
+  ConsumerState<OnyxApp> createState() => _OnyxAppState();
 }
 
-class _OnyxAppState extends State<OnyxApp> with WindowListener, TrayListener {
+class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayListener {
   bool _setupDone = false;
   bool _isVisible = true;
 
@@ -152,13 +167,32 @@ class _OnyxAppState extends State<OnyxApp> with WindowListener, TrayListener {
 
   @override
   Widget build(BuildContext context) {
+    final kind = ref.watch(themeKindProvider);
+    // DynamicColorBuilder отдаёт схему обоев на Android 12+; используется только
+    // темой Material, остальные темы её игнорируют.
+    return DynamicColorBuilder(
+      builder: (_, dynamicDark) => _app(
+        AppTheme.build(kind, dynamicDark: dynamicDark?.harmonized()),
+      ),
+    );
+  }
+
+  Widget _app(ThemeData theme) {
     return MaterialApp(
       title: 'Onyx',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
+      theme: theme,
+      themeMode: ThemeMode.dark,
       // МАГИЯ ОПТИМИЗАЦИИ ЗДЕСЬ: TickerMode ставит на паузу все AnimationController'ы
-      builder: (context, child) =>
-          TickerMode(enabled: _isVisible, child: child!),
+      builder: (context, child) => TickerMode(
+        enabled: _isVisible,
+        child: Platform.isWindows
+            ? Column(children: [
+                const WindowTitleBar(),
+                Expanded(child: child!),
+              ])
+            : child!,
+      ),
       home: _setupDone
           ? const OnboardingScreen()
           : SetupScreen(onComplete: () => setState(() => _setupDone = true)),

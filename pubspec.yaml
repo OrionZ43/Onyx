@@ -33,8 +33,10 @@ dependencies:
   go_router: ^14.2.7
 
   # UI
-  google_fonts: ^6.2.1
   flutter_animate: ^4.5.0
+  flutter_svg: ^2.3.0
+  material_new_shapes: ^1.0.0
+  dynamic_color: ^1.8.1
 
   # Links
   url_launcher: ^6.3.0
@@ -58,5 +60,63 @@ dependencies:
   tray_manager: ^0.2.2
   local_notifier: ^0.1.5
 
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/icons/onyx/
+    - assets/icons/signal/
+    - assets/flags/circle/
+    - assets/flags/square/
+
+  # Шрифты встроены (SIL OFL 1.1, лицензии — assets/fonts/OFL-*.txt), статические начертания.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-300.ttf
+          weight: 300
+        - asset: assets/fonts/Inter-400.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-500.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-600.ttf
+          weight: 600
+    - family: InterTight
+      fonts:
+        - asset: assets/fonts/InterTight-300.ttf
+          weight: 300
+        - asset: assets/fonts/InterTight-400.ttf
+          weight: 400
+        - asset: assets/fonts/InterTight-500.ttf
+          weight: 500
+        - asset: assets/fonts/InterTight-600.ttf
+          weight: 600
+    - family: Onest
+      fonts:
+        - asset: assets/fonts/Onest-400.ttf
+          weight: 400
+        - asset: assets/fonts/Onest-500.ttf
+          weight: 500
+        - asset: assets/fonts/Onest-600.ttf
+          weight: 600
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-400.ttf
+          weight: 400
+        - asset: assets/fonts/JetBrainsMono-500.ttf
+          weight: 500
+        - asset: assets/fonts/JetBrainsMono-600.ttf
+          weight: 600
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-400.ttf
+          weight: 400
+        - asset: assets/fonts/Roboto-500.ttf
+          weight: 500
+        - asset: assets/fonts/Roboto-700.ttf
+          weight: 700

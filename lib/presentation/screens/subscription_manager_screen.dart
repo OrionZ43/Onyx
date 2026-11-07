@@ -93,7 +93,7 @@ class _SubscriptionManagerScreenState
                             horizontal: 20,
                             vertical: 14,
                           ),
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: Color(0x99050410),
                             border: Border(
                               bottom: BorderSide(color: AppColors.glassBorder),
@@ -117,7 +117,7 @@ class _SubscriptionManagerScreenState
                                       color: AppColors.glassBorder,
                                     ),
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.arrow_back_ios_rounded,
                                     size: 14,
                                     color: AppColors.nebula1,
@@ -125,10 +125,10 @@ class _SubscriptionManagerScreenState
                                 ),
                               ),
                               const SizedBox(width: 14),
-                              const Text(
+                              Text(
                                 'Подписки',
                                 style: TextStyle(
-                                  fontFamily: 'Syne',
+                                  fontFamily: AppFonts.display,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.nebula0,
@@ -155,7 +155,7 @@ class _SubscriptionManagerScreenState
                                       ),
                                     ],
                                   ),
-                                  child: const Row(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
@@ -167,7 +167,7 @@ class _SubscriptionManagerScreenState
                                       Text(
                                         'Добавить',
                                         style: TextStyle(
-                                          fontFamily: 'Syne',
+                                          fontFamily: AppFonts.display,
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
                                           color: Colors.white,
@@ -194,7 +194,7 @@ class _SubscriptionManagerScreenState
                         ),
                         child: Row(
                           children: [
-                            const SizedBox(
+                            SizedBox(
                               width: 14,
                               height: 14,
                               child: CircularProgressIndicator(
@@ -208,8 +208,8 @@ class _SubscriptionManagerScreenState
                                   ? 'Загружаем серверы...'
                                   : 'Проверяем серверы... '
                                       '${sub.probedCount}/${sub.nodes.length}',
-                              style: const TextStyle(
-                                fontFamily: 'DM Sans',
+                              style: TextStyle(
+                                fontFamily: AppFonts.body,
                                 fontSize: 12,
                                 color: AppColors.nebula1,
                               ),
@@ -221,7 +221,7 @@ class _SubscriptionManagerScreenState
                     // ── Список подписок ────────────────────────────────────
                     Expanded(
                       child: _loading
-                          ? const Center(
+                          ? Center(
                               child: CircularProgressIndicator(
                                 color: AppColors.plasma,
                               ),
@@ -260,12 +260,12 @@ class _SubscriptionManagerScreenState
                         20,
                         MediaQuery.of(context).padding.bottom + 12,
                       ),
-                      child: const Text(
+                      child: Text(
                         'Поддерживаются ссылки на VLESS-подписки '
                         'и прямые base64-строки',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontFamily: 'DM Sans',
+                          fontFamily: AppFonts.body,
                           fontSize: 11,
                           color: AppColors.nebula2,
                         ),
@@ -310,12 +310,12 @@ class _SubscriptionManagerScreenState
           backgroundColor: AppColors.void2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
-            side: const BorderSide(color: AppColors.glassBorder),
+            side: BorderSide(color: AppColors.glassBorder),
           ),
           title: Text(
             existing == null ? 'Добавить подписку' : 'Изменить подписку',
-            style: const TextStyle(
-              fontFamily: 'Syne',
+            style: TextStyle(
+              fontFamily: AppFonts.display,
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: AppColors.nebula0,
@@ -346,11 +346,11 @@ class _SubscriptionManagerScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text(
+              child: Text(
                 'Отмена',
                 style: TextStyle(
                   color: AppColors.nebula1,
-                  fontFamily: 'DM Sans',
+                  fontFamily: AppFonts.body,
                 ),
               ),
             ),
@@ -380,8 +380,8 @@ class _SubscriptionManagerScreenState
                 ),
                 child: Text(
                   existing == null ? 'Добавить' : 'Сохранить',
-                  style: const TextStyle(
-                    fontFamily: 'Syne',
+                  style: TextStyle(
+                    fontFamily: AppFonts.display,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
@@ -427,8 +427,8 @@ class _DialogField extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              fontFamily: 'DM Sans',
+            style: TextStyle(
+              fontFamily: AppFonts.body,
               fontSize: 12,
               color: AppColors.nebula1,
             ),
@@ -450,15 +450,15 @@ class _DialogField extends StatelessWidget {
                     controller: controller,
                     keyboardType: keyboardType,
                     autocorrect: false,
-                    style: const TextStyle(
-                      fontFamily: 'DM Sans',
+                    style: TextStyle(
+                      fontFamily: AppFonts.body,
                       fontSize: 13,
                       color: AppColors.nebula0,
                     ),
                     decoration: InputDecoration(
                       border: InputBorder.none,
                       hintText: hint,
-                      hintStyle: const TextStyle(
+                      hintStyle: TextStyle(
                         color: AppColors.nebula2,
                         fontSize: 13,
                       ),
@@ -487,21 +487,21 @@ class _EmptyState extends StatelessWidget {
           children: [
             Icon(Icons.cloud_off_rounded, color: AppColors.nebula2, size: 64),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Нет подписок',
               style: TextStyle(
-                fontFamily: 'Syne',
+                fontFamily: AppFonts.display,
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: AppColors.nebula1,
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'Добавьте ссылку на VLESS-подписку\nчтобы начать',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontFamily: 'DM Sans',
+                fontFamily: AppFonts.body,
                 fontSize: 13,
                 color: AppColors.nebula2,
                 height: 1.5,
@@ -523,7 +523,7 @@ class _EmptyState extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.add_rounded, color: Colors.white, size: 18),
@@ -531,7 +531,7 @@ class _EmptyState extends StatelessWidget {
                     Text(
                       'Добавить подписку',
                       style: TextStyle(
-                        fontFamily: 'Syne',
+                        fontFamily: AppFonts.display,
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
@@ -582,7 +582,7 @@ class _SubCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: isActive
                       ? AppColors.gradientPlasma
-                      : const LinearGradient(
+                      : LinearGradient(
                           colors: [AppColors.void3, AppColors.void3],
                         ),
                   borderRadius: BorderRadius.circular(12),
@@ -603,7 +603,7 @@ class _SubCard extends StatelessWidget {
                     Text(
                       entry.name,
                       style: TextStyle(
-                        fontFamily: 'Syne',
+                        fontFamily: AppFonts.display,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: isActive ? AppColors.plasma : AppColors.nebula0,
@@ -612,8 +612,8 @@ class _SubCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       entry.url,
-                      style: const TextStyle(
-                        fontFamily: 'DM Sans',
+                      style: TextStyle(
+                        fontFamily: AppFonts.body,
                         fontSize: 11,
                         color: AppColors.nebula2,
                       ),
@@ -640,8 +640,8 @@ class _SubCard extends StatelessWidget {
                   ),
                   child: Text(
                     '$aliveCount/$nodeCount нод',
-                    style: const TextStyle(
-                      fontFamily: 'DM Mono',
+                    style: TextStyle(
+                      fontFamily: AppFonts.mono,
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       color: AppColors.plasma,
@@ -682,7 +682,7 @@ class _SubCard extends StatelessWidget {
                       child: Text(
                         isActive ? '✓ Активна' : 'Загрузить',
                         style: TextStyle(
-                          fontFamily: 'Syne',
+                          fontFamily: AppFonts.display,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: isActive ? AppColors.nebula2 : Colors.white,

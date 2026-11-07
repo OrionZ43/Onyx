@@ -40,10 +40,10 @@ class UpdateBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 'Доступно обновление: ${updateInfo.version}',
-                style: const TextStyle(
+                style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontFamily: 'DM Sans',
+                  fontFamily: AppFonts.body,
                 ),
               ),
             ),

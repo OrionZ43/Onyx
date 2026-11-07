@@ -64,8 +64,8 @@ class _UpdateScreenState extends State<UpdateScreen> {
                       AppColors.gradientPlasma.createShader(bounds),
                   child: Text(
                     'Доступно обновление ${widget.updateInfo.version}',
-                    style: const TextStyle(
-                      fontFamily: 'Syne',
+                    style: TextStyle(
+                      fontFamily: AppFonts.display,
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -81,8 +81,8 @@ class _UpdateScreenState extends State<UpdateScreen> {
                     child: SingleChildScrollView(
                       child: Text(
                         widget.updateInfo.releaseNotes,
-                        style: const TextStyle(
-                          fontFamily: 'DM Sans',
+                        style: TextStyle(
+                          fontFamily: AppFonts.body,
                           color: AppColors.nebula1,
                           height: 1.5,
                         ),
@@ -96,7 +96,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                     padding: const EdgeInsets.only(bottom: 16),
                     child: Text(
                       _error,
-                      style: const TextStyle(color: AppColors.nova),
+                      style: TextStyle(color: AppColors.nova),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -114,7 +114,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                   Text(
                     '${(_progress * 100).toStringAsFixed(1)}%',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppColors.nebula0),
+                    style: TextStyle(color: AppColors.nebula0),
                   ),
                 ] else ...[
                   Row(
@@ -122,7 +122,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                     children: [
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Позже',
+                        child: Text('Позже',
                             style: TextStyle(color: AppColors.nebula1)),
                       ),
                       const SizedBox(width: 16),

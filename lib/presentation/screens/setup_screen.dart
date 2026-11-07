@@ -112,10 +112,10 @@ class _SetupScreenState extends State<SetupScreen>
                   const SizedBox(height: 32),
 
                   // Заголовок
-                  const Text(
+                  Text(
                     'Первый запуск',
                     style: TextStyle(
-                      fontFamily: 'Syne',
+                      fontFamily: AppFonts.display,
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
                       color: AppColors.nebula0,
@@ -124,13 +124,13 @@ class _SetupScreenState extends State<SetupScreen>
 
                   const SizedBox(height: 12),
 
-                  const Text(
+                  Text(
                     'Onyx загрузит необходимые компоненты:\n'
                     'движок sing-box и драйвер WinTUN.\n\n'
                     'Потребуются права администратора\nдля создания VPN-туннеля.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontFamily: 'DM Sans',
+                      fontFamily: AppFonts.body,
                       fontSize: 14,
                       color: AppColors.nebula1,
                       height: 1.6,
@@ -149,7 +149,7 @@ class _SetupScreenState extends State<SetupScreen>
                           Row(
                             children: [
                               if (_step == _SetupStep.downloading)
-                                const SizedBox(
+                                SizedBox(
                                   width: 16,
                                   height: 16,
                                   child: CircularProgressIndicator(
@@ -158,13 +158,13 @@ class _SetupScreenState extends State<SetupScreen>
                                   ),
                                 )
                               else if (_step == _SetupStep.done)
-                                const Icon(
+                                Icon(
                                   Icons.check_circle_rounded,
                                   color: AppColors.aurora,
                                   size: 16,
                                 )
                               else
-                                const Icon(
+                                Icon(
                                   Icons.error_outline_rounded,
                                   color: AppColors.nova,
                                   size: 16,
@@ -173,8 +173,8 @@ class _SetupScreenState extends State<SetupScreen>
                               Expanded(
                                 child: Text(
                                   _status,
-                                  style: const TextStyle(
-                                    fontFamily: 'DM Sans',
+                                  style: TextStyle(
+                                    fontFamily: AppFonts.body,
                                     fontSize: 13,
                                     color: AppColors.nebula1,
                                   ),
@@ -200,8 +200,8 @@ class _SetupScreenState extends State<SetupScreen>
                               _error!,
                               maxLines: 3, // <--- ДОБАВИЛИ
                               overflow: TextOverflow.ellipsis, // <--- ДОБАВИЛИ
-                              style: const TextStyle(
-                                fontFamily: 'DM Mono',
+                              style: TextStyle(
+                                fontFamily: AppFonts.mono,
                                 fontSize: 11,
                                 color: AppColors.nova,
                               ),
@@ -234,8 +234,8 @@ class _SetupScreenState extends State<SetupScreen>
                             _step == _SetupStep.error
                                 ? 'Попробовать снова'
                                 : 'Загрузить компоненты',
-                            style: const TextStyle(
-                              fontFamily: 'Syne',
+                            style: TextStyle(
+                              fontFamily: AppFonts.display,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
@@ -249,10 +249,10 @@ class _SetupScreenState extends State<SetupScreen>
                   // Инфо о размере
                   if (_step == _SetupStep.idle) ...[
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       '≈ 25 МБ · только один раз',
                       style: TextStyle(
-                        fontFamily: 'DM Sans',
+                        fontFamily: AppFonts.body,
                         fontSize: 12,
                         color: AppColors.nebula2,
                       ),

@@ -83,17 +83,17 @@ class _SplitTunnelingScreenState extends ConsumerState<SplitTunnelingScreen> {
                     _searchBar(),
                     Expanded(
                       child: _loading
-                          ? const Center(
+                          ? Center(
                               child: CircularProgressIndicator(
                                 color: AppColors.plasma,
                               ),
                             )
                           : filtered.isEmpty
-                              ? const Center(
+                              ? Center(
                                   child: Text(
                                     'Ничего не найдено',
                                     style: TextStyle(
-                                      fontFamily: 'DM Sans',
+                                      fontFamily: AppFonts.body,
                                       color: AppColors.nebula1,
                                     ),
                                   ),
@@ -133,7 +133,7 @@ class _SplitTunnelingScreenState extends ConsumerState<SplitTunnelingScreen> {
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: Color(0x99050410),
             border: Border(
               bottom: BorderSide(color: AppColors.glassBorder),
@@ -154,7 +154,7 @@ class _SplitTunnelingScreenState extends ConsumerState<SplitTunnelingScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.glassBorder),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.arrow_back_ios_rounded,
                     size: 14,
                     color: AppColors.nebula1,
@@ -166,10 +166,10 @@ class _SplitTunnelingScreenState extends ConsumerState<SplitTunnelingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Обход VPN',
                       style: TextStyle(
-                        fontFamily: 'Syne',
+                        fontFamily: AppFonts.display,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: AppColors.nebula0,
@@ -179,8 +179,8 @@ class _SplitTunnelingScreenState extends ConsumerState<SplitTunnelingScreen> {
                       excludedCount == 0
                           ? 'Приложения не выбраны'
                           : '$excludedCount в обход туннеля',
-                      style: const TextStyle(
-                        fontFamily: 'DM Sans',
+                      style: TextStyle(
+                        fontFamily: AppFonts.body,
                         fontSize: 12,
                         color: AppColors.nebula1,
                       ),
@@ -208,7 +208,7 @@ class _SplitTunnelingScreenState extends ConsumerState<SplitTunnelingScreen> {
                   child: Text(
                     'Системные',
                     style: TextStyle(
-                      fontFamily: 'DM Sans',
+                      fontFamily: AppFonts.body,
                       fontSize: 12,
                       color: _showSystem
                           ? AppColors.plasmaLight
@@ -232,16 +232,16 @@ class _SplitTunnelingScreenState extends ConsumerState<SplitTunnelingScreen> {
         borderRadius: 14,
         child: TextField(
           onChanged: (v) => setState(() => _query = v),
-          style: const TextStyle(
-            fontFamily: 'DM Sans',
+          style: TextStyle(
+            fontFamily: AppFonts.body,
             fontSize: 14,
             color: AppColors.nebula0,
           ),
           cursorColor: AppColors.plasma,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Поиск приложения…',
             hintStyle: TextStyle(
-              fontFamily: 'DM Sans',
+              fontFamily: AppFonts.body,
               fontSize: 14,
               color: AppColors.nebula2,
             ),
@@ -291,8 +291,8 @@ class _AppRow extends StatelessWidget {
               ),
               child: Text(
                 letter,
-                style: const TextStyle(
-                  fontFamily: 'Syne',
+                style: TextStyle(
+                  fontFamily: AppFonts.display,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppColors.plasmaLight,
@@ -308,8 +308,8 @@ class _AppRow extends StatelessWidget {
                     app.appName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'DM Sans',
+                    style: TextStyle(
+                      fontFamily: AppFonts.body,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: AppColors.nebula0,
@@ -320,8 +320,8 @@ class _AppRow extends StatelessWidget {
                     app.packageName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'DM Sans',
+                    style: TextStyle(
+                      fontFamily: AppFonts.body,
                       fontSize: 11,
                       color: AppColors.nebula2,
                     ),
