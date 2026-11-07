@@ -10,22 +10,26 @@ import 'signal_ring_button.dart';
 
 /// Главная кнопка подключения — своя для каждой темы.
 class HeroButton extends StatelessWidget {
-  const HeroButton({super.key, required this.vpn, required this.onTap, required this.size});
+  const HeroButton({super.key, required this.vpn, required this.onTap, required this.size, this.compact = false});
 
   final VpnState vpn;
   final VoidCallback onTap;
   final double size;
+
+  /// Мини-версия без подписей (панель в трее).
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
     final phase = heroPhaseOf(vpn);
     return switch (t.kind) {
-      AppThemeKind.onyx => OnyxLensButton(phase: phase, onTap: onTap, size: size),
+      AppThemeKind.onyx => OnyxLensButton(phase: phase, onTap: onTap, size: size, compact: compact),
       AppThemeKind.signal => SignalRingButton(
           phase: phase,
           onTap: onTap,
           size: size,
+          compact: compact,
           connectedAt: vpn is VpnConnected ? (vpn as VpnConnected).connectedAt : null,
         ),
       AppThemeKind.material => M3CookieButton(phase: phase, onTap: onTap, size: size),

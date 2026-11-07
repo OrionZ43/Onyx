@@ -19,11 +19,14 @@ import 'hero_state.dart';
 ///
 /// В покое (off / on) тикер стоит — 0 кадров/с.
 class OnyxLensButton extends StatefulWidget {
-  const OnyxLensButton({super.key, required this.phase, required this.onTap, this.size = 280});
+  const OnyxLensButton({super.key, required this.phase, required this.onTap, this.size = 280, this.compact = false});
 
   final HeroPhase phase;
   final VoidCallback onTap;
   final double size;
+
+  /// Без подписи внутри — для маленьких размеров (мини-панель в трее).
+  final bool compact;
 
   @override
   State<OnyxLensButton> createState() => _OnyxLensButtonState();
@@ -148,9 +151,9 @@ class _OnyxLensButtonState extends State<OnyxLensButton> with TickerProviderStat
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            OnyxIcon(OnyxGlyph.power, size: lens * 0.15, color: contentColor),
-                            SizedBox(height: lens * 0.05),
-                            AnimatedDefaultTextStyle(
+                            OnyxIcon(OnyxGlyph.power, size: lens * (widget.compact ? 0.22 : 0.15), color: contentColor),
+                            if (!widget.compact) SizedBox(height: lens * 0.05),
+                            if (!widget.compact) AnimatedDefaultTextStyle(
                               duration: OnyxMotion.medium,
                               style: t.caps(
                                 size: 10.5,

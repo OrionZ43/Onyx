@@ -27,6 +27,7 @@ import '../providers/vpn_provider.dart';
 import '../screens/groups_screen.dart';
 import '../screens/subscription_manager_screen.dart';
 import '../util/country.dart';
+import '../util/vpn_actions.dart';
 import 'add_source_sheet.dart';
 import 'country_flag.dart';
 import 'home_parts.dart';
@@ -115,13 +116,8 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
 
   void _select(Node node) {
     HapticFeedback.selectionClick();
-    ref.read(nodeSelectionProvider.notifier).select(node);
-    final vpn = ref.read(vpnControllerProvider);
-    if (vpn is VpnConnected && vpn.node.id != node.id) {
-      // Смена сервера на ходу: переподключаемся к выбранному.
-      final ctl = ref.read(vpnControllerProvider.notifier);
-      ctl.disconnect().then((_) => ctl.connect(node));
-    }
+    // Выбор + переподключение на ходу — общая логика (util/vpn_actions.dart).
+    chooseNode(ref, node);
     if (widget.inSheet && mounted) Navigator.of(context).maybePop();
   }
 

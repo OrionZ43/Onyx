@@ -8,10 +8,14 @@ import 'onyx_wordmark.dart';
 /// Тайтлбар окна Windows в стиле темы (системный скрыт в `main.dart`).
 ///
 /// Перетаскивание — вся полоса, двойной клик — развернуть. Кнопки справа
-/// повторяют системные: свернуть (уходит в трей, см. `onWindowMinimize`),
-/// развернуть, закрыть.
+/// повторяют системные: свернуть (уходит в трей), развернуть, закрыть.
 class WindowTitleBar extends StatelessWidget {
-  const WindowTitleBar({super.key});
+  const WindowTitleBar({super.key, this.onMinimize});
+
+  /// «Свернуть». В приложении — сразу спрятать в трей (main.dart): так окно
+  /// не остаётся в свёрнутом состоянии, из которого Windows разворачивает его
+  /// в прежний размер поверх мини-панели. По умолчанию — обычное сворачивание.
+  final VoidCallback? onMinimize;
 
   static const double height = 40;
 
@@ -40,7 +44,7 @@ class WindowTitleBar extends StatelessWidget {
             ),
             _WinButton(
               glyph: OnyxGlyph.minimize,
-              onTap: () => windowManager.minimize(),
+              onTap: onMinimize ?? () => windowManager.minimize(),
             ),
             _WinButton(
               glyph: OnyxGlyph.maximize,

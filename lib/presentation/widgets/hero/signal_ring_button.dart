@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/onyx_tokens.dart';
+import '../onyx_icon.dart';
 import '../signal/dot_matrix.dart';
 import 'hero_state.dart';
 
@@ -25,12 +26,16 @@ class SignalRingButton extends StatefulWidget {
     required this.onTap,
     this.connectedAt,
     this.size = 300,
+    this.compact = false,
   });
 
   final HeroPhase phase;
   final VoidCallback onTap;
   final DateTime? connectedAt;
   final double size;
+
+  /// Без табло и подписи — для мини-панели в трее.
+  final bool compact;
 
   static const int dots = 64;
 
@@ -156,6 +161,9 @@ class _SignalRingButtonState extends State<SignalRingButton> with TickerProvider
                     ),
                   ),
                 ),
+                if (widget.compact)
+                  OnyxIcon(OnyxGlyph.power, size: r * .22, color: phase == HeroPhase.error ? AppTheme.signalRec : (phase == HeroPhase.off ? t.textMuted : t.text))
+                else
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [

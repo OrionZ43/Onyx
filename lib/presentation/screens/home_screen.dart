@@ -31,6 +31,7 @@ import '../providers/update_provider.dart';
 import '../providers/vpn_provider.dart';
 import '../util/country.dart';
 import '../util/platform_kind.dart';
+import '../util/vpn_actions.dart';
 import '../widgets/hero/hero_button.dart';
 import '../widgets/hero/hero_state.dart';
 import '../widgets/home_parts.dart';
@@ -66,22 +67,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _markUserAction() => _userActionAt = DateTime.now();
 
-  void _handleTap(VpnState state, SubscriptionState sub) {
+  Future<void> _handleTap(VpnState state, SubscriptionState sub) async {
     HapticFeedback.lightImpact();
     _markUserAction();
-    final vpn = ref.read(vpnControllerProvider.notifier);
-    switch (state) {
-      case VpnDisconnected() || VpnError():
-        // Приоритет: выбранный пользователем сервер → лучший из группы автовыбора (autoNodeProvider)
-        final picked = ref.read(nodeSelectionProvider);
-        final node = picked ?? ref.read(autoNodeProvider);
-        if (node != null) {
-          vpn.connect(node);
-        } else {
-          showOnyxToast(context, 'Нет доступных серверов — добавьте подписку', glyph: OnyxGlyph.error);
-        }
-      case VpnConnected() || VpnConnecting() || VpnDisconnecting():
-        vpn.disconnect();
+    // Приоритет: выбранный пользователем сервер → лучший из группы автовыбора.
+    // Логика общая с мини-панелью трея (util/vpn_actions.dart).
+    final ok = await toggleConnection(ref);
+    if (!ok && mounted) {
+      showOnyxToast(context, 'Нет доступных серверов — добавьте подписку', glyph: OnyxGlyph.error);
     }
   }
 

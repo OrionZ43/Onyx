@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onyx/core/brand/onyx_fox.dart';
 import 'package:onyx/core/theme/app_theme.dart';
 import 'package:onyx/core/theme/theme_kind.dart';
 import 'package:onyx/domain/entities/node.dart';
@@ -32,6 +33,7 @@ import 'package:onyx/presentation/screens/groups_screen.dart';
 import 'package:onyx/presentation/screens/settings_screen.dart';
 import 'package:onyx/presentation/screens/setup_screen.dart';
 import 'package:onyx/presentation/screens/subscription_manager_screen.dart';
+import 'package:onyx/presentation/tray/tray_flyout.dart';
 import 'package:onyx/presentation/widgets/add_source_sheet.dart';
 import 'package:onyx/presentation/widgets/country_flag.dart';
 import 'package:onyx/presentation/widgets/node_list_sheet.dart';
@@ -197,6 +199,51 @@ Future<void> shot(WidgetTester tester, String name, Widget w, Size size, {bool a
   debugDefaultTargetPlatformOverride = null;
 }
 
+/// Мокап-композиция мини-панели: угол рабочего стола, панель задач с треем,
+/// над значком Onyx — панель (скругление и тень как у окон Windows 11).
+Widget flyoutScene(int frame) => Builder(builder: (context) {
+      return Stack(children: [
+        const Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1B2433), Color(0xFF2B2235), Color(0xFF14161C)]),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0, right: 0, bottom: 0, height: 48,
+          child: Container(
+            color: const Color(0xFF1C1F26),
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              for (final c in [const Color(0xFF6B7280), const Color(0xFF9CA3AF), const Color(0xFF60A5FA)])
+                Container(margin: const EdgeInsets.symmetric(horizontal: 7), width: 16, height: 16, decoration: BoxDecoration(color: c.withValues(alpha: .7), borderRadius: BorderRadius.circular(3))),
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(4)),
+                child: SizedBox.square(dimension: 16, child: CustomPaint(painter: OnyxFoxPainter(style: FoxStyle.silhouette, badge: const Color(0xFFD2B98F)))),
+              ),
+              const SizedBox(width: 18),
+              const Text('23:30\n08.11.2026', textAlign: TextAlign.right, style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white, height: 1.3)),
+            ]),
+          ),
+        ),
+        Positioned(
+          right: 40, bottom: 60,
+          width: TrayFlyout.size.width, height: TrayFlyout.size.height,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: const [BoxShadow(color: Color(0x99000000), blurRadius: 32, offset: Offset(0, 12))],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: TrayFlyout(onOpenApp: () {}, onExit: () {}, onDismiss: () {}, showId: frame),
+          ),
+        ),
+      ]);
+    });
+
 void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -207,6 +254,17 @@ void main() {
   final kinds = [AppThemeKind.onyx, AppThemeKind.signal];
 
   for (final k in kinds) {
+    for (final s in ['off', 'on']) {
+      testWidgets('${k.name} flyout $s', (tester) async {
+        await shot(tester, '${k.name}-flyout-$s', app(k, vpnOf(s), Scaffold(body: flyoutScene(0))), const Size(760, 620), android: false);
+      });
+    }
+    testWidgets('${k.name} flyout servers', (tester) async {
+      await shot(tester, '${k.name}-flyout-servers', app(k, vpnOf('on'), Scaffold(body: flyoutScene(0))), const Size(760, 620), android: false, then: () async {
+        await tester.tap(find.text('Автовыбор · из «Все»').first, warnIfMissed: false);
+        await tester.pump(const Duration(milliseconds: 400));
+      });
+    });
     for (final s in ['off', 'ing', 'on', 'err']) {
       testWidgets('${k.name} phone $s', (tester) async {
         await shot(tester, '${k.name}-phone-$s', app(k, vpnOf(s), const HomeScreen()), phone);
