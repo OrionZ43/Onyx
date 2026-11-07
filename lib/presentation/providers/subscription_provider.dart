@@ -37,7 +37,13 @@ class SubscriptionState {
     this.deepProbeTotal = 0,
     this.lastFetchedAt,
     this.isStale = false,
+    this.quarantined = const {},
   });
+
+  /// Ноды на карантине: сервер не ответил при подключении (connect timeout,
+  /// туннель мёртв). Автовыбор и автопереключение их пропускают, пока
+  /// Deep Probe снова не подтвердит работу или не истечёт срок (30 мин).
+  final Set<String> quarantined;
 
   final SubStatus status;
   final List<Node> nodes;
@@ -68,10 +74,11 @@ class SubscriptionState {
 
   /// Лучшая нода по ВСЕМ включённым источникам. Для выбора с учётом
   /// автогруппы — autoNodeProvider (groups_provider.dart).
-  Node? get bestNode => NodePool.best(nodes);
+  Node? get bestNode => NodePool.best(nodes, exclude: quarantined);
 
   /// Лучшая нода с доступом к ИИ; если таких нет — [bestNode].
-  Node? get bestAiNode => NodePool.best(nodes.where((n) => n.aiReachable)) ?? bestNode;
+  Node? get bestAiNode =>
+      NodePool.best(nodes.where((n) => n.aiReachable), exclude: quarantined) ?? bestNode;
 
   int get aiReachableCount => nodes.where((n) => n.aiReachable).length;
 
@@ -86,6 +93,7 @@ class SubscriptionState {
     int? deepProbeTotal,
     DateTime? lastFetchedAt,
     bool? isStale,
+    Set<String>? quarantined,
   }) =>
       SubscriptionState(
         status: status ?? this.status,
@@ -98,6 +106,7 @@ class SubscriptionState {
         deepProbeTotal: deepProbeTotal ?? this.deepProbeTotal,
         lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
         isStale: isStale ?? this.isStale,
+        quarantined: quarantined ?? this.quarantined,
       );
 }
 
@@ -127,6 +136,9 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   final Set<String> _probedIds = {};
 
   bool _busy = false;
+
+  /// Идёт проверка нод (TCP/Deep Probe).
+  bool get isProbing => _busy;
   final Set<String> _pending = {};
 
   @override
@@ -186,17 +198,57 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     }
   }
 
+  /// Начало «Обновить всё» (SourcesController.refreshAll): крутилка в UI.
+  void beginRefresh() {
+    if (!mounted) return;
+    state = state.copyWith(status: SubStatus.fetching);
+  }
+
+  /// Конец загрузки источников. [error] — не ответил ни один источник.
+  void endRefresh({String? error}) {
+    if (!mounted) return;
+    if (error != null) {
+      state = state.copyWith(status: SubStatus.error, error: error);
+    } else if (state.status == SubStatus.fetching) {
+      state = state.copyWith(status: SubStatus.ready);
+    }
+  }
+
   /// Повторная проверка всех нод пула.
   Future<void> reprobe() async {
     if (state.nodes.isEmpty) return;
     await _probeIds({for (final n in state.nodes) n.id});
   }
 
+  /// Нода не работает при реальном подключении (туннель не отвечает):
+  /// помечаем мёртвой и ставим на карантин — автовыбор и автопереключение
+  /// её пропускают, даже если следующий TCP-пинг снова «зелёный» (порт
+  /// открыт, а прокси не работает). Снимается подтверждением Deep Probe
+  /// или через [quarantineTtl].
   void markNodeAsDead(String nodeId) {
-    state = state.copyWith(nodes: [
-      for (final n in state.nodes)
-        n.id == nodeId ? n.copyWith(isAlive: false, isTrulyWorking: false) : n,
-    ]);
+    _quarantine[nodeId] = DateTime.now();
+    state = state.copyWith(
+      nodes: [
+        for (final n in state.nodes)
+          n.id == nodeId ? n.copyWith(isAlive: false, isTrulyWorking: false) : n,
+      ],
+      quarantined: _activeQuarantine(),
+    );
+  }
+
+  static const quarantineTtl = Duration(minutes: 30);
+  final Map<String, DateTime> _quarantine = {};
+
+  Set<String> _activeQuarantine() {
+    final now = DateTime.now();
+    _quarantine.removeWhere((_, t) => now.difference(t) >= quarantineTtl);
+    return Set.unmodifiable(_quarantine.keys);
+  }
+
+  void _liftQuarantine(String nodeId) {
+    if (_quarantine.remove(nodeId) != null) {
+      state = state.copyWith(quarantined: _activeQuarantine());
+    }
   }
 
   // ── Проверки ───────────────────────────────────────────────────────────────
@@ -274,6 +326,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       sortedNodes,
       onNodeResult: (u) {
         if (!mounted) return;
+        // Deep Probe подтвердил реальную работу — снимаем карантин.
+        if (u.isTrulyWorking) _liftQuarantine(u.id);
         _apply([u], (cur, upd) => cur.copyWith(
               isTrulyWorking: upd.isTrulyWorking,
               aiReachable: upd.aiReachable,

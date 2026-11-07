@@ -60,7 +60,8 @@ void main() {
 
     final r = rules(cfg);
     expect(r[0], {'action': 'sniff'});
-    expect(r[1], {'protocol': 'dns', 'action': 'hijack-dns'});
+    expect(r[1], {'port': 53, 'action': 'hijack-dns'});
+    expect((cfg['dns'] as Map)['strategy'], 'ipv4_only');
     expect(r[2]['process_name'], contains('Discord.exe'));
     expect(r[3]['domain_suffix'], contains('discord.media'));
     expect(

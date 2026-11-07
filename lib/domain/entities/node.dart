@@ -228,6 +228,16 @@ class Node {
   ///   2. isTrulyWorking == false → poor (TCP жив, но HTTP-проверка не
   ///      прошла — эта нода реально не работает, вне зависимости от пинга)
   ///   3. иначе — обычная градация по latency
+  /// Честный статус UDP: «нет UDP» только если сервер РАБОТАЕТ (Deep Probe
+  /// прошёл), а STUN-ответов нет. Мёртвый сервер — [UdpStatus.unreachable].
+  UdpStatus get udpStatus {
+    if (udpSupported) return UdpStatus.ok;
+    if (isTrulyWorking) return UdpStatus.blocked;
+    final probed = latencyMs != null || isAlive;
+    if (!probed) return UdpStatus.unknown;
+    return UdpStatus.unreachable;
+  }
+
   NodeQuality get quality {
     if (!isAlive || latencyMs == null) return NodeQuality.dead;
     if (!isTrulyWorking) return NodeQuality.poor;
@@ -360,3 +370,18 @@ class Node {
 }
 
 enum NodeQuality { excellent, good, poor, dead }
+
+/// Состояние UDP (голос Discord) для бейджа в UI.
+enum UdpStatus {
+  /// Ещё не проверяли.
+  unknown,
+
+  /// Сервер недоступен — UDP не проверялся (не «нет UDP»!).
+  unreachable,
+
+  /// Сервер работает, но UDP через него не проходит.
+  blocked,
+
+  /// UDP проходит.
+  ok,
+}

@@ -47,7 +47,7 @@ void main() {
     );
     expect(
       const UdpProbeResult(ok: false, sent: 5, received: 0).summary,
-      contains('не проходит'),
+      contains('заблокирован'),
     );
     expect(const UdpProbeResult.failed('VPN не подключён').summary,
         contains('VPN не подключён'));

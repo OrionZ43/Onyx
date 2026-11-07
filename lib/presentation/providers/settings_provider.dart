@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/node_scorer.dart';
 import '../../domain/routing_region.dart';
@@ -11,9 +13,17 @@ class SettingsState {
     this.splitTunnelingEnabled = false,
     this.excludedApps = const <String>{},
     this.autoFailover = true,
-    this.routingRegion = RoutingRegion.russia,
+    this.routingRegion = RoutingRegion.auto,
     this.discordMode = true,
+    this.detectedRegion = RoutingRegion.russia,
   });
+
+  /// Регион, определённый по устройству (для [RoutingRegion.auto]).
+  final RoutingRegion detectedRegion;
+
+  /// Конкретный регион для маршрутизации и скоринга: «Авто» развёрнут
+  /// в [detectedRegion]. UI может показать «Авто: Китай».
+  RoutingRegion get effectiveRegion => routingRegion.resolve(detectedRegion);
 
   /// Регион умной маршрутизации (см. RoutingRegion): чьи «домашние» сайты
   /// идут мимо туннеля. Имеет смысл только при [smartRouting].
@@ -53,6 +63,7 @@ class SettingsState {
     bool? autoFailover,
     RoutingRegion? routingRegion,
     bool? discordMode,
+    RoutingRegion? detectedRegion,
   }) =>
       SettingsState(
         smartRouting: smartRouting ?? this.smartRouting,
@@ -63,11 +74,12 @@ class SettingsState {
         autoFailover: autoFailover ?? this.autoFailover,
         routingRegion: routingRegion ?? this.routingRegion,
         discordMode: discordMode ?? this.discordMode,
+        detectedRegion: detectedRegion ?? this.detectedRegion,
       );
 }
 
 class SettingsNotifier extends StateNotifier<SettingsState> {
-  SettingsNotifier() : super(const SettingsState()) {
+  SettingsNotifier() : super(SettingsState(detectedRegion: detectDevice())) {
     _load();
   }
 
@@ -78,9 +90,27 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   static const _keyAutoFailover = 'settings_auto_failover';
   static const _keyRoutingRegion = 'settings_routing_region';
   static const _keyDiscordMode = 'settings_discord_mode';
+  static const _keyMigratedV2 = 'settings_migrated_v2';
+
+  /// Определение региона устройства (без сети). Переопределяется в тестах.
+  static RoutingRegion Function() detectDevice = () => RoutingRegionLabel.detect(
+        offset: DateTime.now().timeZoneOffset,
+        timeZoneName: DateTime.now().timeZoneName,
+        locale: Platform.localeName,
+      );
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    // Разовая миграция (0.3.0, «одна кнопка»): переключатели региона и
+    // Discord ушли с главного экрана — возвращаем разумные дефолты, чтобы
+    // старый выбор (например «Китай» у пользователя в Беларуси) не остался
+    // незаметно включённым. Дальше пользователь выбирает в Настройках.
+    if (prefs.getBool(_keyMigratedV2) != true) {
+      await prefs.setString(_keyRoutingRegion, RoutingRegion.auto.name);
+      await prefs.setBool(_keyDiscordMode, true);
+      await prefs.setBool(_keyMigratedV2, true);
+    }
     if (!mounted) return;
     state = state.copyWith(
       smartRouting: prefs.getBool(_keySmartRouting) ?? true,
@@ -92,6 +122,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       routingRegion:
           RoutingRegionLabel.parse(prefs.getString(_keyRoutingRegion)),
       discordMode: prefs.getBool(_keyDiscordMode) ?? true,
+      detectedRegion: detectDevice(),
     );
     _applyScoring();
   }
@@ -116,7 +147,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 
   /// Скоринг нод зависит от региона и режима Discord.
   void _applyScoring() {
-    NodeScorer.region = state.routingRegion;
+    NodeScorer.region = state.effectiveRegion;
     NodeScorer.preferUdp = state.discordMode;
   }
 

@@ -201,9 +201,11 @@ final autoGroupProvider = StateNotifierProvider<AutoGroupController, String?>(
 /// лучшая по всем (лучше подключиться, чем не подключиться).
 final autoNodeProvider = Provider<Node?>((ref) {
   // Регион и режим Discord влияют на скоринг — пересчитываем при их смене.
-  ref.watch(settingsProvider.select((s) => (s.routingRegion, s.discordMode)));
+  ref.watch(settingsProvider.select((s) => (s.effectiveRegion, s.discordMode)));
   final all = ref.watch(subscriptionProvider.select((s) => s.nodes));
+  final bad = ref.watch(subscriptionProvider.select((s) => s.quarantined));
   final groupId = ref.watch(autoGroupProvider);
-  if (groupId == null) return NodePool.best(all);
-  return NodePool.best(ref.watch(groupNodesProvider(groupId))) ?? NodePool.best(all);
+  if (groupId == null) return NodePool.best(all, exclude: bad);
+  return NodePool.best(ref.watch(groupNodesProvider(groupId)), exclude: bad) ??
+      NodePool.best(all, exclude: bad);
 });

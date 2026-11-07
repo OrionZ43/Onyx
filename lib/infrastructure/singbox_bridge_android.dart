@@ -234,7 +234,7 @@ class SingboxBridgeAndroid implements SingboxBridge {
           discordMode: routing.discordMode,
         );
 
-        config = parsed.getFullConfiguration();
+        config = _withIpv4OnlyDns(parsed.getFullConfiguration());
 
         // ── Исключение RU-подсетей на уровне VpnService ───────────────────
         //
@@ -470,6 +470,31 @@ class SingboxBridgeAndroid implements SingboxBridge {
   bool _isIpAddress(String host) =>
       RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) ||
           host.contains(':');
+
+  /// DNS-запросы из TUN (порт 53) — в dns-outbound Xray, который отвечает
+  /// по `dns.queryStrategy: UseIPv4`: AAAA-записи не возвращаются.
+  /// VpnService плагина захватывает только IPv4 (0.0.0.0/0); если приложение
+  /// получит AAAA, оно пойдёт по IPv6 МИМО VPN (в Китае — под GFW). Так
+  /// ломался просмотр чужого стрима Discord (ошибка 2007).
+  static String _withIpv4OnlyDns(String config) {
+    final cfg = jsonDecode(config) as Map<String, dynamic>;
+    final outbounds = (cfg['outbounds'] as List).cast<dynamic>();
+    outbounds.add({'tag': 'dns-out', 'protocol': 'dns'});
+    final routing = (cfg['routing'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final rules = ((routing['rules'] as List?) ?? []).cast<dynamic>();
+    rules.insert(0, {
+      'type': 'field',
+      'port': '53',
+      'network': 'udp',
+      'outboundTag': 'dns-out',
+    });
+    routing['rules'] = rules;
+    cfg['routing'] = routing;
+    final dns = (cfg['dns'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    dns['queryStrategy'] = 'UseIPv4';
+    cfg['dns'] = dns;
+    return const JsonEncoder.withIndent('  ').convert(cfg);
+  }
 
   // ── Цепочка Xray → sing-box ────────────────────────────────────────────
 

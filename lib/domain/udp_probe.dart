@@ -12,6 +12,7 @@ class UdpProbeResult {
     required this.received,
     this.rttMs,
     this.error,
+    this.serverUnreachable = false,
   });
 
   const UdpProbeResult.failed(String message)
@@ -19,7 +20,20 @@ class UdpProbeResult {
         sent = 0,
         received = 0,
         rttMs = null,
-        error = message;
+        error = message,
+        serverUnreachable = false;
+
+  /// Сервер не отвечает вовсе (туннель мёртв, connect timeout) — UDP
+  /// при этом НЕ проверялся, и писать «UDP заблокирован» было бы неправдой.
+  const UdpProbeResult.unreachable({this.sent = 0})
+      : ok = false,
+        received = 0,
+        rttMs = null,
+        error = 'сервер недоступен',
+        serverUnreachable = true;
+
+  /// true — туннель целиком не работает (а не UDP заблокирован).
+  final bool serverUnreachable;
 
   /// Хотя бы один STUN-ответ вернулся через туннель.
   final bool ok;
@@ -32,8 +46,11 @@ class UdpProbeResult {
 
   /// Готовая строка для тоста/лога.
   String get summary {
+    if (serverUnreachable) {
+      return 'Сервер недоступен — смените сервер (UDP не проверялся)';
+    }
     if (error != null && sent == 0) return 'Проверка UDP не удалась: $error';
-    if (!ok) return 'UDP не проходит — голос Discord работать не будет';
+    if (!ok) return 'UDP заблокирован на этом сервере — голос Discord работать не будет';
     final quality = received == sent
         ? 'голос Discord пойдёт'
         : 'есть потери, голос может прерываться';

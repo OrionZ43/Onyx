@@ -10,6 +10,8 @@ import '../../infrastructure/singbox_bridge_android.dart';
 import '../../infrastructure/vpn_notification_service.dart';
 import 'subscription_provider.dart';
 import 'groups_provider.dart';
+import 'connect_phase.dart';
+import 'sources_provider.dart';
 import '../../domain/sources/node_pool.dart';
 import 'node_provider.dart';
 import 'settings_provider.dart';
@@ -81,7 +83,7 @@ class VpnController extends StateNotifier<VpnState> {
       fallbacks: fallbacks,
       routing: RoutingOptions(
         smartRouting: settingsSnapshot.smartRouting,
-        region: settingsSnapshot.routingRegion,
+        region: settingsSnapshot.effectiveRegion,
         aiDirectLane: settingsSnapshot.aiDirectLane,
         discordMode: settingsSnapshot.discordMode,
       ),
@@ -124,6 +126,117 @@ class VpnController extends StateNotifier<VpnState> {
     _startNotificationUpdates(mySession, node.name);
   }
 
+  // ── Автопилот «один тап» ──────────────────────────────────────────────
+
+  /// Сколько ждать проверки серверов перед подключением.
+  static const _probeWaitLimit = Duration(seconds: 90);
+
+  /// Тап по кнопке в режиме «Автовыбор»: обновить устаревшие подписки,
+  /// проверить серверы (TCP → Deep Probe → UDP), выбрать лучший живой (в
+  /// режиме Discord — с UDP), подключиться, а при отказе — следующий.
+  /// Этапы — в [connectPhaseProvider]. Ручной выбор сервера — [connect].
+  Future<void> smartConnect() async {
+    if (state is VpnConnecting || state is VpnConnected) return;
+    final phase = ref.read(connectPhaseProvider.notifier);
+    final srcCtl = ref.read(sourcesProvider.notifier);
+    final subCtl = ref.read(subscriptionProvider.notifier);
+    await srcCtl.ready;
+
+    void fail(ConnectFailure r, String msg, List<ConnectAction> a) {
+      log.w('Автопилот: $msg', tag: 'VPN');
+      phase.state = ConnectPhase.failed(r, msg, a);
+    }
+
+    // 1. Источники.
+    final enabled = ref.read(sourcesProvider).where((s) => s.enabled).toList();
+    if (enabled.isEmpty) {
+      return fail(
+        ConnectFailure.noSources,
+        'Нет серверов. Добавьте подписку, ссылку или свой сервер.',
+        const [ConnectAction.addServer, ConnectAction.awsGuide],
+      );
+    }
+    final now = DateTime.now();
+    final stale = enabled.where((s) {
+      if (s.kind != SourceKind.subscription) return false;
+      final last = s.lastUpdatedAt;
+      final hours = s.autoUpdateHours > 0 ? s.autoUpdateHours : 24;
+      return last == null || now.difference(last) >= Duration(hours: hours);
+    }).toList();
+    if (stale.isNotEmpty || ref.read(subscriptionProvider).nodes.isEmpty) {
+      phase.state = ConnectPhase.updating;
+      for (final s in (stale.isEmpty ? enabled : stale)) {
+        await srcCtl.refresh(s.id, probe: false);
+      }
+    }
+    if (ref.read(subscriptionProvider).nodes.isEmpty) {
+      final errs = [
+        for (final s in ref.read(sourcesProvider))
+          if (s.enabled && s.error != null) '${s.name}: ${s.error}',
+      ];
+      return fail(
+        ConnectFailure.sourcesUnreachable,
+        'Не удалось загрузить серверы${errs.isEmpty ? '' : ' (${errs.join('; ')})'}. '
+            'Проверьте интернет или добавьте свой сервер.',
+        const [ConnectAction.refresh, ConnectAction.addServer, ConnectAction.awsGuide],
+      );
+    }
+
+    // 2. Проверка: ждём, пока появится подходящий кандидат.
+    final discord = ref.read(settingsProvider).discordMode;
+    bool good(Node n) => n.isTrulyWorking && (!discord || n.udpSupported);
+    Node? candidate() {
+      final sub = ref.read(subscriptionProvider);
+      final groupId = ref.read(autoGroupProvider);
+      final pool = groupId == null ? sub.nodes : ref.read(groupNodesProvider(groupId));
+      return NodePool.best(pool.where(good), exclude: sub.quarantined) ??
+          NodePool.best(sub.nodes.where(good), exclude: sub.quarantined);
+    }
+
+    if (candidate() == null) {
+      if (!subCtl.isProbing) unawaited(subCtl.reprobe());
+      final deadline = DateTime.now().add(_probeWaitLimit);
+      await Future.delayed(const Duration(milliseconds: 300));
+      while (DateTime.now().isBefore(deadline) && candidate() == null) {
+        final s = ref.read(subscriptionProvider);
+        final deep = s.status == SubStatus.deepProbing;
+        phase.state = ConnectPhase.checking(
+          deep ? s.deepProbedCount : s.probedCount,
+          deep ? s.deepProbeTotal : s.probeTotal,
+        );
+        if (!subCtl.isProbing) break;
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
+
+    // 3–4. Выбор и подключение; до 3 попыток на разных серверах.
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final node = candidate() ?? ref.read(autoNodeProvider);
+      if (node == null) break;
+      phase.state = ConnectPhase.connecting(node.name);
+      await connect(node);
+      if (state is VpnConnected) {
+        final noUdp = discord && !node.udpSupported;
+        phase.state = noUdp
+            ? const ConnectPhase.notice(
+                'Подключено, но сервер с рабочим UDP не найден — голос Discord может не работать. '
+                'Попробуйте «Обновить» позже или свой сервер.',
+              )
+            : ConnectPhase.idle;
+        return;
+      }
+      // Не поднялся — на карантин и следующий.
+      subCtl.markNodeAsDead(node.id);
+      log.w('Автопилот: ${node.name} не поднялся — пробуем следующий', tag: 'VPN');
+    }
+
+    fail(
+      ConnectFailure.allDead,
+      'Ни один сервер сейчас не отвечает. Обновите список позже или добавьте свой сервер.',
+      const [ConnectAction.refresh, ConnectAction.addServer, ConnectAction.awsGuide],
+    );
+  }
+
   /// Другие транспорты ТОГО ЖЕ сервера (тот же host, другой протокол или
   /// порт): например REALITY + Hysteria2 от нашего серверного скрипта.
   /// Мост объединит их в urltest-группу — sing-box сам переключится на
@@ -147,7 +260,13 @@ class VpnController extends StateNotifier<VpnState> {
     if (state is! VpnConnected) {
       return const UdpProbeResult.failed('VPN не подключён');
     }
-    final r = await _bridge.checkUdp();
+    var r = await _bridge.checkUdp();
+    if (!r.ok && !r.serverUnreachable) {
+      // Ответов нет. Отличаем «UDP заблокирован» от «сервер мёртв»:
+      // если и HTTPS через туннель не проходит — дело не в UDP.
+      final tunnelAlive = await _bridge.verifyTunnel();
+      if (!tunnelAlive) r = UdpProbeResult.unreachable(sent: r.sent);
+    }
     log.i('Проверка UDP: ${r.summary}', tag: 'VPN');
     return r;
   }
@@ -234,6 +353,9 @@ class VpnController extends StateNotifier<VpnState> {
   /// Интервал плановой проверки в норме (щадящий).
   static const _healthInterval = Duration(seconds: 20);
 
+  /// Первая проверка после подключения.
+  static const _firstCheckDelay = Duration(seconds: 6);
+
   /// Быстрое переподтверждение после первой плохой пробы.
   static const _recheckDelay = Duration(seconds: 3);
 
@@ -251,7 +373,7 @@ class VpnController extends StateNotifier<VpnState> {
     _healthTimer?.cancel();
     _badSamples = 0;
     _isFailingOver = false;
-    _healthTimer = Timer.periodic(_healthInterval, (_) async {
+    Future<void> tick() async {
       if (mySession != _sessionId) return;
       if (state is! VpnConnected) return;
       if (_isFailingOver) return;
@@ -293,6 +415,14 @@ class VpnController extends StateNotifier<VpnState> {
         _healthTimer?.cancel();
         await _failover(mySession);
       }
+    }
+
+    // Первая проверка — быстро после подключения: если сервер мёртв
+    // (connect timeout), не ждём плановые 20 с, а через ~6+3 с переключаемся.
+    _healthTimer = Timer(_firstCheckDelay, () async {
+      await tick();
+      if (mySession != _sessionId || state is! VpnConnected) return;
+      _healthTimer = Timer.periodic(_healthInterval, (_) => tick());
     });
   }
 
@@ -389,7 +519,12 @@ class VpnController extends StateNotifier<VpnState> {
     ));
 
     _isFailingOver = false;
+    final phase = ref.read(connectPhaseProvider.notifier);
+    phase.state = ConnectPhase.switching(deadNode.name, next.name);
     await connect(next);
+    phase.state = state is VpnConnected
+        ? ConnectPhase.notice('Переключились: ${deadNode.name} → ${next.name}')
+        : ConnectPhase.idle;
   }
 
   /// Выбирает лучшего кандидата для переключения.
@@ -407,6 +542,7 @@ class VpnController extends StateNotifier<VpnState> {
       groupNodes: groupId == null ? sub.nodes : ref.read(groupNodesProvider(groupId)),
       allNodes: sub.nodes,
       preferAi: preferAi,
+      exclude: sub.quarantined,
     );
   }
 

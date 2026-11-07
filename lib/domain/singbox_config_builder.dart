@@ -393,6 +393,12 @@ class SingboxConfigBuilder {
           {'rule_set': _cnGeosite, 'server': 'dns-local'},
       ],
       'final': 'dns-remote',
+      // Только IPv4 (A-записи). Иначе приложения (Discord: стрим-серверы)
+      // выбирают IPv6: на Android VpnService IPv6 не захватывает — трафик
+      // идёт мимо VPN и режется GFW; на Windows уходит в туннель, а у
+      // многих серверов нет IPv6 → таймауты, Discord 2007 «Stream is
+      // reconnecting».
+      'strategy': 'ipv4_only',
     };
   }
 
@@ -429,7 +435,11 @@ class SingboxConfigBuilder {
         // Определяем протокол и домен (TLS SNI, HTTP Host, QUIC, DNS),
         // не подменяя IP назначения: работают и доменные, и IP-правила.
         {'action': 'sniff'},
-        {'protocol': 'dns', 'action': 'hijack-dns'},
+        // Перехват DNS строго по порту 53. Раньше было protocol: dns —
+        // тогда в DNS-модуль попадали и не-DNS пакеты на :53 (в логах
+        // «bad question name / overflow uint16»), а сниффер теоретически
+        // мог принять за DNS короткие UDP-пакеты на других портах.
+        {'port': 53, 'action': 'hijack-dns'},
         // ── Режим Discord: наивысший приоритет ─────────────────────────
         // На Windows ловим сам процесс: так в туннель гарантированно
         // попадает и голос/видео (UDP на IP voice-серверов, у которых в
@@ -465,7 +475,7 @@ class SingboxConfigBuilder {
       // Windows: исходящие сокеты sing-box привязываются к физическому
       // адаптеру, мимо WinTUN — иначе петля.
       if (autoDetectInterface) 'auto_detect_interface': true,
-      'default_domain_resolver': {'server': 'dns-local'},
+      'default_domain_resolver': {'server': 'dns-local', 'strategy': 'prefer_ipv4'},
     };
   }
 }
