@@ -19,7 +19,7 @@ import 'hero_state.dart';
 ///
 /// В покое (off / on) тикер стоит — 0 кадров/с.
 class OnyxLensButton extends StatefulWidget {
-  const OnyxLensButton({super.key, required this.phase, required this.onTap, this.size = 280, this.compact = false});
+  const OnyxLensButton({super.key, required this.phase, required this.onTap, this.size = 280, this.compact = false, this.progress, this.label});
 
   final HeroPhase phase;
   final VoidCallback onTap;
@@ -27,6 +27,14 @@ class OnyxLensButton extends StatefulWidget {
 
   /// Без подписи внутри — для маленьких размеров (мини-панель в трее).
   final bool compact;
+
+  /// Настоящий прогресс этапа 0..1 (автопилот: проверено серверов из всех);
+  /// null — условная дуга по времени.
+  final double? progress;
+
+  /// Подпись действия вместо стандартной (автопилот: «Подождите» — отменить
+  /// этап нельзя).
+  final String? label;
 
   @override
   State<OnyxLensButton> createState() => _OnyxLensButtonState();
@@ -78,10 +86,20 @@ class _OnyxLensButtonState extends State<OnyxLensButton> with TickerProviderStat
 
   void _startConnecting() {
     final from = _arc.value;
+    var real = false;
     _connectTicker = createTicker((elapsed) {
-      final target = connectingProgress(elapsed);
-      // Дуга не откатывается назад, если подключение началось с непустой.
-      _arc.value = math.max(from * (1 - target), target);
+      final p = widget.progress;
+      if (p != null || real) {
+        // Настоящий прогресс (автопилот) — плавно догоняем, до полного кольца
+        // не доводим; когда этап сменился подключением — тянемся к 0,9.
+        real = true;
+        final goal = p != null ? p.clamp(0.0, 1.0) * 0.95 : 0.9;
+        _arc.value += (goal - _arc.value) * 0.12;
+      } else {
+        final target = connectingProgress(elapsed);
+        // Дуга не откатывается назад, если подключение началось с непустой.
+        _arc.value = math.max(from * (1 - target), target);
+      }
       _breath = 0.8 + 0.2 * math.cos(elapsed.inMilliseconds / 1600 * 2 * math.pi);
     })..start();
   }
@@ -107,7 +125,7 @@ class _OnyxLensButtonState extends State<OnyxLensButton> with TickerProviderStat
     final d = widget.size;
     final lens = d * 0.74;
     final phase = widget.phase;
-    final label = heroActionLabel(phase);
+    final label = widget.label ?? heroActionLabel(phase);
     final contentColor = switch (phase) {
       HeroPhase.on => t.accent,
       HeroPhase.connecting => t.accentMuted,

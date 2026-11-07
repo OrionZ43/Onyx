@@ -511,36 +511,38 @@ class _Tile extends StatelessWidget {
 // ── Регион и проверка UDP (#34/#35) ─────────────────────────────────────────
 
 /// Регион маршрутизации (#47): пункт со значением, выбор — в листе. По
-/// умолчанию — РФ/Беларусь (или «Авто» по часовому поясу, когда домен его
-/// даст); на главном экране и в мини-панели регион не показывается.
+/// умолчанию — «Авто» (домен «Оникс»: часовой пояс и язык системы; для РФ и
+/// Беларуси — РФ/РБ); на главном экране и в мини-панели регион не показан.
 class _RegionTile extends ConsumerWidget {
   const _RegionTile();
 
-  // Через name, а не значения enum: «Авто» добавляет домен («Оникс»).
-  static String _short(RoutingRegion r) => switch (r.name) {
-        'auto' => 'Авто',
-        'russia' => 'РФ/РБ',
-        _ => r.label,
+  static String _short(RoutingRegion r) => switch (r) {
+        RoutingRegion.auto => 'Авто',
+        RoutingRegion.russia => 'РФ/РБ',
+        RoutingRegion.china => 'Китай',
       };
-  static String _hint(RoutingRegion r) => switch (r.name) {
-        'auto' => 'По часовому поясу и языку системы',
-        'china' => 'Китайские сайты и сервисы — напрямую',
-        _ => 'Российские и белорусские сайты — напрямую',
+
+  /// Подпись варианта; для «Авто» — во что он сейчас развернулся.
+  static String _hint(RoutingRegion r, RoutingRegion effective) => switch (r) {
+        RoutingRegion.auto => 'По часовому поясу и языку системы · сейчас ${_short(effective)}',
+        RoutingRegion.russia => 'Российские и белорусские сайты — напрямую',
+        RoutingRegion.china => 'Китайские сайты и сервисы — напрямую',
       };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final region = ref.watch(settingsProvider.select((s) => s.routingRegion));
+    final s = ref.watch(settingsProvider);
+    final region = s.routingRegion;
     return _NavTile(
       glyph: OnyxGlyph.globe,
       title: 'Регион маршрутизации',
       subtitle: 'Сайты этой страны — напрямую, мимо туннеля.',
-      trailing: _short(region),
-      onTap: () => _pick(context, ref, region),
+      trailing: region == RoutingRegion.auto ? 'Авто · ${_short(s.effectiveRegion)}' : _short(region),
+      onTap: () => _pick(context, ref, region, s.effectiveRegion),
     );
   }
 
-  Future<void> _pick(BuildContext context, WidgetRef ref, RoutingRegion current) async {
+  Future<void> _pick(BuildContext context, WidgetRef ref, RoutingRegion current, RoutingRegion effective) async {
     final t = OnyxTokens.of(context);
     final v = await showModalBottomSheet<RoutingRegion>(
       context: context,
@@ -557,7 +559,7 @@ class _RegionTile extends ConsumerWidget {
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24),
               title: Text(r.label, style: TextStyle(fontFamily: t.bodyFont, fontSize: 14.5, fontWeight: FontWeight.w500, color: t.text)),
-              subtitle: Text(_hint(r), style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, color: t.textMuted)),
+              subtitle: Text(_hint(r, effective), style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, color: t.textMuted)),
               trailing: r == current ? OnyxIcon(OnyxGlyph.check, size: 18, color: t.isSignal ? AppTheme.signalRec : t.accent) : null,
               onTap: () => Navigator.pop(c, r),
             ),

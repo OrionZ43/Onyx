@@ -33,7 +33,8 @@ class PresetTile extends ConsumerWidget {
     final t = OnyxTokens.of(context);
     final s = Theme.of(context).colorScheme;
     final sources = ref.watch(sourcesProvider);
-    final region = ref.watch(settingsProvider.select((x) => x.routingRegion));
+    // «Авто» может уже развернуться в Китай — смотрим на итоговый регион.
+    final region = ref.watch(settingsProvider.select((x) => x.effectiveRegion));
     final src = sources.where((x) => x.presetId == preset.id).firstOrNull;
     final active = src != null;
     final busy = src?.status == SourceStatus.fetching;

@@ -13,6 +13,7 @@ import 'package:tray_manager/tray_manager.dart';
 
 import '../../core/log_service.dart';
 import '../../domain/entities/vpn_state.dart';
+import '../providers/connect_phase.dart';
 import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
 import '../providers/vpn_provider.dart';
@@ -42,19 +43,25 @@ class OnyxTray {
         _ => ref.read(nodeSelectionProvider) ?? ref.read(autoNodeProvider),
       };
 
-      final icon = _iconFor(vpn);
+      // Автопилот обновляет подписку и проверяет серверы, пока VPN ещё выключен.
+      final cp = ref.read(connectPhaseProvider);
+      final pre = (vpn is VpnDisconnected || vpn is VpnError) && cp.busy;
+
+      final icon = pre ? 'assets/tray/tray_ing.ico' : _iconFor(vpn);
       if (icon != _lastIcon) {
         _lastIcon = icon;
         await trayManager.setIcon(icon);
       }
 
-      final state = switch (vpn) {
-        VpnConnected() => 'Защищено',
-        VpnConnecting() => 'Подключение…',
-        VpnDisconnecting() => 'Отключение…',
-        VpnError() => 'Нет соединения',
-        _ => 'Не защищено',
-      };
+      final state = pre
+          ? cp.label
+          : switch (vpn) {
+              VpnConnected() => 'Защищено',
+              VpnConnecting() => 'Подключение…',
+              VpnDisconnecting() => 'Отключение…',
+              VpnError() => 'Нет соединения',
+              _ => cp is ConnectFailed ? 'Не удалось подключиться' : 'Не защищено',
+            };
       final serverName = current == null ? 'нет сервера' : displayNodeName(current.name);
       final ping = current?.latencyMs == null ? '' : ' · ${current!.latencyMs} мс';
       // Windows обрезает тултип трея до 127 символов.

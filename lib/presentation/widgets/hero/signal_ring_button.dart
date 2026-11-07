@@ -27,6 +27,8 @@ class SignalRingButton extends StatefulWidget {
     this.connectedAt,
     this.size = 300,
     this.compact = false,
+    this.progress,
+    this.label,
   });
 
   final HeroPhase phase;
@@ -36,6 +38,14 @@ class SignalRingButton extends StatefulWidget {
 
   /// Без табло и подписи — для мини-панели в трее.
   final bool compact;
+
+  /// Настоящий прогресс этапа 0..1 (автопилот: проверено серверов из всех);
+  /// null — условный прогресс по времени.
+  final double? progress;
+
+  /// Подпись под табло на этапе подключения вместо «туннель» (автопилот:
+  /// «подождите» — отменить этап нельзя).
+  final String? label;
 
   static const int dots = 64;
 
@@ -74,7 +84,8 @@ class _SignalRingButtonState extends State<SignalRingButton> with TickerProvider
         _progress = 0;
         _lastTick = 0;
         _ticker = createTicker((e) {
-          final v = connectingProgress(e);
+          final p = widget.progress;
+          final v = p != null ? p.clamp(0.0, 0.99) : connectingProgress(e);
           final lit = (v * SignalRingButton.dots).floor();
           if (lit ~/ 8 > _lastTick) {
             _lastTick = lit ~/ 8;
@@ -131,7 +142,7 @@ class _SignalRingButtonState extends State<SignalRingButton> with TickerProvider
     };
     final caption = switch (phase) {
       HeroPhase.on => 'нажми — отключить',
-      HeroPhase.connecting => 'туннель · ${(_progress * 100).round()}%',
+      HeroPhase.connecting => '${widget.label ?? (widget.progress != null ? 'проверка' : 'туннель')} · ${(_progress * 100).round()}%',
       HeroPhase.error => 'нажми — повторить',
       HeroPhase.off => 'нажми — подключить',
     };

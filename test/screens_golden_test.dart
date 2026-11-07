@@ -6,6 +6,7 @@
 // Сеть и ядро не трогаются: контроллеры VPN, подписки и обновлений подменены.
 
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,8 @@ import 'package:onyx/core/theme/theme_kind.dart';
 import 'package:onyx/domain/entities/node.dart';
 import 'package:onyx/domain/entities/vpn_state.dart';
 import 'package:onyx/infrastructure/update_service.dart';
+import 'package:onyx/presentation/providers/activity_provider.dart';
+import 'package:onyx/presentation/providers/connect_phase.dart';
 import 'package:onyx/presentation/providers/groups_provider.dart';
 import 'package:onyx/presentation/providers/sources_provider.dart';
 import 'package:onyx/presentation/providers/subscription_provider.dart';
@@ -36,13 +39,7 @@ import 'package:onyx/presentation/screens/subscription_manager_screen.dart';
 import 'package:onyx/presentation/tray/tray_flyout.dart';
 import 'package:onyx/presentation/widgets/add_source_sheet.dart';
 import 'package:onyx/presentation/widgets/country_flag.dart';
-import 'package:onyx/presentation/widgets/hero/hero_button.dart';
-import 'package:onyx/presentation/widgets/hero/hero_state.dart';
-import 'package:onyx/presentation/widgets/home_parts.dart';
 import 'package:onyx/presentation/widgets/node_list_sheet.dart';
-import 'package:onyx/presentation/widgets/onyx_icon.dart';
-import 'package:onyx/presentation/widgets/onyx_wordmark.dart';
-import 'package:onyx/core/theme/onyx_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ── Подмены ─────────────────────────────────────────────────────────────────
@@ -103,7 +100,7 @@ class FakeUpdate extends UpdateController {
 Node node(String id, String name, int? ping, {bool ai = false, bool alive = true, bool verified = true, String proto = 'vless', bool udp = false}) => Node(
       id: id,
       name: name,
-      host: 'h',
+      host: '185.212.47.${10 + int.parse(id)}',
       port: 443,
       uuid: 'u',
       flow: '',
@@ -168,8 +165,11 @@ Future<void> loadFonts() async {
 
 // ── Сборка ──────────────────────────────────────────────────────────────────
 
-Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s}) => ProviderScope(
+Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s, ConnectPhase phase = ConnectPhase.idle}) => ProviderScope(
       overrides: [
+        connectPhaseProvider.overrideWith((ref) => phase),
+        activityProvider.overrideWith((ref) => ActivityLog(activity)),
+        speedProvider.overrideWith((ref) => SpeedHistory(speedSamples)),
         themeKindProvider.overrideWith((ref) => ThemeKindNotifier(kind)),
         vpnControllerProvider.overrideWith((ref) => FakeVpn(vpn)),
         subscriptionProvider.overrideWith((ref) => FakeSub(s ?? sub)),
@@ -249,55 +249,6 @@ Widget flyoutScene(int frame) => Builder(builder: (context) {
         ),
       ]);
     });
-/// Прототип этапов автоподключения на телефоне (#47). Вид — по API «Оникс»
-/// (connectPhaseProvider: updating / checking / connecting / failed); данные
-/// заданы вручную, пока API не в ветке. Раскладка — как у главного экрана.
-Widget autopilotScene({required HeroPhase phase, required String title, String? detail, List<(String, VoidCallback)>? actions}) =>
-    Builder(builder: (context) {
-      final t = OnyxTokens.of(context);
-      return Scaffold(
-        backgroundColor: t.bg,
-        body: SafeArea(
-          child: Column(children: [
-            SizedBox(
-              height: 56,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 20, right: 14),
-                child: Row(children: [
-                  const OnyxWordmark(size: 13),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () {},
-                    icon: OnyxIcon(t.isSignal ? OnyxGlyph.more : OnyxGlyph.settings, size: 18, color: t.isSignal ? t.text : t.textMuted),
-                    style: IconButton.styleFrom(
-                      fixedSize: const Size.square(40),
-                      backgroundColor: t.isSignal ? t.surfaceHigh : Colors.transparent,
-                      shape: CircleBorder(side: t.isOnyx ? BorderSide(color: t.line) : BorderSide.none),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(children: [
-                  SizedBox(height: t.isSignal ? 22 : 30),
-                  StatusHeader(vpn: const VpnDisconnected(), phase: phase, title: title, detail: detail),
-                  const Spacer(),
-                  HeroButton(vpn: const VpnDisconnected(), phase: phase, size: 287, onTap: () {}),
-                  const Spacer(),
-                  if (actions != null) ...[PhaseActions(actions: actions), const SizedBox(height: 18)],
-                  ServerCard(node: nodes.first, sub: sub, locked: false, onTap: () {}),
-                  SizedBox(height: t.isSignal ? 20 : 28),
-                ]),
-              ),
-            ),
-          ]),
-        ),
-      );
-    });
-
 void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -385,27 +336,47 @@ void main() {
         await tester.pump(const Duration(milliseconds: 600));
       });
     });
-    // Прототип этапов автоподключения (#47) — до мёржа API «Оникс».
-    testWidgets('${k.name} phone autopilot checking', (tester) async {
-      await shot(tester, '${k.name}-phone-autopilot-checking',
-          app(k, const VpnDisconnected(), autopilotScene(phase: HeroPhase.connecting, title: 'Проверяю серверы', detail: '7 из 20')), phone);
-    });
-    testWidgets('${k.name} phone autopilot failed', (tester) async {
-      await shot(
-        tester,
-        '${k.name}-phone-autopilot-failed',
-        app(
-          k,
-          const VpnDisconnected(),
-          autopilotScene(
-            phase: HeroPhase.error,
-            title: 'Серверы не отвечают',
-            detail: 'Подписка обновлена, но ни один из 20 серверов не ответил',
-            actions: [('Обновить и повторить', () {}), ('Добавить сервер', () {})],
-          ),
-        ),
-        phone,
-      );
+    // Этапы автопилота «Оникс» (#47): настоящий HomeScreen, этап — подменой
+    // connectPhaseProvider.
+    for (final (name, ph) in autopilotPhases) {
+      testWidgets('${k.name} phone autopilot $name', (tester) async {
+        await shot(tester, '${k.name}-phone-autopilot-$name', app(k, const VpnDisconnected(), const HomeScreen(), phase: ph), phone);
+      });
+      testWidgets('${k.name} desktop autopilot $name', (tester) async {
+        await shot(tester, '${k.name}-desktop-autopilot-$name', app(k, const VpnDisconnected(), const HomeScreen(), phase: ph), desk, android: false);
+      });
+    }
+    testWidgets('${k.name} flyout failed', (tester) async {
+      await shot(tester, '${k.name}-flyout-failed', app(k, const VpnDisconnected(), Scaffold(body: flyoutScene(0)), phase: autopilotPhases.last.$2),
+          const Size(760, 620), android: false);
     });
   }
 }
+
+/// Этапы автопилота для снимков: проверка серверов и отказ.
+const autopilotPhases = <(String, ConnectPhase)>[
+  ('checking', ConnectPhase.checking(7, 20)),
+  (
+    'failed',
+    ConnectPhase.failed(
+      ConnectFailure.allDead,
+      'Ни один сервер сейчас не отвечает. Обновите список позже или добавьте свой сервер.',
+      [ConnectAction.refresh, ConnectAction.addServer, ConnectAction.awsGuide],
+    ),
+  ),
+];
+
+/// Скорость за минуту и лента событий — для правой панели окна.
+final speedSamples = [
+  for (var i = 0; i < 60; i++)
+    SpeedSample(
+      (2.4 + 1.3 * math.sin(i / 4.5) + 0.5 * math.sin(i / 1.7)).abs() * 1024 * 1024,
+      (170 + 80 * math.sin(i / 3.1 + 1)).abs() * 1024,
+    ),
+];
+final activity = [
+  ActivityEvent(DateTime(2026, 11, 8, 1, 12), 'Подключено · Амстердам AMS-03', ActivityKind.connected),
+  ActivityEvent(DateTime(2026, 11, 8, 1, 11), 'Переключение: Хельсинки HEL-02 → Амстердам AMS-03', ActivityKind.switched),
+  ActivityEvent(DateTime(2026, 11, 8, 0, 58), 'Проверено серверов: 20', ActivityKind.checked),
+  ActivityEvent(DateTime(2026, 11, 8, 0, 57), 'Подключено · Хельсинки HEL-02', ActivityKind.connected),
+];

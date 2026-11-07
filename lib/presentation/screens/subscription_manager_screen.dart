@@ -51,9 +51,11 @@ class SubscriptionManagerScreen extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: 'Обновить все',
-            onPressed: () {
+            onPressed: () async {
               HapticFeedback.lightImpact();
-              ref.read(sourcesProvider.notifier).refreshAll();
+              // Итог — с причинами по источникам (RefreshReport, «Оникс» #45).
+              final report = await ref.read(sourcesProvider.notifier).refreshAll();
+              if (context.mounted) showOnyxToast(context, report.summary, glyph: report.allFailed ? OnyxGlyph.error : OnyxGlyph.refresh);
             },
             icon: OnyxIcon(OnyxGlyph.refresh, size: t.isMaterial ? 24 : 18, color: t.isMaterial ? null : t.textMuted),
           ),

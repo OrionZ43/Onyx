@@ -16,6 +16,8 @@ import 'presentation/widgets/window_title_bar.dart';
 import 'core/log_service.dart';
 import 'infrastructure/binary_manager.dart';
 import 'infrastructure/singbox_bridge_windows.dart';
+import 'presentation/providers/activity_provider.dart';
+import 'presentation/providers/connect_phase.dart';
 import 'presentation/providers/groups_provider.dart';
 import 'presentation/providers/node_provider.dart';
 import 'presentation/providers/settings_provider.dart';
@@ -126,6 +128,10 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
       _tray = OnyxTray(ref: ref);
       _tray!.sync();
     }
+    // Лента событий и скорость для правой панели окна (#47) копятся с
+    // запуска — и пока окно спрятано в трей.
+    ref.read(activityProvider);
+    ref.read(speedProvider);
     // Если бинарники уже есть — пропускаем SetupScreen
     _setupDone = BinaryManager.instance.isReady;
     log.i('Бинарники готовы: $_setupDone', tag: 'MAIN');
@@ -397,6 +403,7 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
       // Трей следует за состоянием VPN, серверами и настройками.
       void sync(_, __) => _tray!.sync();
       ref.listen(vpnControllerProvider, sync);
+      ref.listen(connectPhaseProvider, sync);
       ref.listen(subscriptionProvider.select((s) => s.nodes), sync);
       ref.listen(settingsProvider, sync);
       ref.listen(nodeSelectionProvider, sync);

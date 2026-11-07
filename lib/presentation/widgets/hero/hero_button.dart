@@ -10,7 +10,7 @@ import 'signal_ring_button.dart';
 
 /// Главная кнопка подключения — своя для каждой темы.
 class HeroButton extends StatelessWidget {
-  const HeroButton({super.key, required this.vpn, required this.onTap, required this.size, this.compact = false, this.phase});
+  const HeroButton({super.key, required this.vpn, required this.onTap, required this.size, this.compact = false, this.phase, this.progress, this.label});
 
   final VpnState vpn;
   final VoidCallback onTap;
@@ -23,17 +23,27 @@ class HeroButton extends StatelessWidget {
   /// подписку и проверяет серверы, VPN ещё выключен, а «Линза» уже крутится.
   final HeroPhase? phase;
 
+  /// Настоящий прогресс этапа 0..1 (проверено серверов из всех) — null,
+  /// если этап без счётчика.
+  final double? progress;
+
+  /// Подпись действия вместо стандартной («Подождите» на этапах автопилота,
+  /// которые нельзя отменить).
+  final String? label;
+
   @override
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
     final phase = this.phase ?? heroPhaseOf(vpn);
     return switch (t.kind) {
-      AppThemeKind.onyx => OnyxLensButton(phase: phase, onTap: onTap, size: size, compact: compact),
+      AppThemeKind.onyx => OnyxLensButton(phase: phase, onTap: onTap, size: size, compact: compact, progress: progress, label: label),
       AppThemeKind.signal => SignalRingButton(
           phase: phase,
           onTap: onTap,
           size: size,
           compact: compact,
+          progress: progress,
+          label: label?.toLowerCase(),
           connectedAt: vpn is VpnConnected ? (vpn as VpnConnected).connectedAt : null,
         ),
       AppThemeKind.material => M3CookieButton(phase: phase, onTap: onTap, size: size),

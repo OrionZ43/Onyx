@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
+import '../providers/connect_phase.dart';
 import '../providers/subscription_provider.dart';
 import '../util/country.dart';
 import 'country_flag.dart';
@@ -116,8 +117,13 @@ class StatusHeader extends StatelessWidget {
           HeroPhase.error => errorText,
           _ => '',
         };
-    // В Signal крупной строки нет — этап идёт в подпись.
-    if (t.isSignal && title != null) sub = detail == null ? title! : '$title · $detail';
+    // В Signal крупной строки нет — этап идёт в подпись капсом, а длинная
+    // причина отказа — ниже обычным шрифтом (капсом её не прочесть).
+    String? note;
+    if (t.isSignal && title != null) {
+      sub = title!;
+      note = detail;
+    }
 
     if (t.isMaterial) return _materialHeader(context, phase, key, sub);
 
@@ -184,8 +190,18 @@ class StatusHeader extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: t.isSignal
-                ? t.caps(size: 10.5, color: t.textFaint)
+                ? t.caps(size: 10.5, color: note == null ? t.textFaint : t.text)
                 : TextStyle(fontFamily: t.bodyFont, fontSize: 13, color: t.textMuted),
+          ),
+        ],
+        if (note != null && note.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            note,
+            textAlign: TextAlign.center,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, height: 1.35, color: t.textMuted),
           ),
         ],
       ],
@@ -445,6 +461,59 @@ class ServerCard extends ConsumerWidget {
   }
 }
 
+// ── Автопилот «один тап» (#47, API «Оникс») ─────────────────────────────────
+
+/// Что показать вместо обычного статуса, пока автопилот обновляет подписку и
+/// проверяет серверы (VPN ещё выключен) или когда он не смог подключиться.
+/// null — показывать обычное состояние VPN: подключение, подключено и
+/// отключение важнее этапа.
+class AutopilotView {
+  const AutopilotView({required this.phase, required this.title, this.detail, this.progress, this.failure});
+
+  /// Фаза «Линзы».
+  final HeroPhase phase;
+
+  /// Крупная строка и подпись под ней.
+  final String title;
+  final String? detail;
+
+  /// Проверено серверов из всех, 0..1.
+  final double? progress;
+
+  /// Отказ — с причиной и действиями.
+  final ConnectFailed? failure;
+
+  /// Подпись в «Линзе»: отменить обновление и проверку серверов нельзя —
+  /// не «Отмена», а «Подождите».
+  String? get label => phase == HeroPhase.connecting ? 'Подождите' : null;
+
+  static AutopilotView? of(VpnState vpn, ConnectPhase p) {
+    if (vpn is! VpnDisconnected && vpn is! VpnError) return null;
+    return switch (p) {
+      ConnectUpdating() => const AutopilotView(phase: HeroPhase.connecting, title: 'Обновляю подписку'),
+      ConnectChecking(:final done, :final total) => AutopilotView(
+          phase: HeroPhase.connecting,
+          title: 'Проверяю серверы',
+          detail: total > 0 ? '$done из $total' : null,
+          progress: total > 0 ? done / total : null,
+        ),
+      ConnectConnecting(:final nodeName) => AutopilotView(phase: HeroPhase.connecting, title: displayNodeName(nodeName), detail: 'Подключаюсь'),
+      ConnectSwitching(:final to) => AutopilotView(phase: HeroPhase.connecting, title: displayNodeName(to), detail: 'Переключаюсь'),
+      final ConnectFailed f => AutopilotView(
+          phase: HeroPhase.error,
+          title: switch (f.reason) {
+            ConnectFailure.noSources => 'Нет серверов',
+            ConnectFailure.sourcesUnreachable => 'Серверы не загрузились',
+            ConnectFailure.allDead => 'Серверы не отвечают',
+          },
+          detail: f.message,
+          failure: f,
+        ),
+      _ => null,
+    };
+  }
+}
+
 // ── Действия при неудачном автоподключении (#47) ───────────────────────────
 
 /// Кнопки под «Линзой», когда автоподключение не удалось: «Обновить и
@@ -635,6 +704,20 @@ class VoiceBadge extends StatelessWidget {
   }
 }
 
+/// Сервер работает, но UDP не проходит — голос Discord и звонки не пойдут.
+class _NoUdpBadge extends StatelessWidget {
+  const _NoUdpBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    return Tooltip(
+      message: 'UDP заблокирован на этом сервере — голос Discord и звонки не пойдут',
+      child: Text('НЕТ UDP', style: t.caps(size: t.isMaterial ? 11 : 9.5, color: t.textFaint)),
+    );
+  }
+}
+
 /// Протокол + голос + AI одной строкой (порядок одинаковый во всех темах).
 class NodeBadges extends StatelessWidget {
   const NodeBadges({super.key, required this.node, this.showProtocol = true});
@@ -647,7 +730,10 @@ class NodeBadges extends StatelessWidget {
       // VLESS — протокол по умолчанию: метку показываем только для остальных,
       // иначе она повторяется в каждой строке и съедает место под имя.
       if (showProtocol && node.protocol != NodeProtocol.vless) ProtocolBadge(protocol: node.protocol),
-      if (node.udpSupported) const VoiceBadge(),
+      // Честный UDP (#45): «нет UDP» — только если сервер работает, а STUN
+      // молчит; у недоступного сервера бейджа голоса нет.
+      if (node.udpStatus == UdpStatus.ok) const VoiceBadge(),
+      if (node.udpStatus == UdpStatus.blocked) const _NoUdpBadge(),
       if (node.aiReachable) const AiBadge(),
     ];
     return Row(mainAxisSize: MainAxisSize.min, children: [

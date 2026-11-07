@@ -17,6 +17,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
+import '../providers/connect_phase.dart';
 import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
 import '../providers/subscription_provider.dart';
@@ -149,7 +150,10 @@ class _MainPage extends ConsumerWidget {
     final auto = ref.watch(autoNodeProvider);
     final autoGroup = ref.watch(autoGroupProvider);
     final groups = ref.watch(groupsProvider);
-    final phase = heroPhaseOf(vpn);
+    // Этап автопилота (обновляю / проверяю / не удалось) поверх состояния VPN.
+    final ap = AutopilotView.of(vpn, ref.watch(connectPhaseProvider));
+    final failure = ap?.failure;
+    final phase = ap?.phase ?? heroPhaseOf(vpn);
     final Node? node = switch (vpn) {
       VpnConnected(node: final n) || VpnConnecting(node: final n) || VpnDisconnecting(node: final n) => n,
       _ => picked ?? auto,
@@ -170,8 +174,8 @@ class _MainPage extends ConsumerWidget {
 
     Future<void> toggle() async {
       HapticFeedback.lightImpact();
-      final ok = await toggleConnection(ref);
-      if (!ok && context.mounted) showOnyxToast(context, 'Нет доступных серверов — откройте Onyx и добавьте подписку', glyph: OnyxGlyph.error);
+      final r = await toggleConnection(ref);
+      if (r == ToggleResult.busy && context.mounted) showOnyxToast(context, 'Onyx уже подключается — пара секунд', glyph: OnyxGlyph.clock);
     }
 
     return Padding(
@@ -187,7 +191,7 @@ class _MainPage extends ConsumerWidget {
         ]),
         const Spacer(),
         // «Одна кнопка» и под ней — таймер с трафиком или состояние.
-        Center(child: HeroButton(vpn: vpn, size: 128, compact: true, onTap: toggle)),
+        Center(child: HeroButton(vpn: vpn, phase: ap?.phase, progress: ap?.progress, label: ap?.label, size: failure != null ? 104 : 128, compact: true, onTap: toggle)),
         const SizedBox(height: 14),
         if (vpn is VpnConnected) ...[
           SecondTicker(active: true, builder: (_) => Text(formatClock(vpn.uptime), textAlign: TextAlign.center, style: t.numbers(size: 26))),
@@ -197,11 +201,12 @@ class _MainPage extends ConsumerWidget {
               style: t.caps(size: 10, color: t.textMuted).copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
         ] else ...[
           Text(
-            switch (phase) {
-              HeroPhase.connecting => node == null ? '…' : displayNodeName(node.name),
-              HeroPhase.error => 'Сервер не ответил',
-              _ => 'Трафик открыт',
-            },
+            ap?.title ??
+                switch (phase) {
+                  HeroPhase.connecting => node == null ? '…' : displayNodeName(node.name),
+                  HeroPhase.error => 'Сервер не ответил',
+                  _ => 'Трафик открыт',
+                },
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -209,13 +214,25 @@ class _MainPage extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            phase == HeroPhase.off ? 'Нажмите, чтобы подключиться' : (phase == HeroPhase.error ? 'Нажмите, чтобы повторить' : 'Нажмите, чтобы отменить'),
+            ap?.detail ??
+                (phase == HeroPhase.off
+                    ? 'Нажмите, чтобы подключиться'
+                    : (phase == HeroPhase.error ? 'Нажмите, чтобы повторить' : 'Нажмите, чтобы отменить')),
             textAlign: TextAlign.center,
-            style: TextStyle(fontFamily: t.bodyFont, fontSize: 12, color: t.textMuted),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontFamily: t.bodyFont, fontSize: 12, height: 1.3, color: t.textMuted),
           ),
+          // Отказ автопилота: повторить отсюда; добавить сервер — в окне Onyx.
+          if (failure != null && failure.actions.contains(ConnectAction.refresh)) ...[
+            const SizedBox(height: 10),
+            PhaseActions(actions: [('Обновить и повторить', () => ref.read(vpnControllerProvider.notifier).smartConnect())]),
+          ],
         ],
         const Spacer(),
-        // Сервер → выбор.
+        // Сервер → выбор. При отказе автопилота места нет — сервер меняют в
+        // окне Onyx («Открыть Onyx» ниже).
+        if (failure == null) ...[
         _Tile(
           onTap: onServers,
           child: Row(children: [
@@ -241,6 +258,7 @@ class _MainPage extends ConsumerWidget {
           ]),
         ),
         const SizedBox(height: 12),
+        ],
         // Низ: открыть приложение / выход.
         Row(children: [
           Expanded(

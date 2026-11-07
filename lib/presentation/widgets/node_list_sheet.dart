@@ -34,6 +34,7 @@ import 'home_parts.dart';
 import 'onyx_field.dart';
 import 'onyx_icon.dart';
 import 'onyx_switch.dart';
+import 'onyx_toast.dart';
 import 'subscription_import.dart';
 
 /// Открывает шторку серверов.
@@ -252,7 +253,11 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
         _Header(
           pad: pad,
           busy: sub.status == SubStatus.fetching || sub.status == SubStatus.probing || sub.status == SubStatus.deepProbing,
-          onRefresh: () => ref.read(sourcesProvider.notifier).refreshAll(),
+          onRefresh: () async {
+            // Итог — с причинами по источникам (RefreshReport, «Оникс» #45).
+            final report = await ref.read(sourcesProvider.notifier).refreshAll();
+            if (context.mounted) showOnyxToast(context, report.summary, glyph: report.allFailed ? OnyxGlyph.error : OnyxGlyph.refresh);
+          },
           onAdd: () => showAddSourceSheet(context),
         ),
         _GroupTabs(
@@ -322,6 +327,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
                         onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),
                         onLongPress: () => _nodeMenu(n),
                         onTap: () => _select(n),
+                        quarantined: sub.quarantined.contains(n.id),
                       )],
                   )
                 else
@@ -332,6 +338,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
                         onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),
                         onLongPress: () => _nodeMenu(n),
                         onTap: () => _select(n),
+                        quarantined: sub.quarantined.contains(n.id),
                       ),
               ],
               if (nodes.isEmpty)
@@ -649,9 +656,13 @@ class _NodeRow extends StatelessWidget {
     required this.onFavorite,
     required this.onLongPress,
     required this.onTap,
+    this.quarantined = false,
   });
   final Node node;
   final bool selected;
+
+  /// Не поднялся при подключении — автовыбор пропускает его 30 мин (#45).
+  final bool quarantined;
   final VoidCallback onTap;
   final bool favorite;
   final VoidCallback onFavorite, onLongPress;
@@ -673,7 +684,7 @@ class _NodeRow extends StatelessWidget {
     final t = OnyxTokens.of(context);
     final c = countryOfName(node.name);
     final name = displayNodeName(node.name);
-    final dead = !node.isAlive;
+    final dead = !node.isAlive || quarantined;
 
     if (t.isMaterial) {
       final s = Theme.of(context).colorScheme;
