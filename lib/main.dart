@@ -20,6 +20,7 @@ import 'presentation/providers/settings_provider.dart';
 import 'presentation/providers/subscription_provider.dart';
 import 'presentation/providers/vpn_provider.dart';
 import 'presentation/providers/window_prefs_provider.dart';
+import 'presentation/screens/brand_splash.dart';
 import 'presentation/screens/setup_screen.dart';
 import 'presentation/tray/onyx_tray.dart';
 import 'presentation/screens/onboarding_screen.dart';
@@ -69,8 +70,8 @@ void main() async {
   log.i('Onyx стартует... Платформа: ${Platform.operatingSystem}', tag: 'MAIN');
 
   // Инициализируем BinaryManager (создаёт директорию)
-  await BinaryManager.instance.init();
-  log.i('BinaryManager инициализирован', tag: 'MAIN');
+  // BinaryManager инициализируется под сплэшем (BrandSplash), а не до первого кадра.
+  final init = BinaryManager.instance.init().then((_) => log.i('BinaryManager инициализирован', tag: 'MAIN'));
 
   // Тему читаем до первого кадра, чтобы не мигала тема по умолчанию.
   final themeKind = AppThemeKind.byName(prefs.getString(ThemeKindNotifier.key));
@@ -80,7 +81,7 @@ void main() async {
       themeKindProvider.overrideWith((ref) => ThemeKindNotifier(themeKind)),
       startMinimizedProvider.overrideWith((ref) => StartMinimizedNotifier(startMinimized)),
     ],
-    child: const OnyxApp(),
+    child: OnyxBoot(init: init, kind: themeKind, app: const OnyxApp()),
   ));
 }
 

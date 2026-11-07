@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Фон Onyx: сплэш и окно до первого кадра Flutter — без белой вспышки. -->
+    <color name="onyx_bg">#FF050506</color>
+</resources>

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
 
+import '../../core/brand/onyx_fox.dart';
 import '../../core/theme/onyx_tokens.dart';
 import 'country_flag.dart' show PolygonClipper;
 
@@ -31,7 +32,7 @@ class OnyxWordmark extends StatelessWidget {
         ],
       );
     }
-    return Text(
+    final text = Text(
       'ONYX',
       style: TextStyle(
         fontFamily: t.isSignal ? t.monoFont : t.displayFont,
@@ -41,5 +42,29 @@ class OnyxWordmark extends StatelessWidget {
         color: t.text,
       ),
     );
+    // Знак-лиса V1 рядом с надписью: Onyx — силуэт шампань, Signal — белый с красным носом.
+    final m = size * 1.45;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      SizedBox.square(
+        dimension: m,
+        child: CustomPaint(
+          painter: OnyxFoxPainter(style: FoxStyle.silhouette, ink: t.isSignal ? t.text : t.accent),
+          foregroundPainter: t.isSignal ? _RedNose() : null,
+        ),
+      ),
+      SizedBox(width: size * 0.75),
+      text,
+    ]);
   }
+}
+
+class _RedNose extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 100;
+    canvas.drawCircle(Offset(50 * s, 86 * s), 7 * s, Paint()..color = const Color(0xFFFF3B2F));
+  }
+
+  @override
+  bool shouldRepaint(_RedNose oldDelegate) => false;
 }
