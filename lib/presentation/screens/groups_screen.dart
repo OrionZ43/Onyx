@@ -122,7 +122,8 @@ class GroupsScreen extends ConsumerWidget {
                 padding: EdgeInsets.symmetric(horizontal: pad),
                 sliver: SliverReorderableList(
                   itemCount: groups.length,
-                  onReorder: (a, b) => ref.read(groupsProvider.notifier).reorder(a, b),
+                  // onReorderItem даёт уже скорректированный индекс; домен ждёт семантику ReorderableListView.
+                  onReorderItem: (a, b) => ref.read(groupsProvider.notifier).reorder(a, b > a ? b + 1 : b),
                   itemBuilder: (c, i) {
                     final g = groups[i];
                     final count = ref.watch(groupNodesProvider(g.id)).length;

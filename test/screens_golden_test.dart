@@ -15,8 +15,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/core/theme/app_theme.dart';
 import 'package:onyx/core/theme/theme_kind.dart';
 import 'package:onyx/domain/entities/node.dart';
+import 'package:onyx/domain/entities/node_group.dart';
+import 'package:onyx/domain/entities/subscription_source.dart';
 import 'package:onyx/domain/entities/vpn_state.dart';
 import 'package:onyx/infrastructure/update_service.dart';
+import 'package:onyx/presentation/providers/groups_provider.dart';
+import 'package:onyx/presentation/providers/sources_provider.dart';
 import 'package:onyx/presentation/providers/subscription_provider.dart';
 import 'package:onyx/presentation/providers/theme_provider.dart';
 import 'package:onyx/presentation/providers/update_provider.dart';
@@ -24,8 +28,11 @@ import 'package:onyx/presentation/providers/vpn_provider.dart';
 import 'package:onyx/presentation/screens/home_screen.dart';
 import 'package:onyx/presentation/screens/faq_screen.dart';
 import 'package:onyx/presentation/screens/onboarding_screen.dart';
+import 'package:onyx/presentation/screens/groups_screen.dart';
 import 'package:onyx/presentation/screens/settings_screen.dart';
+import 'package:onyx/presentation/screens/setup_screen.dart';
 import 'package:onyx/presentation/screens/subscription_manager_screen.dart';
+import 'package:onyx/presentation/widgets/add_source_sheet.dart';
 import 'package:onyx/presentation/widgets/country_flag.dart';
 import 'package:onyx/presentation/widgets/node_list_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -43,6 +50,42 @@ class FakeSub extends StateNotifier<SubscriptionState> implements SubscriptionCo
   @override
   dynamic noSuchMethod(Invocation i) => Future<void>.value();
 }
+
+class FakeSources extends StateNotifier<List<SubscriptionSource>> implements SourcesController {
+  FakeSources(super.state);
+  @override
+  dynamic noSuchMethod(Invocation i) => Future<void>.value();
+}
+
+class FakeGroups extends StateNotifier<List<NodeGroup>> implements GroupsController {
+  FakeGroups(super.state);
+  @override
+  dynamic noSuchMethod(Invocation i) => Future<void>.value();
+}
+
+class FakeFavorites extends StateNotifier<Set<String>> implements FavoritesController {
+  FakeFavorites(super.state);
+  @override
+  dynamic noSuchMethod(Invocation i) => Future<void>.value();
+}
+
+class FakeAutoGroup extends StateNotifier<String?> implements AutoGroupController {
+  FakeAutoGroup(super.state);
+  @override
+  dynamic noSuchMethod(Invocation i) => Future<void>.value();
+}
+
+final sources = [
+  SubscriptionSource(id: 'z', name: 'Белые списки (РФ)', kind: SourceKind.subscription, url: 'https://z', presetId: 'zieng2', nodeCount: 7, autoUpdateHours: 6, lastUpdatedAt: DateTime.now().subtract(const Duration(minutes: 2))),
+  const SubscriptionSource(id: 'c', name: 'Бесплатные (Китай)', kind: SourceKind.subscription, url: 'https://c', presetId: 'china-free', nodeCount: 38, status: SourceStatus.fetching),
+  SubscriptionSource(id: 'v', name: 'Мой VPS', kind: SourceKind.links, nodeCount: 3, lastUpdatedAt: DateTime.now().subtract(const Duration(hours: 1))),
+  const SubscriptionSource(id: 'w', name: 'Рабочая подписка', kind: SourceKind.subscription, url: 'https://sub.example.com/abc', nodeCount: 12, enabled: false, status: SourceStatus.error, error: 'HTTP 403'),
+];
+
+const groups = [
+  NodeGroup(id: 'g1', name: 'Игры', nodeIds: ['4', '5'], sourceIds: ['v']),
+  NodeGroup(id: 'g2', name: 'Работа', sourceIds: ['w']),
+];
 
 class FakeUpdate extends UpdateController {
   @override
@@ -67,6 +110,7 @@ Node node(String id, String name, int? ping, {bool ai = false, bool alive = true
       aiReachable: ai,
       protocol: proto,
       udpSupported: udp,
+      sourceIds: [int.parse(id) <= 7 ? 'z' : 'v'],
     );
 
 final nodes = [
@@ -122,6 +166,10 @@ Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s})
         vpnControllerProvider.overrideWith((ref) => FakeVpn(vpn)),
         subscriptionProvider.overrideWith((ref) => FakeSub(s ?? sub)),
         updateControllerProvider.overrideWith(FakeUpdate.new),
+        sourcesProvider.overrideWith((ref) => FakeSources(sources)),
+        groupsProvider.overrideWith((ref) => FakeGroups(groups)),
+        favoritesProvider.overrideWith((ref) => FakeFavorites({'1', '4'})),
+        autoGroupProvider.overrideWith((ref) => FakeAutoGroup(null)),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -179,6 +227,18 @@ void main() {
         await shot(tester, '${k.name}-phone-${e.key}', app(k, vpnOf('off'), e.value), phone);
       });
     }
+    testWidgets('${k.name} phone sources', (tester) async {
+      await shot(tester, '${k.name}-phone-sources', app(k, vpnOf('off'), const SubscriptionManagerScreen()), phone);
+    });
+    testWidgets('${k.name} phone groups', (tester) async {
+      await shot(tester, '${k.name}-phone-groups', app(k, vpnOf('off'), const GroupsScreen()), phone);
+    });
+    testWidgets('${k.name} phone add', (tester) async {
+      await shot(tester, '${k.name}-phone-add', app(k, vpnOf('off'), const Scaffold(body: SafeArea(child: AddSourcePanel(mode: AddSourceMode.links, inline: true, initial: 'vless://8f1c@203.0.113.7:443?security=reality#Мой VPS\nhysteria2://k3y@203.0.113.7:8443#VPS HY2')))), phone);
+    });
+    testWidgets('${k.name} phone setup', (tester) async {
+      await shot(tester, '${k.name}-phone-setup', app(k, vpnOf('off'), SetupScreen(onComplete: () {})), phone);
+    });
     testWidgets('${k.name} phone settings', (tester) async {
       await shot(tester, '${k.name}-phone-settings', app(k, vpnOf('off'), const SettingsScreen()), phone);
     });

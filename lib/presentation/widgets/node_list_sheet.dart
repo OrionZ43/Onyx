@@ -264,7 +264,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
           value: tab,
           tabs: [
             (null, 'Все', sub.nodes.length),
-            ('auto:fav', t.isSignal ? '★ Избранное' : 'Избранное', favs.length),
+            ('auto:fav', 'Избранное', favs.length),
             for (final g in userGroups) (g.id, g.name, ref.watch(groupNodesProvider(g.id)).length),
           ],
           onChanged: (v) => setState(() => _tab = v),
@@ -276,7 +276,10 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
           },
         ),
         const SizedBox(height: 12),
-$1
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: pad),
+          child: TextField(
+            controller: _query,
             onChanged: (_) => setState(() {}),
             style: TextStyle(fontFamily: t.bodyFont, fontSize: t.isMaterial ? 16 : 14, color: t.text),
             decoration: onyxInputDecoration(
@@ -466,7 +469,7 @@ class _FacetRow extends StatelessWidget {
     final chips = <(String, bool, VoidCallback, OnyxGlyph?)>[
       ('Голос · $voiceCount', value.voice, () => onChanged(value.copy(voice: !value.voice)), OnyxGlyph.voice),
       ('AI · $aiCount', value.ai, () => onChanged(value.copy(ai: !value.ai)), null),
-      ('$countryLabel ▾', value.country != null, () => _pickCountry(context), null),
+      (countryLabel, value.country != null, () => _pickCountry(context), OnyxGlyph.chevronDown),
     ];
     if (t.isMaterial) {
       return Wrap(spacing: 8, children: [
@@ -642,7 +645,18 @@ class _SegmentPosition extends InheritedWidget {
   bool updateShouldNotify(_SegmentPosition old) => old.first != first || old.last != last;
 }
 
-$1  final VoidCallback onTap;
+class _NodeRow extends StatelessWidget {
+  const _NodeRow({
+    required this.node,
+    required this.selected,
+    required this.favorite,
+    required this.onFavorite,
+    required this.onLongPress,
+    required this.onTap,
+  });
+  final Node node;
+  final bool selected;
+  final VoidCallback onTap;
   final bool favorite;
   final VoidCallback onFavorite, onLongPress;
 
@@ -693,7 +707,6 @@ $1  final VoidCallback onTap;
                 NodeBadges(node: node),
                 const SizedBox(width: 10),
                 PingIndicator(ms: dead ? null : node.latencyMs),
-            _star(t),
                 _star(t),
                 if (selected) ...[const SizedBox(width: 10), Icon(Icons.check_rounded, size: 22, color: s.onSecondaryContainer)],
               ]),
@@ -732,6 +745,7 @@ $1  final VoidCallback onTap;
             PingText(ms: dead ? null : node.latencyMs, width: 36),
             const SizedBox(width: 8),
             PingIndicator(ms: dead ? null : node.latencyMs),
+            _star(t),
           ]),
         ),
       );

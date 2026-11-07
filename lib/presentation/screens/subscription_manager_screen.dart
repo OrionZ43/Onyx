@@ -107,7 +107,8 @@ class SubscriptionManagerScreen extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(horizontal: t.isMaterial ? 16 : 20),
                   sliver: SliverReorderableList(
                     itemCount: sources.length,
-                    onReorder: (a, b) => ref.read(sourcesProvider.notifier).reorder(a, b),
+                    // onReorderItem даёт уже скорректированный индекс; домен ждёт семантику ReorderableListView.
+                    onReorderItem: (a, b) => ref.read(sourcesProvider.notifier).reorder(a, b > a ? b + 1 : b),
                     itemBuilder: (context, i) => ReorderableDelayedDragStartListener(
                       key: ValueKey(sources[i].id),
                       index: i,

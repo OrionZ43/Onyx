@@ -95,7 +95,7 @@ class _AddSourcePanelState extends ConsumerState<AddSourcePanel> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (res == null) {
-      showOnyxToast(context, 'Не удалось добавить: проверьте ссылку', glyph: OnyxGlyph.error);
+      showOnyxToast(context, ctl.lastError ?? 'Не удалось добавить: проверьте ссылку', glyph: OnyxGlyph.error);
       return;
     }
     HapticFeedback.lightImpact();
@@ -204,7 +204,7 @@ class _AddSourcePanelState extends ConsumerState<AddSourcePanel> {
                       ),
                 child: _busy
                     ? SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 1.6, color: t.bg))
-                    : Text(t.isSignal ? 'ДОБАВИТЬ' : 'Добавить источник'),
+                    : Text(t.isSignal ? 'ДОБАВИТЬ' : 'Добавить'),
               ),
             ),
           ]),

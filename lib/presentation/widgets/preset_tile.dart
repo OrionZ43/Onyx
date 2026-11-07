@@ -17,7 +17,7 @@ Future<bool> loadPreset(BuildContext context, WidgetRef ref, SubscriptionPreset 
   HapticFeedback.lightImpact();
   final src = await ref.read(sourcesProvider.notifier).addPreset(preset);
   if (src == null && context.mounted) {
-    showOnyxToast(context, 'Не удалось загрузить «»', glyph: OnyxGlyph.error);
+    showOnyxToast(context, ref.read(sourcesProvider.notifier).lastError ?? 'Не удалось загрузить «»', glyph: OnyxGlyph.error);
   }
   return src != null;
 }

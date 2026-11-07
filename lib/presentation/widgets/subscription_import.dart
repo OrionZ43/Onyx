@@ -59,7 +59,7 @@ class _SubscriptionImportState extends ConsumerState<SubscriptionImport> {
     final res = looksLikeSubscriptionUrl(raw) ? await ctl.addSubscription(raw) : await ctl.addLinks(raw);
     if (!mounted) return;
     if (res == null) {
-      showOnyxToast(context, 'Не удалось добавить: проверьте ссылку', glyph: OnyxGlyph.error);
+      showOnyxToast(context, ctl.lastError ?? 'Не удалось добавить: проверьте ссылку', glyph: OnyxGlyph.error);
     } else {
       _ctl.clear();
     }
