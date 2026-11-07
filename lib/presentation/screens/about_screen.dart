@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/brand/onyx_fox.dart';
+import '../../core/brand/onyx_fox_volume.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../infrastructure/update_service.dart';
@@ -19,7 +20,7 @@ class AboutScreen extends StatelessWidget {
     final Widget mark = switch (t.kind.name) {
       'signal' => const OnyxFox(size: 132, style: FoxStyle.dots),
       'material' => OnyxFox(size: 132, style: FoxStyle.monoline, ink: s.primary, accent: s.tertiary),
-      _ => OnyxFox(size: 140, style: FoxStyle.faceted, accent: t.accent),
+      _ => SizedBox.square(dimension: 170, child: CustomPaint(painter: FoxVolumePainter(accent: t.accent))),
     };
     final name = t.isMaterial
         ? Text('Onyx', style: Theme.of(context).textTheme.displaySmall)
