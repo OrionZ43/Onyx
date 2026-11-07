@@ -46,6 +46,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeVpn extends StateNotifier<VpnState> implements VpnController {
   FakeVpn(super.state);
+
+  /// Таймер сессии считается от настоящих часов, а тесты идут разное время:
+  /// перед снимком сессия «началась» ровно 01:24:07 назад (+0,2 с запаса).
+  void pinClock() {
+    final s = state;
+    if (s is! VpnConnected) return;
+    state = VpnConnected(
+      node: s.node,
+      connectedAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 24, seconds: 7, milliseconds: 200)),
+      rxBytes: s.rxBytes,
+      txBytes: s.txBytes,
+    );
+  }
+
   @override
   dynamic noSuchMethod(Invocation i) => Future<void>.value();
 }
@@ -141,6 +155,7 @@ final sub = SubscriptionState(
 VpnState vpnOf(String s) => switch (s) {
       'on' => VpnConnected(
           node: nodes.first,
+          // Перед снимком shot() подводит время (FakeVpn.pinClock).
           connectedAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 24, seconds: 7)),
           rxBytes: 1954000000,
           txBytes: 224400000,
@@ -198,6 +213,11 @@ Future<void> shot(WidgetTester tester, String name, Widget w, Size size, {bool a
   await tester.pump(const Duration(seconds: 2));
   if (then != null) await then();
   await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+  final app = find.byType(MaterialApp);
+  if (find.byType(ProviderScope).evaluate().isNotEmpty && app.evaluate().isNotEmpty) {
+    final vpn = ProviderScope.containerOf(tester.element(app.first), listen: false).read(vpnControllerProvider.notifier);
+    if (vpn is FakeVpn) vpn.pinClock();
+  }
   await tester.pump(const Duration(milliseconds: 600));
   await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name.png'));
   await tester.pumpWidget(const SizedBox());

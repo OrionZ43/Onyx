@@ -30,7 +30,6 @@ import '../widgets/hero/hero_button.dart';
 import '../widgets/hero/hero_state.dart';
 import '../widgets/home_parts.dart';
 import '../widgets/onyx_icon.dart';
-import '../widgets/onyx_toast.dart';
 import '../widgets/onyx_wordmark.dart';
 
 class TrayFlyout extends ConsumerStatefulWidget {
@@ -174,8 +173,7 @@ class _MainPage extends ConsumerWidget {
 
     Future<void> toggle() async {
       HapticFeedback.lightImpact();
-      final r = await toggleConnection(ref);
-      if (r == ToggleResult.busy && context.mounted) showOnyxToast(context, 'Onyx уже подключается — пара секунд', glyph: OnyxGlyph.clock);
+      await toggleConnection(ref);
     }
 
     return Padding(
@@ -191,7 +189,7 @@ class _MainPage extends ConsumerWidget {
         ]),
         const Spacer(),
         // «Одна кнопка» и под ней — таймер с трафиком или состояние.
-        Center(child: HeroButton(vpn: vpn, phase: ap?.phase, progress: ap?.progress, label: ap?.label, size: failure != null ? 104 : 128, compact: true, onTap: toggle)),
+        Center(child: HeroButton(vpn: vpn, phase: ap?.phase, progress: ap?.progress, size: failure != null ? 104 : 128, compact: true, onTap: toggle)),
         const SizedBox(height: 14),
         if (vpn is VpnConnected) ...[
           SecondTicker(active: true, builder: (_) => Text(formatClock(vpn.uptime), textAlign: TextAlign.center, style: t.numbers(size: 26))),

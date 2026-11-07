@@ -13,37 +13,29 @@ import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
 import '../providers/vpn_provider.dart';
 
-/// Чем кончился тап по «Линзе».
-enum ToggleResult {
-  /// Подключаемся, отключаемся или автопилот запущен.
-  done,
-
-  /// Автопилот уже обновляет подписку или проверяет серверы: отмены у него
-  /// нет, второй прогон не запускаем.
-  busy,
-}
-
-/// Тап по «Линзе» (#47): подключено или подключаемся — отключиться; иначе в
-/// режиме «Автовыбор» — автопилот «Оникс» smartConnect() (обновит подписку,
-/// проверит серверы, подключит лучший; этапы и ошибки — в
+/// Тап по «Линзе» (#47): подключено или подключаемся — отключиться (заодно
+/// отменяет идущий прогон автопилота); автопилот обновляет подписку или
+/// проверяет серверы — «Отмена» (cancelSmartConnect, #48); иначе в режиме
+/// «Автовыбор» — автопилот «Оникс» smartConnect() (этапы и ошибки — в
 /// connectPhaseProvider), а при ручном выборе сервера — подключиться к нему.
-Future<ToggleResult> toggleConnection(WidgetRef ref) async {
+Future<void> toggleConnection(WidgetRef ref) async {
   final state = ref.read(vpnControllerProvider);
   final ctl = ref.read(vpnControllerProvider.notifier);
   switch (state) {
     case VpnConnected() || VpnConnecting() || VpnDisconnecting():
       await ctl.disconnect();
-      return ToggleResult.done;
     case VpnDisconnected() || VpnError():
-      if (ref.read(connectPhaseProvider).busy) return ToggleResult.busy;
+      if (ctl.isSmartConnecting || ref.read(connectPhaseProvider).busy) {
+        await ctl.cancelSmartConnect();
+        return;
+      }
       final picked = ref.read(nodeSelectionProvider);
       if (picked == null) {
         unawaited(ctl.smartConnect());
-        return ToggleResult.done;
+        return;
       }
       clearConnectFailure(ref);
       await ctl.connect(picked);
-      return ToggleResult.done;
   }
 }
 

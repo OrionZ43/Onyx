@@ -483,10 +483,6 @@ class AutopilotView {
   /// Отказ — с причиной и действиями.
   final ConnectFailed? failure;
 
-  /// Подпись в «Линзе»: отменить обновление и проверку серверов нельзя —
-  /// не «Отмена», а «Подождите».
-  String? get label => phase == HeroPhase.connecting ? 'Подождите' : null;
-
   static AutopilotView? of(VpnState vpn, ConnectPhase p) {
     if (vpn is! VpnDisconnected && vpn is! VpnError) return null;
     return switch (p) {

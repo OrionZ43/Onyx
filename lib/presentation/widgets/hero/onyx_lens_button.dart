@@ -19,7 +19,7 @@ import 'hero_state.dart';
 ///
 /// В покое (off / on) тикер стоит — 0 кадров/с.
 class OnyxLensButton extends StatefulWidget {
-  const OnyxLensButton({super.key, required this.phase, required this.onTap, this.size = 280, this.compact = false, this.progress, this.label});
+  const OnyxLensButton({super.key, required this.phase, required this.onTap, this.size = 280, this.compact = false, this.progress});
 
   final HeroPhase phase;
   final VoidCallback onTap;
@@ -31,10 +31,6 @@ class OnyxLensButton extends StatefulWidget {
   /// Настоящий прогресс этапа 0..1 (автопилот: проверено серверов из всех);
   /// null — условная дуга по времени.
   final double? progress;
-
-  /// Подпись действия вместо стандартной (автопилот: «Подождите» — отменить
-  /// этап нельзя).
-  final String? label;
 
   @override
   State<OnyxLensButton> createState() => _OnyxLensButtonState();
@@ -125,7 +121,7 @@ class _OnyxLensButtonState extends State<OnyxLensButton> with TickerProviderStat
     final d = widget.size;
     final lens = d * 0.74;
     final phase = widget.phase;
-    final label = widget.label ?? heroActionLabel(phase);
+    final label = heroActionLabel(phase);
     final contentColor = switch (phase) {
       HeroPhase.on => t.accent,
       HeroPhase.connecting => t.accentMuted,

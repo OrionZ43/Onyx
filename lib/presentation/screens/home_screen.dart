@@ -67,11 +67,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _handleTap() async {
     HapticFeedback.lightImpact();
     // Логика общая с мини-панелью трея (util/vpn_actions.dart): «Автовыбор» —
-    // автопилот smartConnect(), ручной выбор — подключение к серверу.
-    final r = await toggleConnection(ref);
-    if (r == ToggleResult.busy && mounted) {
-      showOnyxToast(context, 'Onyx уже подключается — пара секунд', glyph: OnyxGlyph.clock);
-    }
+    // автопилот smartConnect(), ручной выбор — подключение к серверу; во
+    // время автопилота тап — «Отмена».
+    await toggleConnection(ref);
   }
 
   void _onVpnChanged(VpnState? prev, VpnState next) {
@@ -192,7 +190,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         vpn: vpn,
                         phase: ap?.phase,
                         progress: ap?.progress,
-                        label: ap?.label,
                         size: t.isMaterial ? heroSize * 0.84 : heroSize,
                         onTap: _handleTap,
                       ),
@@ -233,7 +230,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     StatusHeader(vpn: vpn, phase: ap?.phase, title: ap?.title, detail: ap?.detail),
                     const SizedBox(height: 40),
-                    HeroButton(vpn: vpn, phase: ap?.phase, progress: ap?.progress, label: ap?.label, size: hero, onTap: _handleTap),
+                    HeroButton(vpn: vpn, phase: ap?.phase, progress: ap?.progress, size: hero, onTap: _handleTap),
                     if (t.isMaterial) ...[const SizedBox(height: 18), HeroCaption(phase: ap?.phase ?? heroPhaseOf(vpn))],
                     if (failure != null) ...[const SizedBox(height: 32), PhaseActions(actions: _actionsFor(failure))],
                   ]),
