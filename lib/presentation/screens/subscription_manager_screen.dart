@@ -613,7 +613,7 @@ class _SubCard extends StatelessWidget {
                         fontFamily: AppFonts.display,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: isActive ? AppColors.plasma : AppColors.onPlasma,
+                        color: isActive ? AppColors.plasma : AppColors.nebula0,
                       ),
                     ),
                     const SizedBox(height: 2),

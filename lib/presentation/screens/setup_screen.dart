@@ -117,8 +117,8 @@ class _SetupScreenState extends State<SetupScreen>
                     style: TextStyle(
                       fontFamily: AppFonts.display,
                       fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.onPlasma,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.nebula0,
                     ),
                   ).animate().fadeIn(duration: 600.ms, delay: 100.ms),
 
