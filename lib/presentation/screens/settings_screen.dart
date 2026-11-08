@@ -11,6 +11,7 @@ import '../../core/theme/onyx_tokens.dart';
 import '../../core/theme/theme_kind.dart';
 import '../../infrastructure/platform_features.dart';
 import '../../domain/entities/vpn_state.dart';
+import '../providers/autostart_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/vpn_provider.dart';
 import '../widgets/onyx_toast.dart';
@@ -129,8 +130,18 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ]),
               if (uiIsWindows) ...[
-                const _Section('Окно'),
+                const _Section('Запуск'),
                 _Group(children: [
+                  // Автозапуск (#58): значение в HKCU\…\Run, прав не нужно; null —
+                  // реестр ещё читается, переключатель пока не показываем.
+                  if (ref.watch(autostartProvider) case final on?)
+                    _SwitchTile(
+                      glyph: OnyxGlyph.power,
+                      title: 'Запускать Onyx при входе в Windows',
+                      subtitle: 'Onyx стартует вместе с системой и сразу уходит в трей.',
+                      value: on,
+                      onChanged: (v) => ref.read(autostartProvider.notifier).set(v),
+                    ),
                   _SwitchTile(
                     glyph: OnyxGlyph.minimize,
                     title: 'Запускать свёрнутым в трей',

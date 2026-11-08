@@ -20,6 +20,7 @@ import 'package:onyx/domain/entities/node.dart';
 import 'package:onyx/domain/entities/vpn_state.dart';
 import 'package:onyx/infrastructure/update_service.dart';
 import 'package:onyx/presentation/providers/activity_provider.dart';
+import 'package:onyx/presentation/providers/autostart_provider.dart';
 import 'package:onyx/presentation/providers/connect_phase.dart';
 import 'package:onyx/presentation/providers/groups_provider.dart';
 import 'package:onyx/presentation/providers/sources_provider.dart';
@@ -60,6 +61,13 @@ class FakeVpn extends StateNotifier<VpnState> implements VpnController {
     );
   }
 
+  @override
+  dynamic noSuchMethod(Invocation i) => Future<void>.value();
+}
+
+/// Автозапуск (#58) без реестра: тесты идут на Windows-хосте.
+class FakeAutostart extends StateNotifier<bool?> implements AutostartNotifier {
+  FakeAutostart(super.state);
   @override
   dynamic noSuchMethod(Invocation i) => Future<void>.value();
 }
@@ -183,6 +191,7 @@ Future<void> loadFonts() async {
 Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s, ConnectPhase phase = ConnectPhase.idle}) => ProviderScope(
       overrides: [
         connectPhaseProvider.overrideWith((ref) => phase),
+        autostartProvider.overrideWith((ref) => FakeAutostart(true)),
         activityProvider.overrideWith((ref) => ActivityLog(activity)),
         speedProvider.overrideWith((ref) => SpeedHistory(speedSamples)),
         themeKindProvider.overrideWith((ref) => ThemeKindNotifier(kind)),
@@ -354,6 +363,13 @@ void main() {
         await tester.pump(const Duration(milliseconds: 500));
         await tester.tap(find.text('Регион маршрутизации'));
         await tester.pump(const Duration(milliseconds: 600));
+      });
+    });
+    // Настройки в окне Windows: раздел «Запуск» с автозапуском (#58).
+    testWidgets('${k.name} desktop-settings', (tester) async {
+      await shot(tester, '${k.name}-desktop-settings', app(k, vpnOf('on'), const SettingsScreen()), desk, android: false, then: () async {
+        await tester.drag(find.byType(ListView).first, const Offset(0, -640));
+        await tester.pump(const Duration(milliseconds: 500));
       });
     });
     // Этапы автопилота «Оникс» (#47): настоящий HomeScreen, этап — подменой
