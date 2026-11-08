@@ -476,7 +476,9 @@ class _StatusLine extends StatelessWidget {
     final (String voice, Color voiceColor) = switch (node?.udpStatus) {
       UdpStatus.ok => ('Голос · UDP работает', good),
       UdpStatus.blocked => ('Голос · UDP заблокирован', t.danger),
-      UdpStatus.unreachable => ('Сервер не отвечает', t.danger),
+      // Сервер отвечает на пинг, но не прошёл проверку через туннель — голосу
+      // не бывать; «не отвечает» спорило бы с пингом в карточке.
+      UdpStatus.unreachable => ('Голос · недоступен', t.danger),
       _ => ('Голос · не проверен', t.textFaint),
     };
     Widget pill(String text, Color dot) => Container(
