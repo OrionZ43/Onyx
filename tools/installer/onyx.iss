@@ -290,26 +290,92 @@ begin
   if B then Result := 'yes' else Result := 'no';
 end;
 
-// ── Процессы (WMI: видит имена и у процессов с правами админа) ──────────────
+// ── Процессы ────────────────────────────────────────────────────────────────
+// WMI без прав видит путь и у процессов с правами админа того же пользователя
+// (у процессов SYSTEM — пусто). «Свои» — только из папки установки и старой
+// папки v0.2.0; sing-box из папки данных — только дети своих onyx.exe или
+// сироты (например, брошенные пробы серверов). Соседнюю сборку с той же
+// папкой данных (тестовая OnyxRedesign) и её туннель не трогаем.
 
-function ProcessCount(const Name: String): Integer;
+function UnderDir(const Path, Dir: String): Boolean;
 var
-  Locator, Service, Procs: Variant;
+  Prefix: String;
 begin
-  Result := 0;
+  Prefix := AddBackslash(Dir);
+  Result := (Length(Path) > Length(Prefix)) and
+    (CompareText(Copy(Path, 1, Length(Prefix)), Prefix) = 0);
+end;
+
+function WmiQuery(const Query: String): Variant;
+var
+  Locator, Service: Variant;
+begin
+  Locator := CreateOleObject('WbemScripting.SWbemLocator');
+  Service := Locator.ConnectServer('.', 'root\CIMV2');
+  Result := Service.ExecQuery(Query);
+end;
+
+function VarStr(const V: Variant): String;
+begin
+  if VarIsNull(V) or VarIsEmpty(V) then
+    Result := ''
+  else
+    Result := V;
+end;
+
+// Запущен ли «наш» Onyx: onyx.exe / служба / апдейтер из наших папок или
+// sing-box из папки данных, чей родитель — наш onyx.exe либо уже мёртв.
+function OnyxRunning: Boolean;
+var
+  Procs, P, Parent: Variant;
+  I, Pid, ParentPid: Integer;
+  Name, Path, OursPids: String;
+begin
+  Result := False;
   try
-    Locator := CreateOleObject('WbemScripting.SWbemLocator');
-    Service := Locator.ConnectServer('.', 'root\CIMV2');
-    Procs := Service.ExecQuery(Format('SELECT ProcessId FROM Win32_Process WHERE Name = ''%s''', [Name]));
-    Result := Procs.Count;
+    Procs := WmiQuery('SELECT ProcessId, ParentProcessId, Name, ExecutablePath FROM Win32_Process ' +
+      'WHERE Name = ''onyx.exe'' OR Name = ''OnyxService.exe'' OR Name = ''OnyxUpdater.exe'' OR Name = ''sing-box.exe''');
+    OursPids := ',';
+    for I := 0 to Procs.Count - 1 do
+    begin
+      P := Procs.ItemIndex(I);
+      Name := LowerCase(VarStr(P.Name));
+      Path := VarStr(P.ExecutablePath);
+      Pid := P.ProcessId;
+      if (Name <> 'sing-box.exe') and ((Path = '') or UnderDir(Path, AppDir) or UnderDir(Path, LegacyDir)) then
+      begin
+        Log(Format('Наш процесс: %s PID %d (%s)', [Name, Pid, Path]));
+        OursPids := OursPids + IntToStr(Pid) + ',';
+        Result := True;
+      end;
+    end;
+    for I := 0 to Procs.Count - 1 do
+    begin
+      P := Procs.ItemIndex(I);
+      if LowerCase(VarStr(P.Name)) = 'sing-box.exe' then
+      begin
+        Path := VarStr(P.ExecutablePath);
+        Pid := P.ProcessId;
+        ParentPid := P.ParentProcessId;
+        if UnderDir(Path, AppDir) or UnderDir(Path, LegacyDir) then
+        begin
+          Log(Format('Наш sing-box: PID %d (%s)', [Pid, Path]));
+          Result := True;
+        end
+        else if UnderDir(Path, DataDir) then
+        begin
+          Parent := WmiQuery(Format('SELECT ProcessId FROM Win32_Process WHERE ProcessId = %d', [ParentPid]));
+          if (Pos(',' + IntToStr(ParentPid) + ',', OursPids) > 0) or (Parent.Count = 0) then
+          begin
+            Log(Format('Наш sing-box (дочерний или сирота): PID %d, родитель %d', [Pid, ParentPid]));
+            Result := True;
+          end;
+        end;
+      end;
+    end;
   except
     Log('WMI недоступен: ' + GetExceptionMessage);
   end;
-end;
-
-function OnyxRunning: Boolean;
-begin
-  Result := (ProcessCount('onyx.exe') > 0) or (ProcessCount('OnyxService.exe') > 0);
 end;
 
 // ── Наследие v0.2.0 и автозапуск ────────────────────────────────────────────
@@ -383,13 +449,24 @@ begin
   NL := #13#10;
   S := '$ErrorActionPreference = ''SilentlyContinue''' + NL +
     '$out = New-Object System.Collections.Generic.List[string]' + NL;
+  // Свои onyx.exe/службу/апдейтер — только из папки установки и старой папки;
+  // sing-box из папки данных — только дети своих onyx.exe или сироты.
   if StopOnyx then
     S := S +
-      '$dirs = @(' + Q(AppDir) + ', ' + Q(LegacyDir) + ', ' + Q(DataDir) + ')' + NL +
-      'function Test-Ours($p) { if (-not $p.Path) { return $false }; foreach ($d in $dirs) { if ($p.Path.StartsWith($d + ''\'', [StringComparison]::OrdinalIgnoreCase)) { return $true } }; return $false }' + NL +
-      'Get-Process -Name onyx | Where-Object { Test-Ours $_ } | ForEach-Object { [void]$_.CloseMainWindow() }' + NL +
-      'Start-Sleep -Milliseconds 1500' + NL +
-      'Get-Process -Name onyx,sing-box,OnyxService,OnyxUpdater | Where-Object { Test-Ours $_ } | Stop-Process -Force' + NL +
+      '$app = ' + Q(AppDir) + '; $legacy = ' + Q(LegacyDir) + '; $data = ' + Q(DataDir) + NL +
+      'function Under($path, $dir) { return [bool]$path -and $path.StartsWith($dir + ''\'', [StringComparison]::OrdinalIgnoreCase) }' + NL +
+      'function Get-Ours { Get-CimInstance Win32_Process -Filter "Name=''onyx.exe'' OR Name=''OnyxService.exe'' OR Name=''OnyxUpdater.exe''" | Where-Object { (Under $_.ExecutablePath $app) -or (Under $_.ExecutablePath $legacy) } }' + NL +
+      '$ours = @(Get-Ours)' + NL +
+      '$oursPids = @($ours | ForEach-Object { $_.ProcessId })' + NL +
+      'foreach ($p in $ours) { if ($p.Name -eq ''onyx.exe'') { $gp = Get-Process -Id $p.ProcessId; if ($gp) { [void]$gp.CloseMainWindow() } } }' + NL +
+      'if ($ours.Count -gt 0) { Start-Sleep -Milliseconds 1500 }' + NL +
+      'foreach ($p in $ours) { Stop-Process -Id $p.ProcessId -Force }' + NL +
+      '$alive = @(Get-Process | ForEach-Object { $_.Id })' + NL +
+      'foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name=''sing-box.exe''")) {' + NL +
+      '  $path = $p.ExecutablePath' + NL +
+      '  $mine = (Under $path $app) -or (Under $path $legacy) -or ((Under $path $data) -and (($oursPids -contains $p.ParentProcessId) -or -not ($alive -contains $p.ParentProcessId)))' + NL +
+      '  if ($mine) { Stop-Process -Id $p.ProcessId -Force; $out.Add(''killed-singbox='' + $p.ProcessId) }' + NL +
+      '}' + NL +
       'Start-Sleep -Milliseconds 700' + NL;
   if CleanLegacy then
     S := S +
@@ -412,7 +489,9 @@ begin
   if CleanLegacy then
     S := S + 'if (-not (Test-Path -LiteralPath ''HKLM:\' + LegacyUninstallKey + ''')) { $out.Add(''legacy=ok'') }' + NL;
   if StopOnyx then
-    S := S + 'if (-not (Get-Process -Name onyx | Where-Object { Test-Ours $_ })) { $out.Add(''stopped=ok'') }' + NL;
+    S := S +
+      '$busy = @(Get-Ours | Where-Object { $_.Name -ne ''OnyxUpdater.exe'' }) + @(Get-CimInstance Win32_Process -Filter "Name=''sing-box.exe''" | Where-Object { (Under $_.ExecutablePath $app) -or (Under $_.ExecutablePath $legacy) })' + NL +
+      'if ($busy.Count -eq 0) { $out.Add(''stopped=ok'') }' + NL;
   S := S + '$out.Add(''done'')' + NL +
     'Set-Content -LiteralPath ' + Q(Marker) + ' -Value $out -Encoding ASCII' + NL +
     'exit 0';
@@ -530,8 +609,10 @@ begin
   if not Ok then
     Log('Повышенный шаг не выполнен: автозапуск/очистка 0.2.0 пропущены');
 
-  // Если Onyx так и не закрылся — его файлы заняты, честно останавливаемся.
-  if (not IsTestMode) and OnyxRunning then
+  // Если наш Onyx так и не закрылся — его файлы заняты, честно останавливаемся.
+  // Решает маркер повышенного шага (он видит процессы точно), а не повторная
+  // проверка без прав.
+  if Running and not (IsTestMode or MarkerHas('stopped=ok')) then
     Result := CustomMessage('OnyxRunningNoAdmin');
 end;
 
@@ -572,7 +653,7 @@ begin
       if not RunElevated(BuildAdminScript(True, Legacy, False, True, MarkerPath)) then
         Log('Повышенный шаг удаления не выполнен: задача автозапуска могла остаться');
       // Onyx не закрылся — его файлы заняты: не удаляем наполовину.
-      if (not IsTestMode) and OnyxRunning then
+      if Running and not (IsTestMode or MarkerHas('stopped=ok')) then
       begin
         SuppressibleMsgBox(CustomMessage('UninstallCloseOnyx'), mbError, MB_OK, IDOK);
         Abort;

@@ -20,7 +20,7 @@
 | Ярлыки | `Пуск\Onyx` с `AppUserModelID=Onyx` (так его ищет `local_notifier` — уведомления Windows), рабочий стол — по галочке. |
 | Языки | ru (по умолчанию), en, zh (`lang/ChineseSimplified.isl`, неофициальный перевод Inno 6.5+). Выбор — по языку Windows, диалог только если язык не из трёх. |
 | Оформление | `docs/brand/installer/` («Оникс Дизайн», #52), цвета — токены темы Onyx. |
-| Деинсталлятор | Закрывает Onyx и sing-box (с UAC, если запущены), убирает автозапуск, ярлыки, файлы; спрашивает «Удалить данные?» — по умолчанию нет. Данные: `%APPDATA%\z43.studios\onyx`. |
+| Деинсталлятор | Закрывает Onyx и sing-box (с UAC, если запущены) — только свои: процессы из папки установки и старой папки v0.2.0, а sing-box из папки данных — если его родитель свой `onyx.exe` или уже завершён (брошенные пробы). Соседнюю сборку с той же папкой данных не трогает. Убирает автозапуск, ярлыки, файлы; спрашивает «Удалить данные?» — по умолчанию нет. Данные: `%APPDATA%\z43.studios\onyx`. |
 | Обновление поверх | Постоянный AppId `{0E682CBC-A702-4780-AFEB-87FA0B615378}` — **никогда не менять**. Папка и выбор задач запоминаются. |
 
 ## Сборка
@@ -43,7 +43,9 @@ pwsh tools\installer\build-installer.ps1 -SourceDir dist -Version 0.3.0
 
 ```powershell
 OnyxSetup.exe /VERYSILENT /ONYXTEST=1 /DIR="%TEMP%\onyx-test" /LOG="%TEMP%\onyx-setup.log"
-"%TEMP%\onyx-test\unins000.exe" /VERYSILENT /ONYXTEST=1 /LOG="%TEMP%\onyx-uninstall.log"
+"%TEMP%\onyx-test\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /ONYXTEST=1 /LOG="%TEMP%\onyx-uninstall.log"
 ```
 
 Полезные ключи Inno: `/LANG=ru|en|zh`, `/TASKS="desktopicon,autostart"`, `/DIR=…`, `/SILENT`, `/VERYSILENT`, `/LOG=…`.
+
+Без `/SUPPRESSMSGBOXES` тихий деинсталлятор всё равно покажет вопрос «Удалить также данные Onyx?» и будет ждать ответа.
