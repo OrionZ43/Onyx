@@ -1,4 +1,4 @@
-# Скачивает ядро для Windows-сборки Onyx (CI windows-latest) и проверяет SHA-256.
+﻿# Скачивает ядро для Windows-сборки Onyx (CI windows-latest) и проверяет SHA-256.
 #   pwsh tools/core/fetch-core.ps1 -Out dist\core
 # Версия и хэши — как в lib/infrastructure/binary_manager.dart.
 param([string]$Out = "dist\core")
@@ -13,7 +13,11 @@ $tmp = New-Item -ItemType Directory -Force -Path (Join-Path $base "onyx-core")
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 function Fetch($url, $sha, $file) {
-  Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
+  # GitHub иногда отвечает 5xx — до 4 попыток с паузой
+  for ($i = 1; $i -le 4; $i++) {
+    try { Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing; break }
+    catch { if ($i -eq 4) { throw }; Write-Host "Повтор $i: $_"; Start-Sleep -Seconds (5 * $i) }
+  }
   $got = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
   if ($got -ne $sha) { throw "SHA-256 не совпал для $url ($got)" }
 }

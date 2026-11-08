@@ -108,31 +108,24 @@ jobs:
           $tag = "${{ github.ref_name }}"
           Compress-Archive -Path dist\* -DestinationPath "Onyx_${tag}_payload.zip" -Force
 
-      - name: Build Installer
-        run: |
-          cd tools/onyx_installer
-          dart pub get
-          New-Item -ItemType Directory -Force -Path build\native_assets\windows
-          flutter build windows --release
-          cd ../..
-
-      - name: Package installer bundle
+      - name: Build Installer (Inno Setup)
         run: |
           $tag = "${{ github.ref_name }}"
-          New-Item -ItemType Directory -Force -Path installer_bundle
-          Copy-Item "tools\onyx_installer\build\windows\x64\runner\Release\*" installer_bundle\ -Recurse -Force
-          Copy-Item "Onyx_${tag}_payload.zip" installer_bundle\
-          Compress-Archive -Path installer_bundle\* -DestinationPath "OnyxSetup_${tag}.zip" -Force
+          $version = $tag.TrimStart('v')
+          # Нужен Inno Setup 6.7+ (тёмный мастер, свой фон): в образе может быть старее.
+          choco upgrade innosetup -y --no-progress
+          # Ядро и всё приложение — внутри одного OnyxSetup_<tag>.exe (#51).
+          pwsh tools/installer/build-installer.ps1 -SourceDir dist -Version $version -OutputDir . -OutputName "OnyxSetup_${tag}"
           # Стабильная копия имени для ссылок вида releases/latest/download/...
-          Copy-Item "OnyxSetup_${tag}.zip" "onyx-setup-windows.zip" -Force
+          Copy-Item "OnyxSetup_${tag}.exe" "onyx-setup-windows.exe" -Force
 
       - name: Upload Windows artifacts to Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            OnyxSetup_${{ github.ref_name }}.zip
+            OnyxSetup_${{ github.ref_name }}.exe
             Onyx_${{ github.ref_name }}_payload.zip
-            onyx-setup-windows.zip
+            onyx-setup-windows.exe
           name: Onyx VPN ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

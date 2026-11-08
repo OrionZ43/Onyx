@@ -99,10 +99,10 @@ class UpdateService {
   }
 
   Future<void> applyUpdate(String zipPath) async {
-    final appData = Platform.environment['LOCALAPPDATA'];
-    if (appData == null) throw Exception('LOCALAPPDATA not found');
-
-    final installDir = '$appData\\Onyx';
+    // Папка, где реально стоит Onyx: установщик (Inno Setup, #51) позволяет
+    // выбрать любую. Раньше здесь был жёсткий %LOCALAPPDATA%\Onyx — при
+    // другой папке обновление распаковалось бы не туда.
+    final installDir = File(Platform.resolvedExecutable).parent.path;
     final updaterExe = '$installDir\\OnyxUpdater.exe';
     final launchExe = '$installDir\\onyx.exe';
 
