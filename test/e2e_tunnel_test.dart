@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/domain/routing_region.dart';
 import 'package:onyx/domain/singbox_config_builder.dart';
+import 'package:onyx/domain/smart_probe.dart';
 import 'package:onyx/domain/subscription_parser.dart';
 import 'package:onyx/domain/udp_probe.dart';
 
@@ -51,6 +52,23 @@ void main() {
       dir.deleteSync(recursive: true);
     }
   }
+
+  // #60: свежий замер кандидатов перед автопрыжком — настоящий sing-box,
+  // свободные порты, два HTTPS-запроса. Недоступный кандидат — −1.
+  test('DeepProbe.measure: живые ноды — мс, недоступная — −1', () async {
+    final text = File(linksFile!).readAsStringSync();
+    final nodes = const SubscriptionParser().parse(text);
+    expect(nodes, isNotEmpty);
+    // Та же ссылка, но порт, где никто не слушает.
+    final first = text.split('\n').first.trim();
+    final bogus = const SubscriptionParser()
+        .parseLink(first.replaceFirstMapped(RegExp(r':\d+([/?])'), (m) => ':9${m[1]}').replaceFirst('#', '#bogus-'))!;
+    final res = await DeepProbe(singboxExePath: sb!).measure([...nodes, bogus]);
+    // ignore: avoid_print
+    print('Замеры: ${[for (final n in [...nodes, bogus]) '${n.name}=${res[n.id]}'].join(', ')}');
+    expect(res[nodes.first.id], greaterThan(0)); // REALITY по TCP
+    expect(res[bogus.id], -1);
+  }, skip: skip, timeout: const Timeout(Duration(minutes: 2)));
 
   test('каждый транспорт: HTTPS + UDP через туннель', () async {
     final nodes = const SubscriptionParser().parse(File(linksFile!).readAsStringSync());
