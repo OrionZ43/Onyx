@@ -524,7 +524,7 @@ class _RegionTile extends ConsumerWidget {
 
   /// Подпись варианта; для «Авто» — во что он сейчас развернулся.
   static String _hint(RoutingRegion r, RoutingRegion effective) => switch (r) {
-        RoutingRegion.auto => 'По часовому поясу и языку системы · сейчас ${_short(effective)}',
+        RoutingRegion.auto => 'По IP, часовому поясу и языку системы · сейчас ${_short(effective)}',
         RoutingRegion.russia => 'Российские и белорусские сайты — напрямую',
         RoutingRegion.china => 'Китайские сайты и сервисы — напрямую',
       };

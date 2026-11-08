@@ -5,7 +5,7 @@
 ///                Bilibili, Taobao, банки) напрямую, локальный DNS 223.5.5.5,
 ///                всё остальное — через туннель.
 ///
-///   • [auto]   — определить по часовому поясу и локали устройства (Китай,
+///   • [auto]   — определить по IP, часовому поясу и локали устройства (Китай,
 ///                иначе Россия/Беларусь). Значение по умолчанию.
 ///
 /// Работает только при включённой умной маршрутизации (smartRouting).
@@ -13,7 +13,7 @@ enum RoutingRegion { auto, russia, china }
 
 extension RoutingRegionLabel on RoutingRegion {
   String get label => switch (this) {
-        RoutingRegion.auto => 'Авто (по часовому поясу)',
+        RoutingRegion.auto => 'Авто',
         RoutingRegion.russia => 'Россия/Беларусь',
         RoutingRegion.china => 'Китай',
       };
