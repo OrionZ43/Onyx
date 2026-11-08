@@ -9,6 +9,7 @@ import '../domain/entities/node.dart';
 import '../domain/singbox_config_builder.dart';
 import 'binary_manager.dart';
 import 'singbox_api_client.dart';
+import 'win_child_guard.dart';
 
 
 /// Windows-реализация sing-box моста.
@@ -171,6 +172,9 @@ class SingboxBridgeWindows implements SingboxBridge {
         );
         _process = proc;
         log.i('sing-box PID: ${proc.pid}', tag: 'BRIDGE');
+        // Туннель не переживает onyx.exe даже при падении или «Снять задачу»:
+        // иначе WinTUN с маршрутами остаётся без хозяина (#57).
+        WinChildGuard.adopt(proc.pid);
 
         // sing-box пишет ВСЕ свои логи в stderr — это штатно.
         proc.stdout.transform(const SystemEncoding().decoder).listen(_parseSingboxOutput);
@@ -473,18 +477,18 @@ class SingboxBridgeWindows implements SingboxBridge {
     _process = null;
   }
 
+  /// Перед запуском: свой прошлый процесс и брошенные копии нашего
+  /// sing-box.exe (родитель уже не жив — например, после падения Onyx).
+  /// Раньше здесь был `taskkill /F /IM sing-box.exe`: он убивал ВСЕ sing-box
+  /// на машине — чужие клиенты, туннель соседней сборки Onyx и собственные
+  /// пробы Deep Probe посреди проверки (нода ложно становилась «мёртвой»).
   Future<void> _killExisting() async {
+    await _killProcess();
     try {
-      await Process.run(
-          'taskkill',
-          [
-            '/F',
-            '/IM',
-            'sing-box.exe',
-          ],
-          runInShell: true);
-      log.d('Завершены старые процессы sing-box', tag: 'BRIDGE');
-    } catch (_) {}
+      WinChildGuard.killOrphans(_binMgr.singboxExe.path);
+    } catch (e) {
+      log.w('Поиск брошенных sing-box не удался: $e', tag: 'BRIDGE');
+    }
   }
 
   /// Проверяет права администратора один раз за время жизни процесса

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:archive/archive.dart';
 import '../core/log_service.dart';
 import '../domain/singbox_config_builder.dart';
+import 'win_child_guard.dart';
 
 /// Управляет бинарниками sing-box / wintun и rule-set файлами маршрутизации.
 ///
@@ -89,6 +90,17 @@ class BinaryManager {
 
     _initialized = true;
     log.i('Директория бинарников: ${_binDir.path}', tag: 'BIN');
+
+    // Брошенные копии нашего sing-box от прошлого запуска (пробы, туннель
+    // после падения) держат singbox\sing-box.exe — обновление ядра не смогло
+    // бы его заменить. Свои процессы этого запуска ещё не стартовали (#57).
+    if (Platform.isWindows) {
+      try {
+        WinChildGuard.killOrphans(singboxExe.path);
+      } catch (e) {
+        log.w('Поиск брошенных sing-box не удался: $e', tag: 'BIN');
+      }
+    }
   }
 
   bool get _ruleSetsReady => SingboxConfigBuilder.ruleSetFiles

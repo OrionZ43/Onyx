@@ -6,6 +6,7 @@ import 'entities/node.dart';
 import 'node_scorer.dart'; // ← NEW: Умная система весов
 import 'singbox_config_builder.dart';
 import 'udp_probe.dart';
+import '../infrastructure/win_child_guard.dart';
 
 // ── TCP ProbeResult ───────────────────────────────────────────────────────────
 
@@ -393,6 +394,8 @@ class DeepProbe {
         ['run', '-c', configPath],
         mode: ProcessStartMode.detached,
       );
+      // Пробы не переживают onyx.exe: задание Windows погасит их при любом выходе (#57)
+      WinChildGuard.adopt(process.pid);
       log.d('[${node.name}] PID=${process.pid}, SOCKS5 порт=$port', tag: 'DEEP');
 
       await Future.delayed(_startupDelay);
@@ -559,6 +562,7 @@ class DeepProbe {
           ],
           mode: ProcessStartMode.detached);
       activeProcs[port] = process;
+      WinChildGuard.adopt(process.pid); // #57
       log.d(
         '[${node.name}] PID=${process.pid}, SOCKS5 порт=$port',
         tag: 'DEEP',
