@@ -4,7 +4,8 @@
 #       -SourceDir dist -Version 0.3.0 [-OutputDir build\installer] [-OutputName OnyxSetup_v0.3.0]
 #
 # SourceDir — то же содержимое, что у payload: onyx.exe, *.dll, data\,
-# OnyxUpdater.exe и core\ (sing-box.exe + wintun.dll, tools\core\fetch-core.ps1).
+# OnyxUpdater.exe и core\ (sing-box.exe + wintun.dll — tools\core\fetch-core.ps1;
+# onyx-core.exe — dart compile exe tools\onyx_core\bin\onyx_core.dart, #55).
 # OnyxService.exe, если лежит в SourceDir, в установщик не попадает.
 param(
   [Parameter(Mandatory = $true)][string]$SourceDir,
@@ -30,7 +31,7 @@ if (-not $IsccPath) {
 }
 if (-not $IsccPath) { throw "Inno Setup 6 (ISCC.exe) не найден. Установите: choco install innosetup" }
 
-foreach ($f in @("onyx.exe", "core\sing-box.exe", "core\wintun.dll")) {
+foreach ($f in @("onyx.exe", "core\sing-box.exe", "core\wintun.dll", "core\onyx-core.exe")) {
   if (-not (Test-Path (Join-Path $SourceDir $f))) { throw "В $SourceDir нет $f" }
 }
 

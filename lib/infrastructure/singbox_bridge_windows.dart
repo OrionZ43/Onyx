@@ -105,10 +105,18 @@ class SingboxBridgeWindows implements SingboxBridge {
       // 2. Проверяем права администратора (результат кэшируется —
       // см. комментарий у _isAdminCached)
       final isAdmin = await _checkAdmin();
-      if (!isAdmin) {
-        log.w('Нет прав администратора — WinTUN требует прав!', tag: 'BRIDGE');
+      // #55: без прав туннель поднимает задача ядра, которую регистрирует
+      // установщик. Нет ни прав, ни задачи — честно говорим, что делать.
+      _viaCore = !isAdmin && await coreTaskAvailable();
+      if (isAdmin) {
+        log.i('Права администратора: OK — sing-box запускаем сами', tag: 'BRIDGE');
+      } else if (_viaCore) {
+        log.i('Без прав администратора — туннель поднимет задача ядра $coreTaskName', tag: 'BRIDGE');
       } else {
-        log.i('Права администратора: OK', tag: 'BRIDGE');
+        throw Exception(
+          'Для туннеля нужен компонент Onyx с правами администратора, а он не установлен. '
+          'Переустановите Onyx — Windows один раз спросит разрешение.',
+        );
       }
 
       // 3. Резолвим IP сервера ДО создания TUN-интерфейса.
@@ -171,6 +179,22 @@ class SingboxBridgeWindows implements SingboxBridge {
       var ready = false;
       for (var attempt = 0; attempt < 2 && !ready; attempt++) {
         _stderrTail.clear();
+        if (_viaCore) {
+          // #55: Onyx без прав — туннель поднимает задача ядра (onyx-core.exe
+          // из Program Files с наивысшими правами), без UAC.
+          ready = await _startViaCore();
+          if (ready) break;
+          await _stopCore();
+          final tunBusy = _stderrTail.toString().contains('configure tun interface');
+          if (attempt == 0 && tunBusy) {
+            log.w('WinTUN-адаптер ещё не освобождён — повторяем запуск через 3 с', tag: 'BRIDGE');
+            await Future.delayed(const Duration(seconds: 3));
+            continue;
+          }
+          throw Exception(_lastFatal() != null
+              ? 'sing-box завершился при запуске: ${_lastFatal()}'
+              : 'Ядро Onyx не ответило за 15 секунд. Журнал: $coreRunDir\\sing-box.log');
+        }
         log.i('Запускаем: ${_binMgr.singboxExe.path}', tag: 'BRIDGE');
         final proc = await Process.start(
           _binMgr.singboxExe.path,
@@ -413,12 +437,24 @@ class SingboxBridgeWindows implements SingboxBridge {
 
   void _startStats() {
     _statsTimer?.cancel();
+    var failures = 0;
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       try {
         final (rx, tx) = await _apiClient.getTotalBytes();
+        failures = 0;
         _statsCtrl.add((rx, tx));
       } catch (e) {
         log.w('Ошибка получения статистики трафика: $e', tag: 'BRIDGE');
+        // Ядро через задачу (#55) — не наш дочерний процесс, его exitCode не
+        // слышим: молчание API 3 с подряд = ядро завершилось.
+        if (_viaCore && ++failures >= 3 && _state == BridgeState.running) {
+          _readCoreLog();
+          log.w('Ядро не отвечает — туннель завершился', tag: 'BRIDGE');
+          _errorCtrl.add('sing-box неожиданно завершился${_lastFatal() != null ? ': ${_lastFatal()}' : ''}');
+          _setState(BridgeState.error);
+          _stopStats();
+          _stopTrafficWatchdog();
+        }
       }
     });
   }
@@ -470,7 +506,114 @@ class SingboxBridgeWindows implements SingboxBridge {
     return '${(b / (1024 * 1024)).toStringAsFixed(1)}MB';
   }
 
+  // ── Ядро через задачу планировщика (#55) ─────────────────────────────
+  //
+  // onyx.exe работает без прав. Туннель (WinTUN требует админа) поднимает
+  // onyx-core.exe из C:\Program Files\Onyx\core — задачу \Onyx\OnyxCore_<имя>
+  // с наивысшими правами регистрирует установщик (один UAC), а запускать и
+  // снимать её пользователь может сам, без запроса. onyx-core читает наш
+  // config.json как недоверенный (пересобирает по белому списку), пишет
+  // журнал в C:\Program Files\Onyx\run и гасит туннель по core.stop или
+  // когда onyx.exe (PID в core.pid) закрылся.
+
+  /// Туннель поднят через задачу ядра (а не нашим дочерним процессом).
+  bool _viaCore = false;
+
+  /// Имя задачи ядра текущего пользователя (как в установщике).
+  static String get coreTaskName =>
+      '\\Onyx\\OnyxCore_${(Platform.environment['USERNAME'] ?? 'user').replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_')}';
+
+  /// Папка журнала ядра (только чтение — для текста ошибки).
+  static String get coreRunDir =>
+      '${Platform.environment['ProgramW6432'] ?? Platform.environment['ProgramFiles'] ?? r'C:\Program Files'}\\Onyx\\run';
+
+  /// Установлена ли задача ядра (установщик #55).
+  static Future<bool> coreTaskAvailable() async {
+    if (!Platform.isWindows) return false;
+    try {
+      final r = await Process.run('schtasks', ['/Query', '/TN', coreTaskName]);
+      return r.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  File get _corePidFile => File('${_binMgr.binDir.path}\\core.pid');
+  File get _coreStopFile => File('${_binMgr.binDir.path}\\core.stop');
+
+  Timer? _coreLogTimer;
+  int _coreLogOffset = 0;
+
+  /// Запуск через задачу ядра: PID-«заказчик», снять стоп-флаг и прошлый
+  /// экземпляр, запустить задачу, ждать Clash API. true — готово.
+  Future<bool> _startViaCore() async {
+    _corePidFile.writeAsStringSync('$pid');
+    if (_coreStopFile.existsSync()) _coreStopFile.deleteSync();
+    await Process.run('schtasks', ['/End', '/TN', coreTaskName]);
+    _coreLogOffset = 0;
+    log.i('Запускаем ядро: задача $coreTaskName', tag: 'BRIDGE');
+    final r = await Process.run('schtasks', ['/Run', '/TN', coreTaskName]);
+    if (r.exitCode != 0) {
+      _stderrTail.write('${r.stdout}${r.stderr}');
+      log.e('Задача ядра не запустилась: ${r.stdout}${r.stderr}', tag: 'BRIDGE');
+      return false;
+    }
+    _startCoreLogTail();
+    log.i('Ждём готовности API sing-box...', tag: 'BRIDGE');
+    final ready = await _apiClient.waitReady(timeout: const Duration(seconds: 15));
+    _readCoreLog(); // ошибки старта — в _stderrTail
+    return ready;
+  }
+
+  /// Остановка ядра: флаг core.stop (onyx-core гасит sing-box за ~0,3 с);
+  /// не помогло за 3 с — снимаем задачу планировщиком.
+  Future<void> _stopCore() async {
+    try {
+      _coreStopFile.writeAsStringSync('1');
+    } catch (_) {}
+    for (var i = 0; i < 12; i++) {
+      if (!await _apiClient.isReady()) break;
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+    if (await _apiClient.isReady()) {
+      log.w('Ядро не остановилось по флагу — снимаем задачу', tag: 'BRIDGE');
+      await Process.run('schtasks', ['/End', '/TN', coreTaskName]);
+    }
+    _coreLogTimer?.cancel();
+    _coreLogTimer = null;
+    _readCoreLog();
+  }
+
+  /// Журнал ядра → наш лог (диагностика, «Скопировать лог»).
+  void _startCoreLogTail() {
+    _coreLogTimer?.cancel();
+    _coreLogTimer = Timer.periodic(const Duration(seconds: 1), (_) => _readCoreLog());
+  }
+
+  void _readCoreLog() {
+    try {
+      final f = File('$coreRunDir\\sing-box.log');
+      if (!f.existsSync()) return;
+      final len = f.lengthSync();
+      if (len < _coreLogOffset) _coreLogOffset = 0; // новый запуск — файл заново
+      if (len == _coreLogOffset) return;
+      final raf = f.openSync();
+      try {
+        raf.setPositionSync(_coreLogOffset);
+        final bytes = raf.readSync(len - _coreLogOffset);
+        _coreLogOffset = len;
+        _parseSingboxOutput(const SystemEncoding().decoder.convert(bytes));
+      } finally {
+        raf.closeSync();
+      }
+    } catch (_) {}
+  }
+
   Future<void> _killProcess() async {
+    if (_viaCore) {
+      await _stopCore();
+      return;
+    }
     if (_process == null) return;
     try {
       _process!.kill(ProcessSignal.sigterm);

@@ -97,6 +97,15 @@ jobs:
           cd ../..
           dart compile exe tools/onyx_updater/bin/onyx_updater.dart -o build/OnyxUpdater.exe
 
+      # #55: запускатель ядра с правами админа (задача планировщика). Установщик
+      # кладёт его в C:\Program Files\Onyx\core вместе с sing-box и WinTUN.
+      - name: Build onyx-core
+        run: |
+          cd tools/onyx_core
+          dart pub get
+          cd ../..
+          dart compile exe tools/onyx_core/bin/onyx_core.dart -o build/onyx-core.exe
+
       - name: Package payload ZIP
         run: |
           New-Item -ItemType Directory -Force -Path dist
@@ -105,6 +114,7 @@ jobs:
           Copy-Item build\OnyxUpdater.exe dist\
           # Ядро в бандле: в Китае первый запуск не может скачать его с GitHub.
           pwsh tools/core/fetch-core.ps1 -Out dist\core
+          Copy-Item build\onyx-core.exe dist\core\
           $tag = "${{ github.ref_name }}"
           Compress-Archive -Path dist\* -DestinationPath "Onyx_${tag}_payload.zip" -Force
 
