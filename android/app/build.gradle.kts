@@ -39,8 +39,11 @@ android {
         // Только arm64-v8a (#44): ядро sing-box (libsingbox.so) лежит только под
         // arm64, а библиотеки остальных ABI раздували APK до ~75 МБ и без ядра
         // работали бы не полностью. Современные телефоны (в т.ч. POCO) — arm64.
+        // clear(): Flutter Gradle Plugin сам кладёт сюда все свои ABI
+        // (armeabi-v7a, arm64-v8a, x86_64) — без очистки «+=» только добавляет.
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters.clear()
+            abiFilters += "arm64-v8a"
         }
     }
 
