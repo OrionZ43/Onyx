@@ -148,7 +148,7 @@ zh.UninstallAppTitle=Onyx VPN 卸载
 ru.GroupShortcuts=Ярлыки:
 ru.TaskDesktop=Ярлык на рабочем столе
 ru.GroupStartup=Запуск:
-ru.TaskAutostart=Запускать Onyx при входе в Windows (разрешение спросят один раз)
+ru.TaskAutostart=Запускать Onyx при входе в систему (Windows один раз спросит разрешение)
 ru.LaunchOnyx=Запустить Onyx
 ru.ShortcutComment=Onyx — VPN в одну кнопку
 ru.ReadyElevationHeader=Разрешение администратора (Windows спросит один раз):
@@ -247,9 +247,6 @@ Type: files; Name: "{app}\*.dll"
 Type: files; Name: "{app}\{#AppExe}"
 Type: files; Name: "{app}\OnyxUpdater.exe"
 Type: files; Name: "{app}\OnyxService.exe"
-; Копия ядра, которую Onyx раскладывает в данные — это бинарники, не настройки
-Type: files; Name: "{userappdata}\z43.studios\onyx\singbox\sing-box.exe"; Check: not IsTestMode
-Type: files; Name: "{userappdata}\z43.studios\onyx\singbox\wintun.dll"; Check: not IsTestMode
 ; Метка тестовой установки (пишется кодом)
 Type: files; Name: "{app}\onyxtest.flag"
 Type: dirifempty; Name: "{app}"
@@ -846,6 +843,17 @@ begin
         DelTree(DataDir, True, True, True);
         DelTree(ExpandConstant('{localappdata}\z43.studios\onyx'), True, True, True);
       end;
+    end
+    else if IsTestMode then
+      Log('ONYXTEST: копия ядра в данных оставлена')
+    else
+    begin
+      // Копия ядра, которую Onyx раскладывает в данные, — бинарники, а не
+      // настройки: убираем всегда. Решение здесь, а не в [UninstallDelete]:
+      // там условие вычислялось бы при установке, и тестовое удаление
+      // настоящей установки всё равно стёрло бы её.
+      DeleteFile(DataDir + '\singbox\sing-box.exe');
+      DeleteFile(DataDir + '\singbox\wintun.dll');
     end;
     RegDeleteKeyIncludingSubkeys(HKCU, OnyxRegKey);
     RegDeleteKeyIfEmpty(HKCU, 'Software\Z43 Studios');
