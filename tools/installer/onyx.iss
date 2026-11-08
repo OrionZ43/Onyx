@@ -252,6 +252,10 @@ var
   DeleteDataOnUninstall: Boolean;
   // Новое состояние автозапуска для HKCU: -1 — не менялось, 0/1 — записать
   AutostartState: Integer;
+  // Запущен свой процесс, который держит файлы в папке установки
+  // (выставляет OnyxRunning). sing-box из папки данных файлы установки не
+  // держит: без UAC он просто останется, установку это не блокирует.
+  OnyxBlocks: Boolean;
 
 // ── Окружение ───────────────────────────────────────────────────────────────
 
@@ -332,6 +336,7 @@ var
   Name, Path, OursPids: String;
 begin
   Result := False;
+  OnyxBlocks := False;
   try
     Procs := WmiQuery('SELECT ProcessId, ParentProcessId, Name, ExecutablePath FROM Win32_Process ' +
       'WHERE Name = ''onyx.exe'' OR Name = ''OnyxService.exe'' OR Name = ''OnyxUpdater.exe'' OR Name = ''sing-box.exe''');
@@ -346,6 +351,7 @@ begin
       begin
         Log(Format('Наш процесс: %s PID %d (%s)', [Name, Pid, Path]));
         OursPids := OursPids + IntToStr(Pid) + ',';
+        OnyxBlocks := True;
         Result := True;
       end;
     end;
@@ -360,6 +366,7 @@ begin
         if UnderDir(Path, AppDir) or UnderDir(Path, LegacyDir) then
         begin
           Log(Format('Наш sing-box: PID %d (%s)', [Pid, Path]));
+          OnyxBlocks := True;
           Result := True;
         end
         else if UnderDir(Path, DataDir) then
@@ -470,7 +477,9 @@ begin
       'Start-Sleep -Milliseconds 700' + NL;
   if CleanLegacy then
     S := S +
-      'Unregister-ScheduledTask -TaskName ''OnyxVpnService'' -Confirm:$false' + NL +
+      '$legacyTask = @(Get-ScheduledTask -TaskName ''OnyxVpnService'')' + NL +
+      '$legacyTask | Unregister-ScheduledTask -Confirm:$false' + NL +
+      'if ($legacyTask.Count -eq 0) { $out.Add(''legacy-task=none'') } elseif (Get-ScheduledTask -TaskName ''OnyxVpnService'') { $out.Add(''legacy-task=left'') } else { $out.Add(''legacy-task=removed'') }' + NL +
       'Remove-Item -LiteralPath ''HKLM:\' + LegacyUninstallKey + ''' -Recurse -Force' + NL;
   if AddAutostart then
     S := S +
@@ -519,6 +528,7 @@ function RunElevated(const Script: String): Boolean;
 var
   Params: String;
   Code: Integer;
+  Content: AnsiString;
 begin
   Log('Повышенный шаг:' + #13#10 + Script);
   if IsTestMode then
@@ -536,6 +546,11 @@ begin
     Result := False;
     exit;
   end;
+  // Весь маркер — в журнал: по нему видно, что именно сделал повышенный шаг.
+  if LoadStringFromFile(MarkerPath, Content) then
+    Log('Маркер повышенного шага:' + #13#10 + String(Content))
+  else
+    Log('Маркер повышенного шага не найден');
   Result := MarkerHas('done');
   Log('Повышенный шаг: маркер done=' + BoolStr(Result));
 end;
@@ -573,14 +588,15 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  Running, Legacy, WantAuto, DropAuto, Ok: Boolean;
+  Running, Blocks, Legacy, WantAuto, DropAuto, Ok: Boolean;
 begin
   Result := '';
   Running := OnyxRunning;
+  Blocks := OnyxBlocks;
   Legacy := LegacyPresent;
   WantAuto := WizardIsTaskSelected('autostart');
   DropAuto := PrevAutostart and not WantAuto;
-  Log(Format('Подготовка: onyx запущен=%s, наследие 0.2.0=%s, автозапуск=%s, выключить автозапуск=%s', [BoolStr(Running), BoolStr(Legacy), BoolStr(WantAuto), BoolStr(DropAuto)]));
+  Log(Format('Подготовка: onyx запущен=%s (держит файлы=%s), наследие 0.2.0=%s, автозапуск=%s, выключить автозапуск=%s', [BoolStr(Running), BoolStr(Blocks), BoolStr(Legacy), BoolStr(WantAuto), BoolStr(DropAuto)]));
 
   if not (Running or Legacy or WantAuto or DropAuto) then
   begin
@@ -612,7 +628,7 @@ begin
   // Если наш Onyx так и не закрылся — его файлы заняты, честно останавливаемся.
   // Решает маркер повышенного шага (он видит процессы точно), а не повторная
   // проверка без прав.
-  if Running and not (IsTestMode or MarkerHas('stopped=ok')) then
+  if Blocks and not (IsTestMode or MarkerHas('stopped=ok')) then
     Result := CustomMessage('OnyxRunningNoAdmin');
 end;
 
@@ -640,20 +656,21 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  Running, Legacy, HadAuto: Boolean;
+  Running, Blocks, Legacy, HadAuto: Boolean;
 begin
   if CurUninstallStep = usUninstall then
   begin
     Running := OnyxRunning;
+    Blocks := OnyxBlocks;
     Legacy := LegacyPresent;
     HadAuto := PrevAutostart;
-    Log(Format('Удаление: onyx запущен=%s, наследие=%s, автозапуск=%s', [BoolStr(Running), BoolStr(Legacy), BoolStr(HadAuto)]));
+    Log(Format('Удаление: onyx запущен=%s (держит файлы=%s), наследие=%s, автозапуск=%s', [BoolStr(Running), BoolStr(Blocks), BoolStr(Legacy), BoolStr(HadAuto)]));
     if Running or Legacy or HadAuto then
     begin
       if not RunElevated(BuildAdminScript(True, Legacy, False, True, MarkerPath)) then
         Log('Повышенный шаг удаления не выполнен: задача автозапуска могла остаться');
       // Onyx не закрылся — его файлы заняты: не удаляем наполовину.
-      if Running and not (IsTestMode or MarkerHas('stopped=ok')) then
+      if Blocks and not (IsTestMode or MarkerHas('stopped=ok')) then
       begin
         SuppressibleMsgBox(CustomMessage('UninstallCloseOnyx'), mbError, MB_OK, IDOK);
         Abort;
