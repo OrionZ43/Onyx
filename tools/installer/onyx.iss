@@ -120,30 +120,34 @@ Name: "zh"; MessagesFile: "lang\ChineseSimplified.isl"; InfoBeforeFile: "text\in
 
 [Messages]
 ru.WelcomeLabel1=Установка Onyx
-ru.WelcomeLabel2=Мастер установит [name/ver] на компьютер.%n%nOnyx — защищённое подключение в одну кнопку: сам обновит серверы, проверит их и подключится к лучшему.%n%nЕсли Onyx сейчас запущен, установщик закроет его сам.
+ru.WelcomeLabel2=Мастер установит [name/ver] на компьютер.%n%nOnyx — защищённое подключение в одну кнопку: сам обновит список серверов, проверит их и подключится к лучшему.%n%nЕсли Onyx сейчас запущен, установщик закроет его сам.
 ru.FinishedHeadingLabel=Onyx установлен
 ru.FinishedLabelNoIcons=Onyx готов к работе. Нажмите большую кнопку подключения — остальное он сделает сам.
 ru.FinishedLabel=Onyx готов к работе. Нажмите большую кнопку подключения — остальное он сделает сам.
 en.WelcomeLabel1=Install Onyx
-en.WelcomeLabel2=Setup will install [name/ver] on this computer.%n%nOnyx is a one-tap secure connection: it updates the servers, checks them and connects to the best one by itself.%n%nIf Onyx is running now, Setup will close it for you.
+en.WelcomeLabel2=Setup will install [name/ver] on this computer.%n%nOnyx is a one-click secure connection: it refreshes the server list, tests the servers and connects to the best one on its own.%n%nIf Onyx is running now, Setup will close it for you.
 en.FinishedHeadingLabel=Onyx is installed
-en.FinishedLabelNoIcons=Onyx is ready. Tap the big connect button — Onyx will do the rest.
-en.FinishedLabel=Onyx is ready. Tap the big connect button — Onyx will do the rest.
+en.FinishedLabelNoIcons=Onyx is ready. Click the big connect button — Onyx will do the rest.
+en.FinishedLabel=Onyx is ready. Click the big connect button — Onyx will do the rest.
 zh.WelcomeLabel1=安装 Onyx
-zh.WelcomeLabel2=安装向导将在这台电脑上安装 [name/ver]。%n%nOnyx 是一键安全连接：它会自动更新服务器、检测服务器并连接到最好的那个。%n%n如果 Onyx 正在运行，安装程序会自动关闭它。
+zh.WelcomeLabel2=安装向导将在这台电脑上安装 [name/ver]。%n%nOnyx 是一键安全连接：它会自动更新服务器、检测服务器并自动连接到最佳服务器。%n%n如果 Onyx 正在运行，安装程序会自动关闭它。
 zh.FinishedHeadingLabel=Onyx 已安装
 zh.FinishedLabelNoIcons=Onyx 已准备就绪。点一下大的连接按钮，其余的交给 Onyx。
 zh.FinishedLabel=Onyx 已准备就绪。点一下大的连接按钮，其余的交给 Onyx。
+
+ru.UninstallAppTitle=Деинсталляция — Onyx VPN
+en.UninstallAppTitle=Onyx VPN Uninstall
+zh.UninstallAppTitle=Onyx VPN 卸载
 
 [CustomMessages]
 ru.GroupShortcuts=Ярлыки:
 ru.TaskDesktop=Ярлык на рабочем столе
 ru.GroupStartup=Запуск:
-ru.TaskAutostart=Запускать Onyx при входе в Windows — один раз спросит разрешение
+ru.TaskAutostart=Запускать Onyx при входе в систему (Windows один раз спросит разрешение)
 ru.LaunchOnyx=Запустить Onyx
 ru.ShortcutComment=Onyx — VPN в одну кнопку
 ru.ReadyElevationHeader=Разрешение администратора (Windows спросит один раз):
-ru.ReadyElevationNote=Файлы Onyx ставятся в вашу папку и без него.
+ru.ReadyElevationNote=Для установки самого Onyx это разрешение не нужно.
 ru.ReasonStop=закрыть запущенный Onyx
 ru.ReasonLegacy=убрать старую версию Onyx 0.2.0
 ru.ReasonAutostartOn=настроить автозапуск
@@ -159,9 +163,9 @@ en.TaskDesktop=Desktop shortcut
 en.GroupStartup=Startup:
 en.TaskAutostart=Start Onyx when I sign in to Windows (asks for permission once)
 en.LaunchOnyx=Launch Onyx
-en.ShortcutComment=Onyx — one-tap VPN
+en.ShortcutComment=Onyx — one-click VPN
 en.ReadyElevationHeader=Administrator permission (Windows asks once):
-en.ReadyElevationNote=Onyx files are installed into your user folder without it.
+en.ReadyElevationNote=Onyx itself installs into your user folder and doesn't need this permission.
 en.ReasonStop=close the running Onyx
 en.ReasonLegacy=remove the old Onyx 0.2.0
 en.ReasonAutostartOn=set up start with Windows
@@ -179,7 +183,7 @@ zh.TaskAutostart=登录 Windows 时自动启动 Onyx（会请求一次权限）
 zh.LaunchOnyx=启动 Onyx
 zh.ShortcutComment=Onyx —— 一键 VPN
 zh.ReadyElevationHeader=管理员权限（Windows 只会请求一次）：
-zh.ReadyElevationNote=Onyx 的文件不需要该权限即可安装到你的用户文件夹。
+zh.ReadyElevationNote=安装 Onyx 本身不需要该权限。
 zh.ReasonStop=关闭正在运行的 Onyx
 zh.ReasonLegacy=移除旧版本 Onyx 0.2.0
 zh.ReasonAutostartOn=设置开机自动启动
@@ -187,7 +191,7 @@ zh.ReasonAutostartOff=关闭开机自动启动
 zh.OnyxRunningNoAdmin=Onyx 正在运行，没有管理员权限安装程序无法关闭它。%n%n请先关闭 Onyx（时钟旁的狐狸图标 → 退出），然后重新运行安装程序。
 zh.AutostartSkipped=未设置开机自动启动：Windows 没有授予权限。如需开启，请重新运行安装程序。
 zh.LegacyLeft=旧版本 Onyx 0.2.0 仍在已安装程序列表中：移除它需要管理员权限。请重新运行安装程序并允许更改。
-zh.UninstallDeleteData=同时删除 Onyx 的数据（订阅、服务器和设置）吗？%n%n如果你还打算重新安装 Onyx，请选择“否”，所有数据都会保留。
+zh.UninstallDeleteData=同时删除 Onyx 的数据（订阅、服务器和设置）吗？%n%n如果您还打算重新安装 Onyx，请选择“否”，所有数据都会保留。
 zh.UninstallCloseOnyx=Onyx 正在运行，没有管理员权限无法关闭它。%n%n请先关闭 Onyx（时钟旁的狐狸图标 → 退出），然后重新运行卸载程序。
 
 [Tasks]

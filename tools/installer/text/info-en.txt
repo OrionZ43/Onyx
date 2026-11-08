@@ -1,4 +1,4 @@
-﻿Onyx is a one-tap secure connection. Tap once and Onyx updates its server list, checks the servers and connects to the best one.
+﻿Onyx is a one-click secure connection. Click once and Onyx refreshes the server list, tests the servers and connects to the best one.
 
 What Setup will do
 • Install Onyx into your user folder — no administrator rights are needed for that.
