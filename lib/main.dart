@@ -30,11 +30,17 @@ import 'presentation/tray/onyx_tray.dart';
 import 'presentation/tray/tray_flyout.dart';
 import 'presentation/screens/onboarding_screen.dart';
 
-void main() async {
+/// Окно при старте не показываем — Onyx сразу в трее.
+bool _launchHidden = false;
+
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   // «Запускать свёрнутым»: окно не показываем, Onyx живёт в трее.
   final startMinimized = prefs.getBool(StartMinimizedNotifier.key) ?? false;
+  // Автозапуск при входе в Windows (задача планировщика из установщика,
+  // #51) передаёт --autostart — тоже сразу в трей, настройку не трогаем.
+  _launchHidden = startMinimized || args.contains('--autostart');
 
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();
@@ -51,7 +57,7 @@ void main() async {
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       // Крестик — выход через _exit(): сначала гасим sing-box (см. onWindowClose).
       await windowManager.setPreventClose(true);
-      if (startMinimized) return;
+      if (_launchHidden) return;
       await windowManager.show();
       await windowManager.focus();
     });
@@ -101,7 +107,7 @@ class OnyxApp extends ConsumerStatefulWidget {
 
 class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayListener {
   bool _setupDone = false;
-  late bool _isVisible = !ref.read(startMinimizedProvider);
+  bool _isVisible = !_launchHidden;
   OnyxTray? _tray;
 
   // ── Мини-панель у значка трея (#46) ─────────────────────────────────────
