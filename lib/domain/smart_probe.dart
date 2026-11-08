@@ -438,6 +438,35 @@ class DeepProbe {
     }
   }
 
+  /// Убрать брошенные конфиги проб (`onyx_probe_*.json` во временной
+  /// папке): если Onyx закрыли посреди проверки, `finally` не срабатывал, а
+  /// в конфиге — параметры сервера с учётными данными. Только старше
+  /// [olderThan], чтобы не задеть пробы соседнего экземпляра Onyx (#57).
+  static int cleanupStaleConfigs({
+    Duration olderThan = const Duration(minutes: 10),
+    Directory? dir,
+  }) {
+    dir ??= Directory(Platform.isWindows
+        ? (Platform.environment['TEMP'] ?? Directory.systemTemp.path)
+        : Directory.systemTemp.path);
+    final cutoff = DateTime.now().subtract(olderThan);
+    var removed = 0;
+    try {
+      for (final e in dir.listSync(followLinks: false)) {
+        final name = e.uri.pathSegments.isEmpty ? '' : e.uri.pathSegments.last;
+        if (e is! File || !name.startsWith('onyx_probe_') || !name.endsWith('.json')) continue;
+        try {
+          if (e.lastModifiedSync().isBefore(cutoff)) {
+            e.deleteSync();
+            removed++;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    if (removed > 0) log.i('Удалено брошенных конфигов проб: $removed', tag: 'DEEP');
+    return removed;
+  }
+
   static Future<int> _freePort() async {
     final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final port = s.port;

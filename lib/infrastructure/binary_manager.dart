@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:archive/archive.dart';
 import '../core/log_service.dart';
 import '../domain/singbox_config_builder.dart';
+import '../domain/smart_probe.dart';
 import 'win_child_guard.dart';
 
 /// Управляет бинарниками sing-box / wintun и rule-set файлами маршрутизации.
@@ -101,6 +102,8 @@ class BinaryManager {
         log.w('Поиск брошенных sing-box не удался: $e', tag: 'BIN');
       }
     }
+    // Их конфиги (с учётными данными серверов) — тоже.
+    DeepProbe.cleanupStaleConfigs();
   }
 
   bool get _ruleSetsReady => SingboxConfigBuilder.ruleSetFiles
