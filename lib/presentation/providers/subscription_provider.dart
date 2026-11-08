@@ -1,12 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/log_service.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/subscription_source.dart';
+import '../../domain/failover_policy.dart';
+import '../../domain/node_scorer.dart';
 import '../../domain/smart_probe.dart';
 import '../../domain/sources/node_pool.dart';
 import '../../infrastructure/binary_manager.dart';
+import '../../infrastructure/singbox_bridge_windows.dart';
+import '../../infrastructure/win_child_guard.dart';
+import 'settings_provider.dart';
 import 'sources_provider.dart';
 
 // ── SubStatus ─────────────────────────────────────────────────────────────────
@@ -226,6 +233,38 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     await _probeIds({for (final n in state.nodes) n.id});
   }
 
+  /// Фоновая перепроверка при поднятом VPN (этап 2 автопилота): [k] лучших
+  /// кандидатов на замену текущему [excludeId] — флаги «работает»/UDP/ИИ
+  /// свежие к моменту, когда понадобится переключение. Под TUN это только
+  /// Deep Probe (мимо туннеля), нагрузка — [k] процессов sing-box раз в
+  /// [backgroundEvery].
+  void backgroundReprobe({String? excludeId, int k = 8}) {
+    if (_busy || state.nodes.isEmpty) return;
+    final ids = {
+      for (final n in NodePool.rank(state.nodes, excludeId: excludeId, exclude: state.quarantined).take(k)) n.id,
+    };
+    if (ids.isEmpty) return;
+    log.i('Фоновая перепроверка: ${ids.length} кандидатов', tag: 'PROBE');
+    unawaited(_probeIds(ids));
+  }
+
+  static const backgroundEvery = Duration(minutes: 20);
+
+  /// Смена сети при выключенном VPN (этап 2): результаты проб с прошлой сети
+  /// устарели — перепроверяем в фоне, не чаще раза в [networkReprobeGap].
+  void networkChanged() {
+    final now = DateTime.now();
+    final last = _lastNetReprobe;
+    if (last != null && now.difference(last) < networkReprobeGap) return;
+    if (state.nodes.isEmpty || _busy) return;
+    _lastNetReprobe = now;
+    log.i('Сеть сменилась — перепроверяем серверы', tag: 'PROBE');
+    unawaited(reprobe());
+  }
+
+  static const networkReprobeGap = Duration(minutes: 10);
+  DateTime? _lastNetReprobe;
+
   /// Нода не работает при реальном подключении (туннель не отвечает):
   /// помечаем мёртвой и ставим на карантин — автовыбор и автопереключение
   /// её пропускают, даже если следующий TCP-пинг снова «зелёный» (порт
@@ -292,30 +331,79 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     );
 
     // ─── Этап 1: TCP-пинг ──────────────────────────────────────────────
-    final probed = await _probe.probeAll(
-      targets,
-      onProgress: (done, total) {
-        if (mounted) state = state.copyWith(status: SubStatus.probing, probedCount: done);
-      },
-    );
-    if (!mounted) return;
-    _probedIds.addAll(probed.map((n) => n.id));
-    _apply(probed, (cur, upd) => cur.copyWith(
-          isAlive: upd.isAlive,
-          latencyMs: upd.latencyMs,
-          // При повторной проверке сбрасываем «работает», пока Deep Probe не
-          // подтвердит заново — иначе мёртвая нода висела бы зелёной.
-          isTrulyWorking: upd.isAlive ? cur.isTrulyWorking : false,
-        ));
+    // На Windows при поднятом TUN TCP-пинг бессмыслен (#41): рукопожатие
+    // завершается локально в туннеле — у всех ~1 мс и «живы». Тогда только
+    // Deep Probe: его sing-box ходит мимо туннеля (правило конфига, #60).
+    final underTun = tunActive();
+    final List<Node> probed;
+    if (underTun) {
+      log.i('VPN поднят — TCP-пинг пропущен, проверяем Deep Probe', tag: 'PROBE');
+      probed = [...targets]..sort(NodeScorer.compare);
+    } else {
+      probed = await _probe.probeAll(
+        targets,
+        onProgress: (done, total) {
+          if (mounted) state = state.copyWith(status: SubStatus.probing, probedCount: done);
+        },
+      );
+      if (!mounted) return;
+      _probedIds.addAll(probed.map((n) => n.id));
+      _apply(probed, (cur, upd) => cur.copyWith(
+            isAlive: upd.isAlive,
+            latencyMs: upd.latencyMs,
+            // При повторной проверке сбрасываем «работает», пока Deep Probe не
+            // подтвердит заново — иначе мёртвая нода висела бы зелёной.
+            isTrulyWorking: upd.isAlive ? cur.isTrulyWorking : false,
+          ));
+    }
     state = state.copyWith(status: SubStatus.ready, probedCount: probed.length);
     _saveCache(state.nodes);
 
     // ─── Этап 2: Deep Probe (реальный HTTPS + AI + UDP) ───────────────
-    await _runDeepProbe(probed);
+    await _runDeepProbe(probed, assumeAlive: underTun);
   }
 
-  Future<void> _runDeepProbe(List<Node> sortedNodes) async {
-    final aliveCount = sortedNodes.where((n) => n.isAlive).length;
+  /// Поднят ли туннель Windows (WinTUN): тогда TCP-пинг из приложения
+  /// уходит в туннель и ничего не меряет. На Android приложение исключено
+  /// из VPN — там пинг честный.
+  static bool Function() tunActive = () =>
+      Platform.isWindows && SingboxBridgeWindows.instance.state == BridgeState.running;
+
+  /// Запущен ли клиент Discord (Windows, по списку процессов; этап 2
+  /// автопилота). На Android чужие процессы не видны — false.
+  static bool Function() discordRunning = () => WinChildGuard.anyRunning(kDiscordProcessNames);
+
+  /// Нужен ли серверу UDP (голос Discord): включён режим Discord или
+  /// Discord запущен прямо сейчас.
+  bool _discordWanted() => _ref.read(settingsProvider).discordMode || discordRunning();
+
+  /// Бюджет Deep Probe за проход (#41): минимум [deepMinNodes] лучших,
+  /// дальше — пока не найдётся достаточно рабочих ([deepEnough]), но не
+  /// больше [deepMaxNodes]. Каждая нода — отдельный sing-box на 5–30 с.
+  static const deepMinNodes = 15;
+  static const deepMaxNodes = 60;
+
+  /// «Достаточно» рабочих: 3 проверенных, а в режиме Discord ещё и хотя бы
+  /// одна с подтверждённым UDP (без него голос не работает).
+  static bool deepEnough(Iterable<Node> nodes, {required bool discord}) {
+    final ok = nodes.where((n) => n.isTrulyWorking).toList();
+    return ok.length >= 3 && (!discord || ok.any((n) => n.udpSupported));
+  }
+
+  /// Порядок Deep Probe: сначала ноды с задержкой в пределах потолка
+  /// ([FailoverPolicy.latencyAcceptable]), внутри — исходный порядок
+  /// (по [NodeScorer]). Заведомо медленные — в конец бюджета.
+  static List<Node> deepOrder(List<Node> sorted) => [
+        ...sorted.where(FailoverPolicy.latencyAcceptable),
+        ...sorted.where((n) => !FailoverPolicy.latencyAcceptable(n)),
+      ];
+
+  Future<void> _runDeepProbe(List<Node> sortedNodes, {bool assumeAlive = false}) async {
+    // Под TUN TCP-пинга не было: кандидаты — все цели проверки.
+    final input = deepOrder(
+      assumeAlive ? [for (final n in sortedNodes) n.isAlive ? n : n.copyWith(isAlive: true)] : sortedNodes,
+    );
+    final aliveCount = input.where((n) => n.isAlive).length;
     if (aliveCount == 0) return;
     final binMgr = BinaryManager.instance;
     if (!binMgr.isReady) return;
@@ -324,17 +412,24 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       state = state.copyWith(
         status: SubStatus.deepProbing,
         deepProbedCount: 0,
-        deepProbeTotal: aliveCount,
+        deepProbeTotal: aliveCount < deepMaxNodes ? aliveCount : deepMaxNodes,
       );
     }
 
+    final discord = _discordWanted();
     await DeepProbe(singboxExePath: binMgr.singboxExe.path).probeAllNodes(
-      sortedNodes,
+      input,
+      minNodes: deepMinNodes,
+      maxNodes: deepMaxNodes,
+      enough: () => deepEnough(state.nodes, discord: discord),
       onNodeResult: (u) {
         if (!mounted) return;
         // Deep Probe подтвердил реальную работу — снимаем карантин.
         if (u.isTrulyWorking) _liftQuarantine(u.id);
         _apply([u], (cur, upd) => cur.copyWith(
+              // Подтверждённая Deep Probe нода жива, даже если TCP-пинга не
+              // было (под TUN или QUIC).
+              isAlive: cur.isAlive || upd.isTrulyWorking,
               isTrulyWorking: upd.isTrulyWorking,
               aiReachable: upd.aiReachable,
               udpSupported: upd.udpSupported,

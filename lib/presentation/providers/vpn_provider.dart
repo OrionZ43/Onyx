@@ -12,6 +12,7 @@ import '../../infrastructure/singbox_bridge_windows.dart';
 import '../../infrastructure/singbox_bridge_android.dart';
 import '../../infrastructure/vpn_notification_service.dart';
 import '../../infrastructure/exit_ip.dart';
+import '../../infrastructure/network_watcher.dart';
 import 'subscription_provider.dart';
 import 'groups_provider.dart';
 import 'connect_phase.dart';
@@ -24,6 +25,40 @@ class VpnController extends StateNotifier<VpnState> {
   VpnController(this.ref) : super(const VpnDisconnected()) {
     _listenBridge();
     _listenNotificationActions();
+    // Смена сети (этап 2): подключены — сразу проверяем туннель, отключены —
+    // перепроверяем серверы в фоне (данные проб с прошлой сети устарели).
+    _netSub = NetworkWatcher.instance.changes.listen((_) => _onNetworkChanged());
+  }
+
+  StreamSubscription? _netSub;
+
+  /// Фоновая перепроверка кандидатов на замену, пока подключены (этап 2).
+  Timer? _bgProbeTimer;
+
+  /// Текущая проба здоровья — чтобы при смене сети проверить туннель сразу.
+  Future<void> Function()? _healthTick;
+
+  void _onNetworkChanged() {
+    final s = state;
+    if (s is VpnConnected) {
+      if (_isFailingOver) return;
+      log.i('Сеть сменилась — проверяем туннель сейчас', tag: 'VPN');
+      unawaited(_healthTick?.call());
+    } else if (s is VpnDisconnected || s is VpnError) {
+      ref.read(subscriptionProvider.notifier).networkChanged();
+    }
+  }
+
+  void _startBackgroundProbe(int mySession) {
+    _bgProbeTimer?.cancel();
+    _bgProbeTimer = Timer.periodic(SubscriptionController.backgroundEvery, (t) {
+      final s = state;
+      if (mySession != _sessionId || s is! VpnConnected) {
+        t.cancel();
+        return;
+      }
+      ref.read(subscriptionProvider.notifier).backgroundReprobe(excludeId: s.node.id);
+    });
   }
 
   StreamSubscription? _bridgeStateSub;
@@ -127,6 +162,7 @@ class VpnController extends StateNotifier<VpnState> {
       connected: true,
     ));
     _startHealthMonitor(mySession);
+    _startBackgroundProbe(mySession);
     _startNotificationUpdates(mySession, node.name);
   }
 
@@ -220,7 +256,9 @@ class VpnController extends StateNotifier<VpnState> {
     }
 
     // 2. Проверка: ждём, пока появится подходящий кандидат.
-    final discord = ref.read(settingsProvider).discordMode;
+    // UDP нужен в режиме Discord или если Discord сейчас запущен (Windows,
+    // этап 2 автопилота) — без него голос не работает.
+    final discord = ref.read(settingsProvider).discordMode || SubscriptionController.discordRunning();
     bool good(Node n) => n.isTrulyWorking && (!discord || n.udpSupported);
     Node? candidate() {
       final sub = ref.read(subscriptionProvider);
@@ -346,6 +384,8 @@ class VpnController extends StateNotifier<VpnState> {
 
     _healthTimer?.cancel();
     _healthTimer = null;
+    _bgProbeTimer?.cancel();
+    _bgProbeTimer = null;
     _notifUpdateTimer?.cancel();
     _notifUpdateTimer = null;
 
@@ -440,7 +480,7 @@ class VpnController extends StateNotifier<VpnState> {
     _healthTimer?.cancel();
     _badSamples = 0;
     _isFailingOver = false;
-    Future<void> tick() async {
+    Future<void> check() async {
       if (mySession != _sessionId) return;
       if (state is! VpnConnected) return;
       if (_isFailingOver) return;
@@ -477,6 +517,21 @@ class VpnController extends StateNotifier<VpnState> {
       _healthTimer?.cancel();
       await _failover(mySession);
     }
+
+    // Одна проверка за раз: плановая и внеплановая (смена сети) не должны
+    // считать плохие пробы дважды.
+    var running = false;
+    Future<void> tick() async {
+      if (running) return;
+      running = true;
+      try {
+        await check();
+      } finally {
+        running = false;
+      }
+    }
+
+    _healthTick = tick;
 
     // Первая проверка — быстро после подключения: если сервер мёртв
     // (connect timeout), не ждём плановые 20 с.
@@ -576,7 +631,7 @@ class VpnController extends StateNotifier<VpnState> {
       candidates: shortlist,
       fresh: fresh,
       currentMs: _lastHealthMs,
-      preferUdp: settings.discordMode,
+      preferUdp: settings.discordMode || SubscriptionController.discordRunning(),
       preferAi: deadNode.aiReachable,
     );
 
@@ -701,6 +756,8 @@ class VpnController extends StateNotifier<VpnState> {
   void dispose() {
     _sessionId++;
     _healthTimer?.cancel();
+    _bgProbeTimer?.cancel();
+    _netSub?.cancel();
     _notifUpdateTimer?.cancel();
     _statsSub?.cancel();
     _errorSub?.cancel();

@@ -124,6 +124,16 @@ class WinChildGuard {
     return killed;
   }
 
+  /// Запущен ли хоть один процесс с именем из [exeNames] (без учёта
+  /// регистра). Например, клиент Discord — тогда автопилот предпочитает
+  /// серверы с UDP (голос). Снимок процессов — миллисекунды, прав не нужно.
+  static bool anyRunning(Iterable<String> exeNames) {
+    final k = _kernel;
+    if (k == null) return false;
+    final names = {for (final n in exeNames) n.toLowerCase()};
+    return _snapshot(k).any((p) => names.contains(p.exeName.toLowerCase()));
+  }
+
   /// PID всех процессов с образом [exePath] (диагностика и тесты).
   static List<int> pidsOf(String exePath) {
     final k = _kernel;

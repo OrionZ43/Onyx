@@ -41,8 +41,10 @@ class ProbeResult {
 class SmartProbe {
   const SmartProbe();
 
-  static const _concurrency = 5;
-  static const _timeout = Duration(seconds: 5);
+  // #41: TCP-рукопожатие дешёвое — 16 одновременно; 4 с хватает живому
+  // серверу даже с одним повтором SYN (в Китае — 1 с + 3 с).
+  static const _concurrency = 16;
+  static const _timeout = Duration(seconds: 4);
 
   /// Проверяет список нод параллельно батчами по [_concurrency].
   ///
@@ -55,32 +57,27 @@ class SmartProbe {
     void Function(int done, int total)? onProgress,
   }) async {
     log.i(
-      'Этап 1: TCP-пинг ${nodes.length} узлов (по $_concurrency параллельно)',
+      'Этап 1: TCP-пинг ${nodes.length} узлов (до $_concurrency одновременно)',
       tag: 'PROBE',
     );
 
+    // Пул воркеров (#41): медленная/мёртвая нода не держит остальных, как
+    // было с батчами «по 5, ждём всех». 300 нод — около минуты в худшем
+    // случае вместо пяти.
     final results = List<Node?>.filled(nodes.length, null);
-    int done = 0;
-
-    for (var i = 0; i < nodes.length; i += _concurrency) {
-      final end = min(i + _concurrency, nodes.length);
-      final batch = nodes.sublist(i, end);
-      final batchIndices = List.generate(end - i, (j) => i + j);
-
-      final probed = await Future.wait(
-        List.generate(batch.length, (j) async {
-          final node = batch[j];
-          final result = await probeOne(node);
-          done++;
-          onProgress?.call(done, nodes.length);
-          return result;
-        }),
-      );
-
-      for (var j = 0; j < probed.length; j++) {
-        results[batchIndices[j]] = probed[j];
+    var next = 0;
+    var done = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = next++;
+        if (i >= nodes.length) return;
+        results[i] = await probeOne(nodes[i]);
+        done++;
+        onProgress?.call(done, nodes.length);
       }
     }
+
+    await Future.wait(List.generate(min(_concurrency, nodes.length), (_) => worker()));
 
     final allNodes = results.whereType<Node>().toList();
     final alive = allNodes.where((n) => n.isAlive).length;
@@ -331,15 +328,21 @@ class DeepProbe {
     required void Function(Node updated) onNodeResult,
     void Function(int done, int total)? onProgress,
     bool Function()? isCancelled,
+    int maxNodes = 1 << 30,
+    int minNodes = 0,
+    bool Function()? enough,
   }) async {
-    final candidates = sortedNodes.where((n) => n.isAlive).toList();
+    // #41: бюджет — не больше [maxNodes] лучших; после [minNodes] останавливаемся,
+    // как только [enough] (нашлось достаточно рабочих). Раньше проверялись
+    // ВСЕ живые — на сотнях нод публичных подписок это десятки минут.
+    final candidates = sortedNodes.where((n) => n.isAlive).take(maxNodes).toList();
     if (candidates.isEmpty) {
       log.w('Deep-скан: нет живых кандидатов', tag: 'DEEP');
       return;
     }
 
     log.i(
-      'Deep-скан ВСЕХ нод: ${candidates.length} кандидатов, '
+      'Deep-скан: до ${candidates.length} кандидатов (минимум $minNodes), '
       'батчи по $_batchSize, база=$_probeHost, AI=$_aiProbeHost',
       tag: 'DEEP',
     );
@@ -347,6 +350,10 @@ class DeepProbe {
     int done = 0;
 
     for (var start = 0; start < candidates.length; start += _batchSize) {
+      if (done >= minNodes && (enough?.call() ?? false)) {
+        log.i('Deep-скан: достаточно рабочих после $done нод — стоп', tag: 'DEEP');
+        return;
+      }
       if (isCancelled?.call() ?? false) {
         log.d('Deep-скан прерван на $done/${candidates.length}', tag: 'DEEP');
         return;
