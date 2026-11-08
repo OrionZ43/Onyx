@@ -74,5 +74,9 @@ const kDiscordProcessNames = <String>[
   'DiscordCanary.exe',
 ];
 
+/// Процессы проб серверов на Windows: отдельные sing-box.exe, которые Onyx
+/// запускает для проверки кандидатов. Их трафик идёт мимо туннеля (#60).
+const kProbeProcessNames = <String>['sing-box.exe'];
+
 /// Пакеты Discord на Android (для документации и будущего libbox-режима).
 const kDiscordPackages = <String>['com.discord'];

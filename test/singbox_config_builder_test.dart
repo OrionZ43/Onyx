@@ -62,8 +62,10 @@ void main() {
     expect(r[0], {'action': 'sniff'});
     expect(r[1], {'port': 53, 'action': 'hijack-dns'});
     expect((cfg['dns'] as Map)['strategy'], 'ipv4_only');
-    expect(r[2]['process_name'], contains('Discord.exe'));
-    expect(r[3]['domain_suffix'], contains('discord.media'));
+    // #60: пробы серверов (sing-box.exe) — мимо туннеля, сразу после DNS.
+    expect(r[2], {'process_name': ['sing-box.exe'], 'outbound': 'direct'});
+    expect(r[3]['process_name'], contains('Discord.exe'));
+    expect(r[4]['domain_suffix'], contains('discord.media'));
     expect(
       r.any((x) => (x['rule_set'] as List?)?.contains('geosite-cn') ?? false),
       isTrue,
@@ -85,7 +87,10 @@ void main() {
     expect(outs.first['type'], 'vless');
     expect(outs.first['packet_encoding'], 'xudp');
     final r = rules(cfg);
-    expect(r.any((x) => x.containsKey('process_name')), isFalse);
+    // Без Discord правил по процессам Discord нет; правило проб — есть.
+    expect(r.where((x) => x.containsKey('process_name')).toList(), [
+      {'process_name': ['sing-box.exe'], 'outbound': 'direct'},
+    ]);
     expect(
       r.any((x) => (x['rule_set'] as List?)?.contains('geoip-by') ?? false),
       isTrue,

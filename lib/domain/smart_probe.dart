@@ -376,6 +376,75 @@ class DeepProbe {
     log.i('Deep-скан завершён: проверено ${candidates.length} нод', tag: 'DEEP');
   }
 
+  /// Свежий замер перед автопрыжком (#60): время HTTPS-запроса через каждую
+  /// ноду — те же единицы, что у монитора здоровья. Параллельно, лучший из
+  /// двух запросов (первый включает рукопожатие с сервером). Порты — свободные
+  /// от ОС, не пересекаются со сканом. Возвращает id → мс (−1 — не ответила).
+  ///
+  /// Работает и при поднятом VPN: на Windows трафик sing-box.exe идёт мимо
+  /// туннеля (правило в конфиге), на Android приложение исключено из VPN.
+  Future<Map<String, int>> measure(List<Node> nodes) async {
+    final res = <String, int>{};
+    await Future.wait([
+      for (final n in nodes) _measureOne(n).then((ms) => res[n.id] = ms),
+    ]);
+    return res;
+  }
+
+  Future<int> _measureOne(Node node) async {
+    Process? process;
+    String? configPath;
+    try {
+      final port = await _freePort();
+      configPath = _probeConfigPath(port);
+      await _writeProbeConfig(node, port, configPath);
+      process = await Process.start(
+        singboxExePath,
+        ['run', '-c', configPath],
+        mode: ProcessStartMode.detached,
+      );
+      WinChildGuard.adopt(process.pid);
+      // Ждём слушатель до 3 с вместо фиксированных 2 с.
+      var up = false;
+      for (var i = 0; i < 12 && !up; i++) {
+        await Future.delayed(const Duration(milliseconds: 250));
+        up = await _isSocksListening(port);
+      }
+      if (!up) return -1;
+      var best = -1;
+      for (var i = 0; i < 2; i++) {
+        final sw = Stopwatch()..start();
+        final ok = await _httpsProbeViaSocks5(port, node.name)
+            .timeout(const Duration(seconds: 5), onTimeout: () => false);
+        sw.stop();
+        if (!ok) break;
+        final ms = sw.elapsedMilliseconds;
+        if (best < 0 || ms < best) best = ms;
+      }
+      log.i('Замер ${node.name}: ${best < 0 ? "не ответил" : "$best мс"}', tag: 'DEEP');
+      return best;
+    } catch (e) {
+      log.d('[${node.name}] замер: $e', tag: 'DEEP');
+      return -1;
+    } finally {
+      try {
+        process?.kill();
+      } catch (_) {}
+      if (configPath != null) {
+        try {
+          File(configPath).deleteSync();
+        } catch (_) {}
+      }
+    }
+  }
+
+  static Future<int> _freePort() async {
+    final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = s.port;
+    await s.close();
+    return port;
+  }
+
   /// Полная проверка одной ноды: базовая связность + (при успехе) AI.
   /// Всегда возвращает ноду с проставленными флагами (в т.ч. false/false
   /// при провале), чтобы вызывающий мог обновить UI без исключений.

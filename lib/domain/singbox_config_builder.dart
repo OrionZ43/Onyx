@@ -440,6 +440,13 @@ class SingboxConfigBuilder {
         // «bad question name / overflow uint16»), а сниффер теоретически
         // мог принять за DNS короткие UDP-пакеты на других портах.
         {'port': 53, 'action': 'hijack-dns'},
+        // Пробы серверов (отдельные sing-box.exe) — мимо туннеля: перед
+        // автопереключением кандидатов меряем при поднятом VPN, и без этого
+        // замер шёл бы через текущий, больной сервер (#60). DNS проб —
+        // по-прежнему через hijack-dns выше. Собственные исходящие основного
+        // sing-box в TUN не попадают вовсе (auto_detect_interface).
+        if (withProcessRules)
+          {'process_name': kProbeProcessNames, 'outbound': 'direct'},
         // ── Режим Discord: наивысший приоритет ─────────────────────────
         // На Windows ловим сам процесс: так в туннель гарантированно
         // попадает и голос/видео (UDP на IP voice-серверов, у которых в
