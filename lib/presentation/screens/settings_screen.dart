@@ -75,8 +75,8 @@ class SettingsScreen extends ConsumerWidget {
               _Group(children: [
                 _SwitchTile(
                   glyph: OnyxGlyph.zap,
-                  title: 'Автопереключение серверов',
-                  subtitle: 'Если сервер начал подвисать или отвалился — Onyx сам перейдёт на лучший рабочий.',
+                  title: 'Автоматически менять сервер при ухудшении',
+                  subtitle: 'Если сервер начал подвисать, Onyx перепроверит запасные и перейдёт на заметно более быстрый. Сервер, выбранный вручную, не меняется.',
                   value: settings.autoFailover,
                   onChanged: n.toggleAutoFailover,
                 ),

@@ -401,7 +401,7 @@ class _SidePanel extends ConsumerWidget {
         section('Сервер', [
           ServerCard(node: node, sub: sub, locked: connected, onTap: onServers),
           const SizedBox(height: 12),
-          _StatusLine(node: node, autoFailover: settings.autoFailover),
+          _StatusLine(node: node, autoFailover: settings.autoFailover, active: ref.watch(autoFailoverActiveProvider)),
         ], trailing: _PanelLink(label: 'Сменить', onTap: onServers)),
         section('Скорость', [
           Row(children: [
@@ -461,9 +461,13 @@ class _PanelLink extends StatelessWidget {
 
 /// Мини-строка статуса: голос (UDP) и автопереключение — только чтение.
 class _StatusLine extends StatelessWidget {
-  const _StatusLine({required this.node, required this.autoFailover});
+  const _StatusLine({required this.node, required this.autoFailover, required this.active});
   final Node? node;
   final bool autoFailover;
+
+  /// Автопереключение действует: тумблер включён и сервер не выбран вручную
+  /// (с ручного выбора Onyx не уводит, #60).
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
@@ -491,7 +495,10 @@ class _StatusLine extends StatelessWidget {
         );
     return Wrap(spacing: 6, runSpacing: 6, children: [
       pill(voice, voiceColor),
-      pill(autoFailover ? 'Автопереключение' : 'Автопереключение выкл', autoFailover ? good : t.textFaint),
+      pill(
+        active ? 'Автопереключение' : (autoFailover ? 'Ручной выбор' : 'Автопереключение выкл'),
+        active ? good : t.textFaint,
+      ),
     ]);
   }
 }
