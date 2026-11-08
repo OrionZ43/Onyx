@@ -55,7 +55,9 @@
 #endif
 
 [Setup]
-AppId={#AppId}
+; Тестовый режим (/ONYXTEST=1) — своя запись в «Программах» и свой ключ HKCU:
+; иначе тестовое удаление снесло бы регистрацию настоящей установки.
+AppId={#AppId}{code:TestIdSuffix}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
@@ -75,6 +77,9 @@ VersionInfoProductVersion={#AppVersion}
 PrivilegesRequired=lowest
 DefaultDirName={localappdata}\Onyx
 UsePreviousAppDir=yes
+; AppId с константой (тестовый режим) требует явного UsePreviousLanguage=no:
+; язык и так берётся из языка Windows (ShowLanguageDialog=auto)
+UsePreviousLanguage=no
 AppendDefaultDirName=yes
 DirExistsWarning=no
 DisableProgramGroupPage=yes
@@ -98,7 +103,7 @@ WizardImageBackColor=#0C0C0E
 WizardSmallImageFile={#BrandDir}\small-58.png,{#BrandDir}\small-97.png,{#BrandDir}\small-124.png,{#BrandDir}\small-159.png
 SetupIconFile=..\..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
-UninstallDisplayName={#AppName}
+UninstallDisplayName={#AppName}{code:TestNameSuffix}
 
 ; Onyx запущен с правами админа — Restart Manager без прав его не закроет,
 ; поэтому закрываем сами (повышенный шаг в PrepareToInstall)
@@ -143,15 +148,17 @@ zh.UninstallAppTitle=Onyx VPN 卸载
 ru.GroupShortcuts=Ярлыки:
 ru.TaskDesktop=Ярлык на рабочем столе
 ru.GroupStartup=Запуск:
-ru.TaskAutostart=Запускать Onyx при входе в систему (Windows один раз спросит разрешение)
+ru.TaskAutostart=Запускать Onyx при входе в Windows (разрешение спросят один раз)
 ru.LaunchOnyx=Запустить Onyx
 ru.ShortcutComment=Onyx — VPN в одну кнопку
 ru.ReadyElevationHeader=Разрешение администратора (Windows спросит один раз):
 ru.ReadyElevationNote=Для установки самого Onyx это разрешение не нужно.
 ru.ReasonStop=закрыть запущенный Onyx
+ru.ReasonLeftovers=остановить оставшиеся процессы Onyx
 ru.ReasonLegacy=убрать старую версию Onyx 0.2.0
 ru.ReasonAutostartOn=настроить автозапуск
 ru.ReasonAutostartOff=выключить автозапуск
+ru.WaitingForPermission=Ждём разрешения администратора — подтвердите запрос Windows («Да»).
 ru.OnyxRunningNoAdmin=Onyx сейчас запущен, а без разрешения администратора установщик не может его закрыть.%n%nЗакройте Onyx (значок лисы у часов → «Выход») и запустите установку снова.
 ru.AutostartSkipped=Автозапуск не настроен: Windows не дала разрешение. Чтобы включить его, запустите установку ещё раз.
 ru.LegacyLeft=Старая версия Onyx 0.2.0 осталась в списке программ: для её удаления нужно разрешение администратора. Запустите установку ещё раз и разрешите изменения.
@@ -167,9 +174,11 @@ en.ShortcutComment=Onyx — one-click VPN
 en.ReadyElevationHeader=Administrator permission (Windows asks once):
 en.ReadyElevationNote=Onyx itself installs into your user folder and doesn't need this permission.
 en.ReasonStop=close the running Onyx
+en.ReasonLeftovers=stop leftover Onyx processes
 en.ReasonLegacy=remove the old Onyx 0.2.0
 en.ReasonAutostartOn=set up start with Windows
 en.ReasonAutostartOff=turn off start with Windows
+en.WaitingForPermission=Waiting for administrator permission — confirm the Windows prompt (Yes).
 en.OnyxRunningNoAdmin=Onyx is running now, and Setup cannot close it without administrator permission.%n%nClose Onyx (fox icon near the clock → Exit) and run Setup again.
 en.AutostartSkipped=Start with Windows was not set up: Windows did not grant permission. Run Setup again to turn it on.
 en.LegacyLeft=The old Onyx 0.2.0 is still listed in installed apps: removing it needs administrator permission. Run Setup again and allow the changes.
@@ -185,9 +194,11 @@ zh.ShortcutComment=Onyx —— 一键 VPN
 zh.ReadyElevationHeader=管理员权限（Windows 只会请求一次）：
 zh.ReadyElevationNote=安装 Onyx 本身不需要该权限。
 zh.ReasonStop=关闭正在运行的 Onyx
+zh.ReasonLeftovers=结束残留的 Onyx 进程
 zh.ReasonLegacy=移除旧版本 Onyx 0.2.0
 zh.ReasonAutostartOn=设置开机自动启动
 zh.ReasonAutostartOff=关闭开机自动启动
+zh.WaitingForPermission=正在等待管理员权限，请在 Windows 弹出的提示中点击“是”。
 zh.OnyxRunningNoAdmin=Onyx 正在运行，没有管理员权限安装程序无法关闭它。%n%n请先关闭 Onyx（时钟旁的狐狸图标 → 退出），然后重新运行安装程序。
 zh.AutostartSkipped=未设置开机自动启动：Windows 没有授予权限。如需开启，请重新运行安装程序。
 zh.LegacyLeft=旧版本 Onyx 0.2.0 仍在已安装程序列表中：移除它需要管理员权限。请重新运行安装程序并允许更改。
@@ -219,8 +230,8 @@ Name: "{userprograms}\Onyx"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; C
 Name: "{userdesktop}\Onyx"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "{cm:ShortcutComment}"; Tasks: desktopicon; Check: not IsTestMode
 
 [Registry]
-Root: HKCU; Subkey: "Software\Z43 Studios\Onyx"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Z43 Studios\Onyx"; ValueType: string; ValueName: "Version"; ValueData: "{#AppVersion}"
+Root: HKCU; Subkey: "{code:RegKeyPath}"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "{code:RegKeyPath}"; ValueType: string; ValueName: "Version"; ValueData: "{#AppVersion}"
 
 [Run]
 ; onyx.exe требует прав администратора — shellexec, чтобы Windows показала UAC
@@ -239,12 +250,13 @@ Type: files; Name: "{app}\OnyxService.exe"
 ; Копия ядра, которую Onyx раскладывает в данные — это бинарники, не настройки
 Type: files; Name: "{userappdata}\z43.studios\onyx\singbox\sing-box.exe"; Check: not IsTestMode
 Type: files; Name: "{userappdata}\z43.studios\onyx\singbox\wintun.dll"; Check: not IsTestMode
+; Метка тестовой установки (пишется кодом)
+Type: files; Name: "{app}\onyxtest.flag"
 Type: dirifempty; Name: "{app}"
 
 [Code]
 const
   LegacyUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Onyx';
-  OnyxRegKey = 'Software\Z43 Studios\Onyx';
 
 var
   AutostartSkipped: Boolean;
@@ -256,12 +268,49 @@ var
   // (выставляет OnyxRunning). sing-box из папки данных файлы установки не
   // держит: без UAC он просто останется, установку это не блокирует.
   OnyxBlocks: Boolean;
+  // Тестовый режим определяется один раз (см. IsTestMode)
+  TestModeKnown, TestModeOn: Boolean;
 
 // ── Окружение ───────────────────────────────────────────────────────────────
 
+// /ONYXTEST=1 — без UAC, ярлыков и удаления данных, со своей записью в
+// «Программах» (AppId + «.test») и своим ключом HKCU. Деинсталлятор тестовой
+// установки узнаёт её и без ключа — по метке onyxtest.flag в папке. Решение
+// кэшируется: к концу удаления метки уже нет, а ошибиться и снести настоящие
+// данные или ключ нельзя.
 function IsTestMode: Boolean;
 begin
-  Result := ExpandConstant('{param:ONYXTEST|0}') = '1';
+  if not TestModeKnown then
+  begin
+    TestModeOn := ExpandConstant('{param:ONYXTEST|0}') = '1';
+    if (not TestModeOn) and IsUninstaller then
+      TestModeOn := FileExists(ExpandConstant('{app}\onyxtest.flag'));
+    TestModeKnown := True;
+  end;
+  Result := TestModeOn;
+end;
+
+function OnyxRegKey: String;
+begin
+  if IsTestMode then
+    Result := 'Software\Z43 Studios\Onyx (test)'
+  else
+    Result := 'Software\Z43 Studios\Onyx';
+end;
+
+function RegKeyPath(Param: String): String;
+begin
+  Result := OnyxRegKey;
+end;
+
+function TestIdSuffix(Param: String): String;
+begin
+  if IsTestMode then Result := '.test' else Result := '';
+end;
+
+function TestNameSuffix(Param: String): String;
+begin
+  if IsTestMode then Result := ' (test)' else Result := '';
 end;
 
 function AppDir: String;
@@ -387,11 +436,58 @@ end;
 
 // ── Наследие v0.2.0 и автозапуск ────────────────────────────────────────────
 
+// v0.2.0 (64-битный Flutter-установщик) писала запись в 64-битное
+// представление HKLM. Смотрим оба явно: сам Setup — 32-битный процесс.
 function LegacyPresent: Boolean;
 begin
-  Result := RegKeyExists(HKLM, LegacyUninstallKey) or
+  Result := RegKeyExists(HKLM64, LegacyUninstallKey) or
+    RegKeyExists(HKLM32, LegacyUninstallKey) or
     FileExists(LegacyDir + '\OnyxService.exe') or
     FileExists(AppDir + '\OnyxService.exe');
+end;
+
+// Задача автозапуска \Onyx\Onyx Autostart (читается и без прав админа).
+// -1 — планировщик недоступен, 0 — задачи нет, 1 — есть и уже запускает
+// onyx.exe из этой папки с наивысшими правами (повторная регистрация и UAC
+// ради неё не нужны), 2 — есть, но другая.
+function AutostartTaskState: Integer;
+var
+  Svc, Task, Def, Act: Variant;
+  Enabled: Boolean;
+  RunLevel, Count: Integer;
+begin
+  // -1 — планировщик недоступен (не знаем)
+  Result := -1;
+  try
+    Svc := CreateOleObject('Schedule.Service');
+    Svc.Connect();
+  except
+    Log('Планировщик недоступен: ' + GetExceptionMessage);
+    exit;
+  end;
+  Result := 0;
+  try
+    Task := Svc.GetFolder('\Onyx').GetTask('Onyx Autostart');
+  except
+    exit;
+  end;
+  Result := 2;
+  try
+    Def := Task.Definition;
+    // Variant → типизированные переменные: Pascal Script не сравнивает их в «and»
+    Enabled := Task.Enabled;
+    RunLevel := Def.Principal.RunLevel;
+    Count := Def.Actions.Count;
+    if Enabled and (RunLevel = 1) and (Count >= 1) then
+    begin
+      Act := Def.Actions.Item(1);
+      if (CompareText(VarStr(Act.Path), AppDir + '\onyx.exe') = 0) and
+        (VarStr(Act.Arguments) = '--autostart') then
+        Result := 1;
+    end;
+  except
+    Log('Задача автозапуска не прочитана: ' + GetExceptionMessage);
+  end;
 end;
 
 function PrevAutostart: Boolean;
@@ -455,7 +551,10 @@ var
 begin
   NL := #13#10;
   S := '$ErrorActionPreference = ''SilentlyContinue''' + NL +
-    '$out = New-Object System.Collections.Generic.List[string]' + NL;
+    '$out = New-Object System.Collections.Generic.List[string]' + NL +
+    // Разрядность PowerShell: Setup 32-битный, ShellExec запускает 32-битный
+    // PowerShell — реестр HKLM поэтому трогаем только через явные представления.
+    '$out.Add(''ps64='' + [Environment]::Is64BitProcess)' + NL;
   // Свои onyx.exe/службу/апдейтер — только из папки установки и старой папки;
   // sing-box из папки данных — только дети своих onyx.exe или сироты.
   if StopOnyx then
@@ -480,7 +579,8 @@ begin
       '$legacyTask = @(Get-ScheduledTask -TaskName ''OnyxVpnService'')' + NL +
       '$legacyTask | Unregister-ScheduledTask -Confirm:$false' + NL +
       'if ($legacyTask.Count -eq 0) { $out.Add(''legacy-task=none'') } elseif (Get-ScheduledTask -TaskName ''OnyxVpnService'') { $out.Add(''legacy-task=left'') } else { $out.Add(''legacy-task=removed'') }' + NL +
-      'Remove-Item -LiteralPath ''HKLM:\' + LegacyUninstallKey + ''' -Recurse -Force' + NL;
+      '$legacyKey = ' + Q(LegacyUninstallKey) + NL +
+      'foreach ($view in ''Registry64'', ''Registry32'') { try { $hk = [Microsoft.Win32.RegistryKey]::OpenBaseKey(''LocalMachine'', $view); $hk.DeleteSubKeyTree($legacyKey, $false); $hk.Close() } catch { $out.Add(''legacy-key-error='' + $view) } }' + NL;
   if AddAutostart then
     S := S +
       '$user = ' + Q(UserAccount) + NL +
@@ -496,7 +596,10 @@ begin
       'try { $svc = New-Object -ComObject Schedule.Service; $svc.Connect(); $svc.GetFolder(''\'').DeleteFolder(''Onyx'', 0) } catch {}' + NL +
       'if (-not (Get-ScheduledTask -TaskPath ''\Onyx\'' -TaskName ''Onyx Autostart'')) { $out.Add(''autostart=off'') }' + NL;
   if CleanLegacy then
-    S := S + 'if (-not (Test-Path -LiteralPath ''HKLM:\' + LegacyUninstallKey + ''')) { $out.Add(''legacy=ok'') }' + NL;
+    S := S +
+      '$legacyLeft = $false' + NL +
+      'foreach ($view in ''Registry64'', ''Registry32'') { $hk = [Microsoft.Win32.RegistryKey]::OpenBaseKey(''LocalMachine'', $view); $k = $hk.OpenSubKey($legacyKey); if ($k) { $legacyLeft = $true; $k.Close() }; $hk.Close() }' + NL +
+      'if (-not $legacyLeft) { $out.Add(''legacy=ok'') }' + NL;
   if StopOnyx then
     S := S +
       '$busy = @(Get-Ours | Where-Object { $_.Name -ne ''OnyxUpdater.exe'' }) + @(Get-CimInstance Win32_Process -Filter "Name=''sing-box.exe''" | Where-Object { (Under $_.ExecutablePath $app) -or (Under $_.ExecutablePath $legacy) })' + NL +
@@ -566,47 +669,83 @@ end;
 // Страница «Всё готово к установке»: честно предупреждаем о запросе UAC
 // до нажатия «Установить» — заголовок и причины отдельными короткими строками
 // (памятка не переносит длинные строки).
+// Что делать с автозапуском — одно решение для «Всё готово» и установки.
+// NeedAuto — зарегистрировать задачу (её нет или она другая), DropAuto — снять
+// (галочка снята, а задача есть), AutoReady — уже настроена как надо: при
+// обновлении с включённым автозапуском UAC ради него не нужен.
+procedure PlanAutostart(var NeedAuto, DropAuto, AutoReady: Boolean);
+var
+  WantAuto: Boolean;
+  St: Integer;
+begin
+  WantAuto := WizardIsTaskSelected('autostart');
+  St := AutostartTaskState;
+  AutoReady := WantAuto and (St = 1);
+  NeedAuto := WantAuto and (St <> 1);
+  // Планировщик недоступен (St = -1) — верим флагу прошлой установки
+  DropAuto := (not WantAuto) and ((St > 0) or ((St < 0) and PrevAutostart));
+end;
+
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
-  WantAuto: Boolean;
+  NeedAuto, DropAuto, AutoReady: Boolean;
   Reasons: String;
 begin
   Result := MemoDirInfo;
   if MemoTasksInfo <> '' then
     Result := Result + NewLine + NewLine + MemoTasksInfo;
-  WantAuto := WizardIsTaskSelected('autostart');
+  PlanAutostart(NeedAuto, DropAuto, AutoReady);
   Reasons := '';
-  if OnyxRunning then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonStop');
+  if OnyxRunning then
+  begin
+    if OnyxBlocks then
+      Reasons := Reasons + NewLine + Space + CustomMessage('ReasonStop')
+    else
+      Reasons := Reasons + NewLine + Space + CustomMessage('ReasonLeftovers');
+  end;
   if LegacyPresent then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonLegacy');
-  if WantAuto then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonAutostartOn');
-  if PrevAutostart and not WantAuto then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonAutostartOff');
+  if NeedAuto then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonAutostartOn');
+  if DropAuto then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonAutostartOff');
   if Reasons <> '' then
     Result := Result + NewLine + NewLine + CustomMessage('ReadyElevationHeader') + Reasons +
       NewLine + NewLine + CustomMessage('ReadyElevationNote');
 end;
 
+// Пока Windows спрашивает разрешение, страница «Подготовка к установке» иначе
+// пустая — подсказываем, чего ждём.
+procedure ShowWaiting(Show: Boolean);
+begin
+  if WizardSilent then exit;
+  if Show then
+    WizardForm.PreparingLabel.Caption := CustomMessage('WaitingForPermission')
+  else
+    WizardForm.PreparingLabel.Caption := '';
+  WizardForm.PreparingLabel.Visible := Show;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  Running, Blocks, Legacy, WantAuto, DropAuto, Ok: Boolean;
+  Running, Blocks, Legacy, NeedAuto, DropAuto, AutoReady, Ok: Boolean;
 begin
   Result := '';
   Running := OnyxRunning;
   Blocks := OnyxBlocks;
   Legacy := LegacyPresent;
-  WantAuto := WizardIsTaskSelected('autostart');
-  DropAuto := PrevAutostart and not WantAuto;
-  Log(Format('Подготовка: onyx запущен=%s (держит файлы=%s), наследие 0.2.0=%s, автозапуск=%s, выключить автозапуск=%s', [BoolStr(Running), BoolStr(Blocks), BoolStr(Legacy), BoolStr(WantAuto), BoolStr(DropAuto)]));
+  PlanAutostart(NeedAuto, DropAuto, AutoReady);
+  Log(Format('Подготовка: onyx запущен=%s (держит файлы=%s), наследие 0.2.0=%s, включить автозапуск=%s, уже настроен=%s, выключить автозапуск=%s', [BoolStr(Running), BoolStr(Blocks), BoolStr(Legacy), BoolStr(NeedAuto), BoolStr(AutoReady), BoolStr(DropAuto)]));
 
-  if not (Running or Legacy or WantAuto or DropAuto) then
+  if not (Running or Legacy or NeedAuto or DropAuto) then
   begin
-    if not PrevAutostart then AutostartState := 0;
+    if AutoReady then AutostartState := 1 else AutostartState := 0;
     exit;
   end;
 
-  Ok := RunElevated(BuildAdminScript(Running or Legacy, Legacy, WantAuto, DropAuto, MarkerPath));
+  ShowWaiting(True);
+  Ok := RunElevated(BuildAdminScript(Running or Legacy, Legacy, NeedAuto, DropAuto, MarkerPath));
+  ShowWaiting(False);
 
-  if WantAuto then
+  if NeedAuto then
   begin
     if IsTestMode or MarkerHas('autostart=ok') then
       AutostartState := 1
@@ -617,6 +756,8 @@ begin
   begin
     if IsTestMode or MarkerHas('autostart=off') then AutostartState := 0;
   end
+  else if AutoReady then
+    AutostartState := 1
   else
     AutostartState := 0;
 
@@ -636,6 +777,8 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and (AutostartState >= 0) then
     RegWriteDWordValue(HKCU, OnyxRegKey, 'Autostart', AutostartState);
+  if (CurStep = ssPostInstall) and IsTestMode then
+    SaveStringToFile(AppDir + '\onyxtest.flag', 'ONYXTEST', False);
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -654,16 +797,25 @@ end;
 
 // ── Удаление ────────────────────────────────────────────────────────────────
 
+// Решение о тестовом режиме — в самом начале, пока метка onyxtest.flag на месте
+function InitializeUninstall: Boolean;
+begin
+  Log('Тестовый режим: ' + BoolStr(IsTestMode));
+  Result := True;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Running, Blocks, Legacy, HadAuto: Boolean;
+  St: Integer;
 begin
   if CurUninstallStep = usUninstall then
   begin
     Running := OnyxRunning;
     Blocks := OnyxBlocks;
     Legacy := LegacyPresent;
-    HadAuto := PrevAutostart;
+    St := AutostartTaskState;
+    HadAuto := (St > 0) or ((St < 0) and PrevAutostart);
     Log(Format('Удаление: onyx запущен=%s (держит файлы=%s), наследие=%s, автозапуск=%s', [BoolStr(Running), BoolStr(Blocks), BoolStr(Legacy), BoolStr(HadAuto)]));
     if Running or Legacy or HadAuto then
     begin
