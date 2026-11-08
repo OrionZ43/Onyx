@@ -43,7 +43,7 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          flutter build apk --release --dart-define=APP_VERSION=$VERSION
+          flutter build apk --release --target-platform android-arm64 --dart-define=APP_VERSION=$VERSION
 
       - name: Rename APK to stable name
         run: |

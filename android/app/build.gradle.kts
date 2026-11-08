@@ -36,6 +36,12 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Только arm64-v8a (#44): ядро sing-box (libsingbox.so) лежит только под
+        // arm64, а библиотеки остальных ABI раздували APK до ~75 МБ и без ядра
+        // работали бы не полностью. Современные телефоны (в т.ч. POCO) — arm64.
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
