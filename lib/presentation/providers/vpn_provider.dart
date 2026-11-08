@@ -25,9 +25,30 @@ class VpnController extends StateNotifier<VpnState> {
   VpnController(this.ref) : super(const VpnDisconnected()) {
     _listenBridge();
     _listenNotificationActions();
-    // Смена сети (этап 2): подключены — сразу проверяем туннель, отключены —
-    // перепроверяем серверы в фоне (данные проб с прошлой сети устарели).
-    _netSub = NetworkWatcher.instance.changes.listen((_) => _onNetworkChanged());
+    if (backgroundNetwork) {
+      // Смена сети (этап 2): подключены — сразу проверяем туннель, отключены —
+      // перепроверяем серверы в фоне (данные проб с прошлой сети устарели).
+      _netSub = NetworkWatcher.instance.changes.listen((_) => _onNetworkChanged());
+      // Регион «Авто» по IP (этап 2) — при старте, пока туннеля нет.
+      unawaited(_refreshGeo());
+    }
+  }
+
+  /// Фоновая сетевая активность (опрос сетей, страна по IP). Под `flutter
+  /// test` выключена: юнит-тесты не ходят в сеть и не оставляют таймеров.
+  static bool backgroundNetwork = !Platform.environment.containsKey('FLUTTER_TEST');
+
+  /// Можно ли сейчас ходить в сеть напрямую: на Windows без туннеля (иначе
+  /// узнаем страну сервера), на Android приложение исключено из VPN.
+  bool _directNetwork() =>
+      !Platform.isWindows || state is VpnDisconnected || state is VpnError;
+
+  Future<void> _refreshGeo({bool force = false}) async {
+    try {
+      await ref.read(settingsProvider.notifier).refreshGeo(canLookup: _directNetwork, force: force);
+    } catch (e) {
+      log.d('Регион по IP: $e', tag: 'GEO');
+    }
   }
 
   StreamSubscription? _netSub;
@@ -47,6 +68,8 @@ class VpnController extends StateNotifier<VpnState> {
     } else if (s is VpnDisconnected || s is VpnError) {
       ref.read(subscriptionProvider.notifier).networkChanged();
     }
+    // Новая сеть — возможно, другая страна.
+    if (_directNetwork()) unawaited(_refreshGeo(force: true));
   }
 
   void _startBackgroundProbe(int mySession) {

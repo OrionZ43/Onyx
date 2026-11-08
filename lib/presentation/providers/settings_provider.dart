@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/log_service.dart';
 import '../../domain/node_scorer.dart';
 import '../../domain/routing_region.dart';
+import '../../infrastructure/geo_ip.dart';
 export '../../domain/routing_region.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -91,6 +93,39 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   static const _keyRoutingRegion = 'settings_routing_region';
   static const _keyDiscordMode = 'settings_discord_mode';
   static const _keyMigratedV2 = 'settings_migrated_v2';
+  static const _keyGeoCountry = 'geo_ip_country';
+  static const _keyGeoAt = 'geo_ip_at';
+
+  /// Как часто уточнять страну по IP (этап 2): страна меняется редко.
+  static const geoRefreshEvery = Duration(hours: 6);
+
+  /// Регион устройства: страна по IP (если известна и это CN/RU/BY), иначе
+  /// часовой пояс и локаль.
+  static RoutingRegion _detected(String? country) => GeoIp.regionFor(country) ?? detectDevice();
+
+  /// Уточнить регион «Авто» по внешнему IP. [canLookup] — можно ли ходить в
+  /// сеть напрямую (на Windows — только без туннеля, иначе узнаем страну
+  /// сервера); проверяется и после ответа: если за это время подключились,
+  /// результат выбрасываем.
+  Future<void> refreshGeo({required bool Function() canLookup, bool force = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final at = DateTime.tryParse(prefs.getString(_keyGeoAt) ?? '');
+    if (!force && at != null && DateTime.now().difference(at) < geoRefreshEvery) return;
+    if (!canLookup()) return;
+    final cc = await lookupCountry();
+    if (cc == null || !canLookup() || !mounted) return;
+    await prefs.setString(_keyGeoCountry, cc);
+    await prefs.setString(_keyGeoAt, DateTime.now().toIso8601String());
+    final region = _detected(cc);
+    if (region != state.detectedRegion) {
+      log.i('Регион «Авто» по IP ($cc): ${region.name}', tag: 'GEO');
+      state = state.copyWith(detectedRegion: region);
+      _applyScoring();
+    }
+  }
+
+  /// Запрос страны по IP. Переопределяется в тестах.
+  static Future<String?> Function() lookupCountry = GeoIp.countryCode;
 
   /// Определение региона устройства (без сети). Переопределяется в тестах.
   static RoutingRegion Function() detectDevice = () => RoutingRegionLabel.detect(
@@ -122,7 +157,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       routingRegion:
           RoutingRegionLabel.parse(prefs.getString(_keyRoutingRegion)),
       discordMode: prefs.getBool(_keyDiscordMode) ?? true,
-      detectedRegion: detectDevice(),
+      detectedRegion: _detected(prefs.getString(_keyGeoCountry)),
     );
     _applyScoring();
   }
