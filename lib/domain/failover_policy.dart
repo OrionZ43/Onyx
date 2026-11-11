@@ -151,19 +151,29 @@ class FailoverPolicy {
 
 /// Что делать, если туннель умер (смена сети, сон, падение ядра) — этап 2.
 enum RecoveryStep {
-  /// Только переподключиться к тому же серверу.
-  sameNodeOnly,
+  /// Только тот же сервер: он выбран вручную.
+  sameNodeManual,
+
+  /// Только тот же сервер: автопереключение выключено.
+  sameNodeAutoOff,
 
   /// К тому же серверу, а не вышло — подобрать заново (smartConnect).
-  sameNodeThenAuto,
+  sameNodeThenAuto;
+
+  /// Другой сервер Onyx сам не подбирает (причина — в имени шага).
+  bool get sameNodeOnly => this != sameNodeThenAuto;
 }
 
 /// Восстановление после обрыва. Тот же сервер — всегда: это не «прыжок»
 /// (#60). Подбирать другой — только если автопереключение включено и сервер
-/// не выбран вручную.
+/// не выбран вручную. Ручной выбор называем причиной первым: «выберите
+/// другой или «Автовыбор»» помогает и при выключенном автопереключении.
 class RecoveryPolicy {
   const RecoveryPolicy._();
 
-  static RecoveryStep plan({required bool autoFailover, required bool manualPick}) =>
-      autoFailover && !manualPick ? RecoveryStep.sameNodeThenAuto : RecoveryStep.sameNodeOnly;
+  static RecoveryStep plan({required bool autoFailover, required bool manualPick}) => manualPick
+      ? RecoveryStep.sameNodeManual
+      : autoFailover
+          ? RecoveryStep.sameNodeThenAuto
+          : RecoveryStep.sameNodeAutoOff;
 }

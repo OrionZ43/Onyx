@@ -8,6 +8,7 @@ import 'package:onyx/domain/smart_probe.dart';
 import 'package:onyx/domain/subscription_parser.dart';
 import 'package:onyx/infrastructure/geo_ip.dart';
 import 'package:onyx/infrastructure/network_watcher.dart';
+import 'package:onyx/presentation/providers/connect_phase.dart';
 import 'package:onyx/presentation/providers/settings_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -102,9 +103,21 @@ void main() {
 
     test('восстановление: тот же сервер всегда; подбор заново — только в автопилоте', () {
       expect(RecoveryPolicy.plan(autoFailover: true, manualPick: false), RecoveryStep.sameNodeThenAuto);
-      expect(RecoveryPolicy.plan(autoFailover: true, manualPick: true), RecoveryStep.sameNodeOnly);
-      expect(RecoveryPolicy.plan(autoFailover: false, manualPick: false), RecoveryStep.sameNodeOnly);
-      expect(RecoveryPolicy.plan(autoFailover: false, manualPick: true), RecoveryStep.sameNodeOnly);
+      expect(RecoveryPolicy.plan(autoFailover: true, manualPick: true), RecoveryStep.sameNodeManual);
+      expect(RecoveryPolicy.plan(autoFailover: false, manualPick: false), RecoveryStep.sameNodeAutoOff);
+      // Оба сразу — называем ручной выбор: «выберите другой или «Автовыбор»».
+      expect(RecoveryPolicy.plan(autoFailover: false, manualPick: true), RecoveryStep.sameNodeManual);
+      expect(RecoveryStep.sameNodeThenAuto.sameNodeOnly, isFalse);
+      expect(RecoveryStep.sameNodeManual.sameNodeOnly, isTrue);
+      expect(RecoveryStep.sameNodeAutoOff.sameNodeOnly, isTrue);
+    });
+
+    test('оговорка несёт тон: по умолчанию info, явно — как задали', () {
+      const plain = ConnectPhase.notice('x');
+      const warn = ConnectPhase.notice('y', kind: NoticeKind.warning);
+      expect((plain as ConnectNotice).kind, NoticeKind.info);
+      expect((warn as ConnectNotice).kind, NoticeKind.warning);
+      expect(warn.label, 'y');
     });
   });
 

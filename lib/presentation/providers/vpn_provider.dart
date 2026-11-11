@@ -89,7 +89,7 @@ class VpnController extends StateNotifier<VpnState> {
     if (e == NetEvent.changed && _directNetwork()) unawaited(_refreshGeo(force: true));
   }
 
-  String _why(NetEvent e) => e == NetEvent.resumed ? 'после сна' : 'после смены сети';
+  String _why(NetEvent e) => e == NetEvent.resumed ? 'после спящего режима' : 'после смены сети';
 
   /// Пара быстрых проб туннеля после смены сети; обе не ответили — обрыв.
   Future<void> _checkTunnelAfter(NetEvent e, int mySession) async {
@@ -138,7 +138,10 @@ class VpnController extends StateNotifier<VpnState> {
     final phase = ref.read(connectPhaseProvider.notifier);
     if (_recoveries.length >= 3) {
       log.w('Восстановление $why: слишком часто — останавливаемся', tag: 'VPN');
-      phase.state = ConnectPhase.notice('Связь с ${node.name} постоянно рвётся. Проверьте интернет или выберите другой сервер.');
+      phase.state = ConnectPhase.notice(
+        'Связь с ${node.name} постоянно рвётся. Проверьте интернет или выберите другой сервер.',
+        kind: NoticeKind.warning,
+      );
       return;
     }
     _recoveries.add(now);
@@ -153,13 +156,17 @@ class VpnController extends StateNotifier<VpnState> {
       if (state is VpnConnected || state is VpnConnecting) await disconnect();
       await connect(node);
       if (state is VpnConnected) {
-        phase.state = ConnectPhase.notice('Соединение восстановлено $why');
+        phase.state = ConnectPhase.notice('Соединение восстановлено $why', kind: NoticeKind.recovered);
         return;
       }
-      if (plan == RecoveryStep.sameNodeOnly) {
+      if (plan.sameNodeOnly) {
         phase.state = ConnectPhase.notice(
-          '${node.name} не отвечает $why. Onyx его не меняет (выбран вручную или автопереключение выключено) — '
-          'выберите другой сервер или «Автовыбор».',
+          plan == RecoveryStep.sameNodeManual
+              ? '${node.name} не отвечает $why. Сервер выбран вручную, поэтому Onyx его не меняет — '
+                  'выберите другой или «Автовыбор».'
+              : '${node.name} не отвечает $why. Автопереключение выключено, поэтому Onyx его не меняет — '
+                  'выберите другой сервер или включите автопереключение в Настройках.',
+          kind: NoticeKind.warning,
         );
         return;
       }
@@ -424,7 +431,8 @@ class VpnController extends StateNotifier<VpnState> {
         phase.state = noUdp
             ? const ConnectPhase.notice(
                 'Подключено, но сервер с рабочим UDP не найден — голос Discord может не работать. '
-                'Попробуйте «Обновить» позже или свой сервер.',
+                'Позже нажмите «Обновить» или добавьте свой сервер.',
+                kind: NoticeKind.warning,
               )
             : ConnectPhase.idle;
         return;
@@ -778,7 +786,8 @@ class VpnController extends StateNotifier<VpnState> {
       final text = 'Стабильного сервера сейчас нет — остаёмся на ${deadNode.name}';
       _notifyUnstable(text);
       ref.read(connectPhaseProvider.notifier).state = ConnectPhase.notice(
-        '$text. Попробуйте «Обновить» позже или свой сервер.',
+        '$text. Позже нажмите «Обновить» или добавьте свой сервер.',
+        kind: NoticeKind.warning,
       );
       _isFailingOver = false;
       _startHealthMonitor(mySession);
@@ -806,7 +815,7 @@ class VpnController extends StateNotifier<VpnState> {
     phase.state = ConnectPhase.switching(deadNode.name, next.name);
     await connect(next);
     phase.state = state is VpnConnected
-        ? ConnectPhase.notice('Переключились: ${deadNode.name} → ${next.name}')
+        ? ConnectPhase.notice('Переключились: ${deadNode.name} → ${next.name}', kind: NoticeKind.switched)
         : ConnectPhase.idle;
   }
 

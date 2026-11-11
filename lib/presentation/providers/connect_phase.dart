@@ -24,6 +24,24 @@ enum ConnectAction {
   awsGuide,
 }
 
+/// Тон оговорки ([ConnectNotice]) — UI выбирает по нему значок, цвет в ленте
+/// событий и нужно ли системное уведомление, когда Onyx свёрнут в трей.
+/// Различать оговорки по тексту нельзя: текст правится.
+enum NoticeKind {
+  /// Нейтральная оговорка.
+  info,
+
+  /// Соединение восстановлено (после смены сети, спящего режима, сбоя).
+  recovered,
+
+  /// Автопилот переключил сервер.
+  switched,
+
+  /// Что-то не так: сервер не отвечает, связь рвётся, стабильного сервера
+  /// нет, не нашлось сервера с UDP.
+  warning,
+}
+
 /// Этап автопилота «один тап» — для подписи под кнопкой подключения.
 sealed class ConnectPhase {
   const ConnectPhase();
@@ -33,7 +51,7 @@ sealed class ConnectPhase {
   const factory ConnectPhase.checking(int done, int total) = ConnectChecking;
   const factory ConnectPhase.connecting(String nodeName) = ConnectConnecting;
   const factory ConnectPhase.switching(String from, String to) = ConnectSwitching;
-  const factory ConnectPhase.notice(String message) = ConnectNotice;
+  const factory ConnectPhase.notice(String message, {NoticeKind kind}) = ConnectNotice;
   const factory ConnectPhase.failed(
     ConnectFailure reason,
     String message,
@@ -91,10 +109,11 @@ class ConnectSwitching extends ConnectPhase {
 }
 
 /// Подключились, но с оговоркой (например, нет сервера с UDP для голоса).
-/// UI показывает тостом.
+/// UI показывает тостом; [kind] — тон оговорки.
 class ConnectNotice extends ConnectPhase {
-  const ConnectNotice(this.message);
+  const ConnectNotice(this.message, {this.kind = NoticeKind.info});
   final String message;
+  final NoticeKind kind;
   @override
   String get label => message;
 }
