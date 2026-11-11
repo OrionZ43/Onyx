@@ -83,20 +83,6 @@ jobs:
           $version = $tag.TrimStart('v')
           flutter build windows --release --dart-define=APP_VERSION=$version
 
-      - name: Build OnyxService
-        run: |
-          cd tools/onyx_service
-          dart pub get
-          cd ../..
-          dart compile exe tools/onyx_service/bin/onyx_service.dart -o build/OnyxService.exe
-
-      - name: Build OnyxUpdater
-        run: |
-          cd tools/onyx_updater
-          dart pub get
-          cd ../..
-          dart compile exe tools/onyx_updater/bin/onyx_updater.dart -o build/OnyxUpdater.exe
-
       # #55: запускатель ядра с правами админа (задача планировщика). Установщик
       # кладёт его в C:\Program Files\Onyx\core вместе с sing-box и WinTUN.
       - name: Build onyx-core
@@ -106,17 +92,16 @@ jobs:
           cd ../..
           dart compile exe tools/onyx_core/bin/onyx_core.dart -o build/onyx-core.exe
 
-      - name: Package payload ZIP
+      # Папка для установщика: приложение + ядро (sing-box, WinTUN, onyx-core).
+      # payload.zip и OnyxUpdater больше не нужны: встроенное обновление
+      # запускает сам установщик тихо (#54).
+      - name: Assemble dist
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item "build\windows\x64\runner\Release\*" dist\ -Recurse -Force
-          Copy-Item build\OnyxService.exe dist\
-          Copy-Item build\OnyxUpdater.exe dist\
           # Ядро в бандле: в Китае первый запуск не может скачать его с GitHub.
           pwsh tools/core/fetch-core.ps1 -Out dist\core
           Copy-Item build\onyx-core.exe dist\core\
-          $tag = "${{ github.ref_name }}"
-          Compress-Archive -Path dist\* -DestinationPath "Onyx_${tag}_payload.zip" -Force
 
       - name: Build Installer (Inno Setup)
         run: |
@@ -134,7 +119,6 @@ jobs:
         with:
           files: |
             OnyxSetup_${{ github.ref_name }}.exe
-            Onyx_${{ github.ref_name }}_payload.zip
             onyx-setup-windows.exe
           name: Onyx VPN ${{ github.ref_name }}
         env:

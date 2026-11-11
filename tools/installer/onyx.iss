@@ -221,6 +221,8 @@ Type: filesandordirs; Name: "{app}\data"
 ; Наследие v0.2.0: неиспользуемая служба, резервные копии старого апдейтера
 Type: files; Name: "{app}\OnyxService.exe"
 Type: filesandordirs; Name: "{app}\.bak"
+; Старый апдейтер (payload.zip) — обновляет теперь сам установщик (#54)
+Type: files; Name: "{app}\OnyxUpdater.exe"
 Type: files; Name: "{%PUBLIC}\onyx_install_log.txt"; Check: not IsTestMode
 ; Ярлык на рабочем столе от v0.2.0 создавался всегда; если галочку сняли — убираем
 Type: files; Name: "{userdesktop}\Onyx.lnk"; Tasks: not desktopicon; Check: not IsTestMode
@@ -242,6 +244,9 @@ Root: HKCU; Subkey: "{code:RegKeyPath}"; ValueType: string; ValueName: "Version"
 [Run]
 ; onyx.exe работает без прав (#55) — UAC при запуске нет
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchOnyx}"; Flags: postinstall nowait skipifsilent shellexec; Check: not IsTestMode
+; Обновление из приложения (#54): тихий режим с /ONYXUPDATE=1 — Onyx закрылся
+; сам, после установки запускаем его снова (без галочки, без skipifsilent)
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: IsUpdateRun
 
 [UninstallDelete]
 ; Файлы, которые мог дописать встроенный апдейтер (их нет в журнале установки)
@@ -327,6 +332,12 @@ end;
 function TestNameSuffix(Param: String): String;
 begin
   if IsTestMode then Result := ' (test)' else Result := '';
+end;
+
+// Тихое обновление из приложения (#54): OnyxSetup.exe /VERYSILENT /ONYXUPDATE=1
+function IsUpdateRun: Boolean;
+begin
+  Result := (ExpandConstant('{param:ONYXUPDATE|0}') = '1') and not IsTestMode;
 end;
 
 function AppDir: String;

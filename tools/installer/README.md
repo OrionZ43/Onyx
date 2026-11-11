@@ -27,10 +27,9 @@
 ## Сборка
 
 ```powershell
-# 1. приложение + апдейтер + ядро в одну папку (то же, что payload)
+# 1. приложение + ядро в одну папку
 flutter build windows --release --dart-define=APP_VERSION=0.3.0
-dart compile exe tools\onyx_updater\bin\onyx_updater.dart -o build\OnyxUpdater.exe
-# ...скопировать build\windows\x64\runner\Release\* и OnyxUpdater.exe в dist\
+# ...скопировать build\windows\x64\runner\Release\* в dist\
 pwsh tools\core\fetch-core.ps1 -Out dist\core
 # запускатель ядра с правами админа (#55) — в core\ рядом с sing-box
 cd tools\onyx_core; dart pub get; cd ..\..
@@ -39,7 +38,15 @@ dart compile exe tools\onyx_core\bin\onyx_core.dart -o dist\core\onyx-core.exe
 pwsh tools\installer\build-installer.ps1 -SourceDir dist -Version 0.3.0
 ```
 
-В CI (`.github/workflows/release.yml`) это делает шаг «Build Installer (Inno Setup)»: в релиз уходят `OnyxSetup_<tag>.exe`, стабильное `onyx-setup-windows.exe` и, как раньше, `Onyx_<tag>_payload.zip` для встроенного апдейтера.
+В CI (`.github/workflows/release.yml`) это делает шаг «Build Installer (Inno Setup)»: в релиз уходят `OnyxSetup_<tag>.exe` и стабильное `onyx-setup-windows.exe`.
+
+## Обновление из приложения (#54)
+
+Встроенный апдейтер (`lib/infrastructure/update_service.dart`) скачивает `OnyxSetup_<tag>.exe` из последнего релиза и запускает `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /ONYXUPDATE=1`, а Onyx выходит; туннель гаснет вместе с ним (ядро следит за PID Onyx). Установщик закрывает остатки, обновляет файлы (UAC — только если обновилось ядро в Program Files) и с `/ONYXUPDATE=1` снова запускает Onyx. Ярлык и автозапуск остаются как были.
+
+Целостность: SHA-256 скачанного сверяется с полем `digest` файла в GitHub API (релизы отдают его сами, отдельный SHA256SUMS не нужен). Только когда сумма известна, при неудаче с github.com пробуются зеркала (`BinaryManager.githubMirrors`: в Китае без VPN github.com часто не открывается) — подмену на зеркале выдаст сумма. Без суммы — только github.com напрямую.
+
+Старые `Onyx_<tag>_payload.zip` и `OnyxUpdater.exe` больше не выпускаются: они обходили установщик (не обновляли ядро, запись в «Программах», ярлыки). Встроенный апдейтер v0.2.0 искал как раз payload — он просто не увидит новую версию и продолжит работать; 0.3+ поверх v0.2.0 ставится установщиком (просто распакованная поверх v0.2.0, без компонента ядра, она бы не подключилась). Путь без ручной переустановки — задача #67.
 
 ## Проверка без риска для установленного Onyx
 

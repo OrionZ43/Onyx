@@ -22,34 +22,31 @@ set_target_properties(${BINARY_NAME} PROPERTIES
 CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "onyx.exe.manifest"
 ```
 
-## 2. Проверка установки WinTUN
+## 2. sing-box и WinTUN
 
-WinTUN скачивается автоматически при первом запуске.
-Если не работает — скачай вручную: https://www.wintun.net
-и положи `wintun.dll` рядом с `sing-box.exe` в папке:
-`%APPDATA%\Onyx\singbox\`
+sing-box (версия — `BinaryManager.singboxVersion`, сейчас 1.14.4, amd64) и
+`wintun.dll` лежат в установщике (`core\`, `tools/core/fetch-core.ps1`) — из
+интернета при установке и первом запуске ничего не качается. Только сборка без
+`core\` рядом с onyx.exe скачивает их с GitHub (с зеркалами и проверкой SHA-256).
 
-## 3. Sing-box версия
+## 3. Отладка
 
-Используется sing-box v1.10.1 (amd64).
-Скачивается автоматически с GitHub Releases.
+Журнал приложения — «Диагностика» → «Журнал». Конфиг и рабочие файлы
+sing-box — в `%APPDATA%\z43.studios\onyx\singbox\`; журнал ядра, запущенного
+задачей (#55), — `C:\Program Files\Onyx\run\sing-box.log`.
 
-## 4. Отладка
+## Сборка и выпуск
 
-Все логи sing-box видны в консоли приложения (кнопка ⌨ в правом верхнем углу).
-Конфиг записывается в: `%APPDATA%\Onyx\singbox\config.json`
+Подробно — `tools/installer/README.md`; в CI то же делает `.github/workflows/release.yml`.
 
-## Build & Deploy Pipeline
+1. Приложение: `flutter build windows --release --dart-define=APP_VERSION=<версия>`,
+   содержимое `build\windows\x64\runner\Release\` — в `dist\`.
+2. Ядро: `pwsh tools\core\fetch-core.ps1 -Out dist\core` и
+   `dart compile exe tools\onyx_core\bin\onyx_core.dart -o dist\core\onyx-core.exe`.
+3. Установщик: `pwsh tools\installer\build-installer.ps1 -SourceDir dist -Version <версия>`
+   → `OnyxSetup_v<версия>.exe`.
 
-1. **Build OnyxService**:
-   `cd tools/onyx_service && dart compile exe bin/onyx_service.dart -o build/OnyxService.exe`
-2. **Build OnyxUpdater**:
-   `cd tools/onyx_updater && dart compile exe bin/onyx_updater.dart -o build/OnyxUpdater.exe`
-3. **Build main app**:
-   `flutter build windows --release`
-4. **Build installer**:
-   `cd tools/onyx_installer && flutter build windows --release`
-5. **Package payload ZIP**:
-   Zip together `build\windows\x64\runner\Release\*` + `tools\onyx_service\build\OnyxService.exe` + `tools\onyx_updater\build\OnyxUpdater.exe` → `Onyx_v0.1.0_payload.zip`
-6. **Package installer**:
-   Place `OnyxInstaller.exe` + `Onyx_v0.1.0_payload.zip` in same folder and distribute.
+Обновление из приложения (#54) качает `OnyxSetup_<tag>.exe` из последнего релиза,
+сверяет SHA-256 и запускает его тихо (`/VERYSILENT … /ONYXUPDATE=1`).
+Старые OnyxService, OnyxUpdater, onyx_installer и `Onyx_<tag>_payload.zip` больше
+не собираются.
