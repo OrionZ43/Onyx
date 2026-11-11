@@ -56,8 +56,18 @@ final activityProvider = StateNotifierProvider<ActivityLog, List<ActivityEvent>>
     switch (next) {
       case ConnectSwitching(:final from, :final to):
         log.add('Переключение: ${displayNodeName(from)} → ${displayNodeName(to)}', ActivityKind.switched);
-      case ConnectNotice(:final message):
-        if (!message.startsWith('Переключились')) log.add(message, ActivityKind.warning);
+      case ConnectNotice(:final message, :final kind):
+        switch (kind) {
+          // «Переключение: A → B» уже записано по ConnectSwitching.
+          case NoticeKind.switched:
+            break;
+          case NoticeKind.recovered:
+            log.add(message, ActivityKind.connected);
+          case NoticeKind.warning:
+            log.add(message, ActivityKind.warning);
+          case NoticeKind.info:
+            log.add(message, ActivityKind.checked);
+        }
       case ConnectFailed(:final message):
         log.add(message, ActivityKind.error);
       default:

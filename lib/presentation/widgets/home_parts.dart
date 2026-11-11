@@ -517,6 +517,14 @@ class AutopilotView {
 
 /// Кнопки под «Линзой», когда автоподключение не удалось: «Обновить и
 /// повторить», «Добавить сервер», «Инструкция». Первая — главная.
+/// Значок оговорки автопилота по её тону (NoticeKind, #66).
+OnyxGlyph noticeGlyph(NoticeKind kind) => switch (kind) {
+      NoticeKind.recovered => OnyxGlyph.check,
+      NoticeKind.switched => OnyxGlyph.zap,
+      NoticeKind.warning => OnyxGlyph.error,
+      NoticeKind.info => OnyxGlyph.info,
+    };
+
 class PhaseActions extends StatelessWidget {
   const PhaseActions({super.key, required this.actions});
   final List<(String, VoidCallback)> actions;

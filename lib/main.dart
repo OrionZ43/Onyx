@@ -28,6 +28,7 @@ import 'presentation/screens/brand_splash.dart';
 import 'presentation/screens/setup_screen.dart';
 import 'presentation/tray/onyx_tray.dart';
 import 'presentation/tray/tray_flyout.dart';
+import 'presentation/util/country.dart';
 import 'presentation/screens/onboarding_screen.dart';
 
 /// Окно при старте не показываем — Onyx сразу в трее.
@@ -322,6 +323,31 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
     ).show();
   }
 
+  String _lastNotice = '';
+  DateTime _lastNoticeAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Оговорки автопилота, пока Onyx в трее (#66). Тост показывает главный
+  /// экран, а он не виден, когда окно спрятано или открыта только мини-
+  /// панель; системное уведомление Onyx (VpnNotificationService) — только на
+  /// Android. Поэтому предупреждения и переключения — уведомлением Windows;
+  /// «восстановлено» и прочее — только в ленте событий, чтобы не шуметь.
+  void _onNotice(ConnectPhase? prev, ConnectPhase next) {
+    if (next is! ConnectNotice) return;
+    if (next.kind != NoticeKind.warning && next.kind != NoticeKind.switched) return;
+    if (_isVisible && !_flyout) return; // окно открыто — будет тост
+    final text = uiText(next.message);
+    final now = DateTime.now();
+    if (text == _lastNotice && now.difference(_lastNoticeAt) < const Duration(minutes: 1)) return;
+    _lastNotice = text;
+    _lastNoticeAt = now;
+    final n = LocalNotification(
+      title: next.kind == NoticeKind.warning ? 'Onyx: проблема с подключением' : 'Onyx: сервер сменён',
+      body: text,
+    );
+    n.onClick = _showWindow;
+    n.show();
+  }
+
   Future<void> _exit() async {
     // ВАЖНО: перед выходом гасим sing-box, иначе процесс с поднятым
     // WinTUN-интерфейсом остаётся жить после закрытия приложения —
@@ -415,6 +441,7 @@ class _OnyxAppState extends ConsumerState<OnyxApp> with WindowListener, TrayList
       ref.listen(nodeSelectionProvider, sync);
       ref.listen(autoGroupProvider, sync);
       ref.listen(groupsProvider, sync);
+      ref.listen(connectPhaseProvider, _onNotice);
     }
     final kind = ref.watch(themeKindProvider);
     // DynamicColorBuilder отдаёт схему обоев на Android 12+; используется только

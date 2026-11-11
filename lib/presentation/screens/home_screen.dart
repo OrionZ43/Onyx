@@ -93,7 +93,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// тихим тостом.
   void _onPhaseChanged(ConnectPhase? prev, ConnectPhase next) {
     if (next is ConnectNotice && mounted) {
-      showOnyxToast(context, uiText(next.message), glyph: next.message.startsWith('Переключились') ? OnyxGlyph.zap : OnyxGlyph.info);
+      showOnyxToast(context, uiText(next.message), glyph: noticeGlyph(next.kind));
     }
   }
 
