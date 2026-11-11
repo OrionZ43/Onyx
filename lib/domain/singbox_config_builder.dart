@@ -158,8 +158,15 @@ class SingboxConfigBuilder {
     };
   }
 
-  /// Конфиг для проверки ноды: mixed-inbound → нода, без маршрутизации.
+  /// Конфиг для проверки ноды: mixed-inbound → нода.
+  ///
+  /// Одно правило: соединение с самим сервером ноды — напрямую. Так проба
+  /// меряет TCP-пинг сервера (SOCKS5 CONNECT к host:port; sing-box отвечает
+  /// после настоящего TCP-рукопожатия), когда пинг из приложения невозможен:
+  /// под TUN он ушёл бы в туннель (этап 2 автопилота).
   Map<String, dynamic> buildProbeConfig(Node node, int proxyPort) {
+    final host = node.host;
+    final isIp = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host) || host.contains(':');
     return {
       'log': {'level': 'error'},
       'inbounds': [
@@ -174,7 +181,15 @@ class SingboxConfigBuilder {
         buildOutbound(node, proxyTag),
         {'type': 'direct', 'tag': 'direct'},
       ],
-      'route': {'final': proxyTag},
+      'route': {
+        'rules': [
+          if (host.isNotEmpty)
+            isIp
+                ? {'ip_cidr': [host.contains(':') ? '$host/128' : '$host/32'], 'outbound': 'direct'}
+                : {'domain': [host], 'outbound': 'direct'},
+        ],
+        'final': proxyTag,
+      },
     };
   }
 

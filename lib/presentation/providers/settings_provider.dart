@@ -110,12 +110,14 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   Future<void> refreshGeo({required bool Function() canLookup, bool force = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final at = DateTime.tryParse(prefs.getString(_keyGeoAt) ?? '');
+    _geoAt ??= at;
     if (!force && at != null && DateTime.now().difference(at) < geoRefreshEvery) return;
     if (!canLookup()) return;
     final cc = await lookupCountry();
     if (cc == null || !canLookup() || !mounted) return;
     await prefs.setString(_keyGeoCountry, cc);
-    await prefs.setString(_keyGeoAt, DateTime.now().toIso8601String());
+    _geoAt = DateTime.now();
+    await prefs.setString(_keyGeoAt, _geoAt!.toIso8601String());
     final region = _detected(cc);
     if (region != state.detectedRegion) {
       log.i('Регион «Авто» по IP ($cc): ${region.name}', tag: 'GEO');
@@ -123,6 +125,15 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       _applyScoring();
     }
   }
+
+  /// Страна по IP известна и не старше [geoRefreshEvery] (этап 2): перед
+  /// подключением в регионе «Авто» ждать ответа не нужно.
+  bool get geoFresh {
+    final at = _geoAt;
+    return at != null && DateTime.now().difference(at) < geoRefreshEvery;
+  }
+
+  DateTime? _geoAt;
 
   /// Запрос страны по IP. Переопределяется в тестах.
   static Future<String?> Function() lookupCountry = GeoIp.countryCode;
@@ -159,6 +170,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       discordMode: prefs.getBool(_keyDiscordMode) ?? true,
       detectedRegion: _detected(prefs.getString(_keyGeoCountry)),
     );
+    _geoAt = DateTime.tryParse(prefs.getString(_keyGeoAt) ?? '');
     _applyScoring();
   }
 

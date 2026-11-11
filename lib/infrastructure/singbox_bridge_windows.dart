@@ -57,6 +57,14 @@ class SingboxBridgeWindows implements SingboxBridge {
   @override
   BridgeState get state => _state;
 
+  // Пробы — отдельные sing-box.exe: правило process_name → direct выводит их
+  // мимо TUN. Сам onyx.exe TUN ловит.
+  @override
+  bool get probesBypassTunnel => true;
+
+  @override
+  bool get appTrafficBypassesTunnel => _state != BridgeState.running;
+
   // ── Публичный API ──────────────────────────────────────────────────────
 
   /// Скачивает бинарники если нужно. Вызывать при старте приложения.

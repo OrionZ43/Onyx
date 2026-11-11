@@ -148,3 +148,22 @@ class FailoverPolicy {
     return ok.first;
   }
 }
+
+/// Что делать, если туннель умер (смена сети, сон, падение ядра) — этап 2.
+enum RecoveryStep {
+  /// Только переподключиться к тому же серверу.
+  sameNodeOnly,
+
+  /// К тому же серверу, а не вышло — подобрать заново (smartConnect).
+  sameNodeThenAuto,
+}
+
+/// Восстановление после обрыва. Тот же сервер — всегда: это не «прыжок»
+/// (#60). Подбирать другой — только если автопереключение включено и сервер
+/// не выбран вручную.
+class RecoveryPolicy {
+  const RecoveryPolicy._();
+
+  static RecoveryStep plan({required bool autoFailover, required bool manualPick}) =>
+      autoFailover && !manualPick ? RecoveryStep.sameNodeThenAuto : RecoveryStep.sameNodeOnly;
+}

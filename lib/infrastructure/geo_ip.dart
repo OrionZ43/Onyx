@@ -9,23 +9,24 @@ import '../domain/routing_region.dart';
 ///
 /// Часовой пояс и локаль иногда врут: английская Windows, пояс UTC или
 /// «Гонконг» у человека в материковом Китае. IP точнее. Запрос идёт
-/// напрямую, поэтому на Windows — только при выключенном VPN (иначе страна
-/// выхода сервера); на Android приложение исключено из VPN — можно всегда.
-///
-/// Несколько независимых сервисов по очереди: в Китае часть может не
-/// открываться.
+/// напрямую, поэтому только когда сокеты приложения идут мимо туннеля: VPN
+/// выключен или Android-цепочка (иначе узнали бы страну сервера). Результат
+/// кэшируется на 6 ч; перед первым подключением в регионе «Авто» Onyx ждёт
+/// ответа до 4 с.
 abstract final class GeoIp {
   static const timeout = Duration(seconds: 3);
 
-  static final _sources = <(String, String? Function(String))>[
+  /// Только HTTPS: по дороге не видно, что и у кого спрашиваем. В Китае
+  /// часть адресов может не открываться — пробуем по очереди.
+  static final sources = <(String, String? Function(String))>[
     ('https://www.cloudflare.com/cdn-cgi/trace', parseTrace),
-    ('http://ip-api.com/line/?fields=countryCode', parseLine),
+    ('https://cloudflare.com/cdn-cgi/trace', parseTrace),
     ('https://api.ip.sb/geoip', parseIpSb),
   ];
 
   /// ISO-код страны («CN», «BY»…) или null, если ни один сервис не ответил.
   static Future<String?> countryCode() async {
-    for (final (url, parse) in _sources) {
+    for (final (url, parse) in sources) {
       final body = await _get(url);
       final cc = body == null ? null : parse(body);
       if (cc != null) {
@@ -78,7 +79,8 @@ abstract final class GeoIp {
       ..findProxy = (_) => 'DIRECT';
     try {
       final req = await client.getUrl(Uri.parse(url));
-      req.headers.set(HttpHeaders.userAgentHeader, 'Onyx');
+      // Обезличенный User-Agent: не сообщаем сервису, какое приложение спрашивает.
+      req.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
       final resp = await req.close().timeout(timeout);
       if (resp.statusCode != 200) return null;
       return await resp.transform(const Utf8Decoder(allowMalformed: true)).join().timeout(timeout);

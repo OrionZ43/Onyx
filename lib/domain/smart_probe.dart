@@ -331,7 +331,10 @@ class DeepProbe {
     int maxNodes = 1 << 30,
     int minNodes = 0,
     bool Function()? enough,
+    bool measureTcp = false,
   }) async {
+    // [measureTcp] — TCP-пинг серверов изнутри пробы (под TUN пинг из
+    // приложения ушёл бы в туннель), этап 2 автопилота.
     // #41: бюджет — не больше [maxNodes] лучших; после [minNodes] останавливаемся,
     // как только [enough] (нашлось достаточно рабочих). Раньше проверялись
     // ВСЕ живые — на сотнях нод публичных подписок это десятки минут.
@@ -372,7 +375,7 @@ class DeepProbe {
         List.generate(batch.length, (slot) async {
           final node = batch[slot];
           final port = _basePort + slot;
-          final result = await _probeNodeFull(node, port);
+          final result = await _probeNodeFull(node, port, measureTcp: measureTcp);
           done++;
           onNodeResult(result);
           onProgress?.call(done, candidates.length);
@@ -484,13 +487,15 @@ class DeepProbe {
   /// Полная проверка одной ноды: базовая связность + (при успехе) AI.
   /// Всегда возвращает ноду с проставленными флагами (в т.ч. false/false
   /// при провале), чтобы вызывающий мог обновить UI без исключений.
-  Future<Node> _probeNodeFull(Node node, int port) async {
+  Future<Node> _probeNodeFull(Node node, int port, {bool measureTcp = false}) async {
     final configPath = _probeConfigPath(port);
     Process? process;
     bool basicOk = false;
     bool aiOk = false;
     bool udpOk = false;
     int? latency;
+    // TCP-пинг изнутри пробы (под TUN): -2 — не мерили, -1 — сервер не ответил
+    var tcpMs = -2;
 
     try {
       await _writeProbeConfig(node, port, configPath);
@@ -508,6 +513,11 @@ class DeepProbe {
       if (!await _isSocksListening(port)) {
         log.d('[${node.name}] SOCKS5:$port не отвечает', tag: 'DEEP');
         return node.copyWith(isTrulyWorking: false, aiReachable: false);
+      }
+
+      if (measureTcp && !node.isQuic) {
+        tcpMs = await tcpPingViaSocks5(port, node.host, node.port);
+        log.d('[${node.name}] TCP-пинг через пробу: ${tcpMs < 0 ? "нет ответа" : "$tcpMs мс"}', tag: 'DEEP');
       }
 
       final sw = Stopwatch()..start();
@@ -557,11 +567,62 @@ class DeepProbe {
     }
 
     return node.copyWith(
+      // Мерили TCP-пинг изнутри пробы — он и есть свежая «живость» и задержка
+      // (те же единицы, что у обычного TCP-пинга: одно рукопожатие).
+      isAlive: tcpMs == -2 ? null : (tcpMs >= 0 || basicOk),
       isTrulyWorking: basicOk,
       aiReachable: aiOk,
       udpSupported: udpOk,
-      latencyMs: latency,
+      latencyMs: tcpMs >= 0 ? tcpMs : latency,
     );
+  }
+
+  /// TCP-пинг сервера через запущенную пробу: SOCKS5 CONNECT к host:port.
+  /// sing-box отвечает на CONNECT только после настоящего TCP-рукопожатия с
+  /// сервером (правило пробы «свой сервер — напрямую»), поэтому время ответа
+  /// и есть TCP-пинг — без туннеля, даже когда VPN поднят. Два замера, берём
+  /// лучший (во втором не участвует DNS, если host — домен). −1 — сервер не
+  /// ответил.
+  static Future<int> tcpPingViaSocks5(int proxyPort, String host, int port,
+      {Duration timeout = const Duration(seconds: 4)}) async {
+    var best = -1;
+    for (var i = 0; i < 2; i++) {
+      final ms = await _socksConnectMs(proxyPort, host, port, timeout);
+      if (ms < 0) return best;
+      if (best < 0 || ms < best) best = ms;
+    }
+    return best;
+  }
+
+  static Future<int> _socksConnectMs(int proxyPort, String host, int port, Duration timeout) async {
+    Socket? s;
+    try {
+      s = await Socket.connect('127.0.0.1', proxyPort, timeout: const Duration(seconds: 2));
+      final reader = _ByteReader(s);
+      s.add(const [0x05, 0x01, 0x00]); // SOCKS5, один метод: без авторизации
+      final hello = await reader.take(2).timeout(timeout);
+      if (hello[0] != 0x05 || hello[1] != 0x00) return -1;
+      final ip = InternetAddress.tryParse(host);
+      final req = <int>[0x05, 0x01, 0x00];
+      if (ip != null && ip.type == InternetAddressType.IPv4) {
+        req..add(0x01)..addAll(ip.rawAddress);
+      } else if (ip != null) {
+        req..add(0x04)..addAll(ip.rawAddress);
+      } else {
+        final name = host.codeUnits;
+        req..add(0x03)..add(name.length)..addAll(name);
+      }
+      req..add(port >> 8)..add(port & 0xFF);
+      final sw = Stopwatch()..start();
+      s.add(req);
+      final reply = await reader.take(2).timeout(timeout);
+      sw.stop();
+      return (reply[0] == 0x05 && reply[1] == 0x00) ? sw.elapsedMilliseconds : -1;
+    } catch (_) {
+      return -1;
+    } finally {
+      s?.destroy();
+    }
   }
 
   // ── Приватные методы ───────────────────────────────────────────────────────
@@ -829,5 +890,46 @@ class DeepProbe {
     final json = builder.buildJson(config);
     await File(path).writeAsString(json, flush: true);
     log.d('Probe-конфиг: $path', tag: 'DEEP');
+  }
+}
+/// Чтение ровно N байт из сокета (SOCKS5-рукопожатие для TCP-пинга пробы).
+class _ByteReader {
+  _ByteReader(Socket s) {
+    s.listen(
+      (d) {
+        _buf.addAll(d);
+        _check();
+      },
+      onError: (Object e) => _fail(e),
+      onDone: () => _fail(const SocketException('соединение закрыто')),
+      cancelOnError: true,
+    );
+  }
+
+  final _buf = <int>[];
+  int _need = 0;
+  Completer<List<int>>? _c;
+  Object? _error;
+
+  Future<List<int>> take(int n) {
+    _need = n;
+    final c = _c = Completer<List<int>>();
+    _check();
+    if (!c.isCompleted && _error != null) c.completeError(_error!);
+    return c.future;
+  }
+
+  void _check() {
+    final c = _c;
+    if (c == null || c.isCompleted || _buf.length < _need) return;
+    final out = _buf.sublist(0, _need);
+    _buf.removeRange(0, _need);
+    c.complete(out);
+  }
+
+  void _fail(Object e) {
+    _error = e;
+    final c = _c;
+    if (c != null && !c.isCompleted) c.completeError(e);
   }
 }

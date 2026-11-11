@@ -11,6 +11,7 @@ import '../../domain/node_scorer.dart';
 import '../../domain/smart_probe.dart';
 import '../../domain/sources/node_pool.dart';
 import '../../infrastructure/binary_manager.dart';
+import '../../infrastructure/singbox_bridge_android.dart';
 import '../../infrastructure/singbox_bridge_windows.dart';
 import '../../infrastructure/win_child_guard.dart';
 import 'settings_provider.dart';
@@ -234,12 +235,20 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   }
 
   /// Фоновая перепроверка при поднятом VPN (этап 2 автопилота): [k] лучших
-  /// кандидатов на замену текущему [excludeId] — флаги «работает»/UDP/ИИ
-  /// свежие к моменту, когда понадобится переключение. Под TUN это только
-  /// Deep Probe (мимо туннеля), нагрузка — [k] процессов sing-box раз в
-  /// [backgroundEvery].
-  void backgroundReprobe({String? excludeId, int k = 8}) {
+  /// кандидатов на замену текущему [excludeId]. Свежими становятся и флаги
+  /// «работает»/UDP/ИИ, и **пинг**: под TUN он меряется изнутри пробы
+  /// (SOCKS5 CONNECT к серверу напрямую), а не из приложения, чей трафик ушёл
+  /// бы в туннель. Так автовыбор и автопереключение (#60) опираются на
+  /// данные не старше [backgroundEvery]. Нагрузка — [k] процессов sing-box.
+  ///
+  /// Не запускается, если пробы пошли бы через VPN (Android, режим Xray):
+  /// такие замеры мерили бы текущий туннель, а не кандидатов.
+  void backgroundReprobe({String? excludeId, int k = 6}) {
     if (_busy || state.nodes.isEmpty) return;
+    if (!probesUsable()) {
+      log.d('Фоновая перепроверка пропущена: пробы шли бы через VPN', tag: 'PROBE');
+      return;
+    }
     final ids = {
       for (final n in NodePool.rank(state.nodes, excludeId: excludeId, exclude: state.quarantined).take(k)) n.id,
     };
@@ -248,7 +257,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     unawaited(_probeIds(ids));
   }
 
-  static const backgroundEvery = Duration(minutes: 20);
+  static const backgroundEvery = Duration(minutes: 10);
 
   /// Смена сети при выключенном VPN (этап 2): результаты проб с прошлой сети
   /// устарели — перепроверяем в фоне, не чаще раза в [networkReprobeGap].
@@ -363,11 +372,16 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     await _runDeepProbe(probed, assumeAlive: underTun);
   }
 
-  /// Поднят ли туннель Windows (WinTUN): тогда TCP-пинг из приложения
-  /// уходит в туннель и ничего не меряет. На Android приложение исключено
-  /// из VPN — там пинг честный.
-  static bool Function() tunActive = () =>
-      Platform.isWindows && SingboxBridgeWindows.instance.state == BridgeState.running;
+  /// Сокеты приложения сейчас идут в туннель (Windows с поднятым TUN,
+  /// Android в режиме Xray): TCP-пинг из приложения ничего не меряет — пинг
+  /// берём изнутри пробы. Android-цепочка исключает приложение из VPN.
+  static bool Function() tunActive = () => !_bridge.appTrafficBypassesTunnel;
+
+  /// Пробы (отдельные sing-box) идут мимо туннеля — их замеры честные.
+  static bool Function() probesUsable = () => _bridge.probesBypassTunnel;
+
+  static SingboxBridge get _bridge =>
+      Platform.isAndroid ? SingboxBridgeAndroid.instance : SingboxBridgeWindows.instance;
 
   /// Запущен ли клиент Discord (Windows, по списку процессов; этап 2
   /// автопилота). На Android чужие процессы не видны — false.
@@ -419,6 +433,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     final discord = _discordWanted();
     await DeepProbe(singboxExePath: binMgr.singboxExe.path).probeAllNodes(
       input,
+      measureTcp: assumeAlive,
       minNodes: deepMinNodes,
       maxNodes: deepMaxNodes,
       enough: () => deepEnough(state.nodes, discord: discord),
@@ -429,7 +444,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
         _apply([u], (cur, upd) => cur.copyWith(
               // Подтверждённая Deep Probe нода жива, даже если TCP-пинга не
               // было (под TUN или QUIC).
-              isAlive: cur.isAlive || upd.isTrulyWorking,
+              // Под TUN живость пришла из TCP-пинга изнутри пробы.
+              isAlive: assumeAlive ? upd.isAlive : (cur.isAlive || upd.isTrulyWorking),
               isTrulyWorking: upd.isTrulyWorking,
               aiReachable: upd.aiReachable,
               udpSupported: upd.udpSupported,

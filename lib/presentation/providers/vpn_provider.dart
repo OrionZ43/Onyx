@@ -28,7 +28,7 @@ class VpnController extends StateNotifier<VpnState> {
     if (backgroundNetwork) {
       // Смена сети (этап 2): подключены — сразу проверяем туннель, отключены —
       // перепроверяем серверы в фоне (данные проб с прошлой сети устарели).
-      _netSub = NetworkWatcher.instance.changes.listen((_) => _onNetworkChanged());
+      _netSub = NetworkWatcher.instance.changes.listen(_onNetworkEvent);
       // Регион «Авто» по IP (этап 2) — при старте, пока туннеля нет.
       unawaited(_refreshGeo());
     }
@@ -38,10 +38,30 @@ class VpnController extends StateNotifier<VpnState> {
   /// test` выключена: юнит-тесты не ходят в сеть и не оставляют таймеров.
   static bool backgroundNetwork = !Platform.environment.containsKey('FLUTTER_TEST');
 
-  /// Можно ли сейчас ходить в сеть напрямую: на Windows без туннеля (иначе
-  /// узнаем страну сервера), на Android приложение исключено из VPN.
+  /// Можно ли сейчас ходить в сеть напрямую (запрос страны по IP): VPN не
+  /// поднят или сокеты приложения идут мимо туннеля (Android-цепочка). На
+  /// Windows с TUN и в Android-режиме Xray узнали бы страну сервера.
   bool _directNetwork() =>
-      !Platform.isWindows || state is VpnDisconnected || state is VpnError;
+      state is VpnDisconnected || state is VpnError || _bridge.appTrafficBypassesTunnel;
+
+  /// Регион «Авто», а страна по IP ещё не известна — подождать ответа (до
+  /// [_geoWait]) перед подключением: иначе первое подключение у друга с
+  /// английской Windows соберётся с регионом по часовому поясу. Без сети или
+  /// после недавней неудачной попытки не ждём.
+  Future<void> _ensureGeo() async {
+    final settings = ref.read(settingsProvider);
+    final n = ref.read(settingsProvider.notifier);
+    if (settings.routingRegion != RoutingRegion.auto || n.geoFresh || !_directNetwork()) return;
+    final last = _geoAttemptAt;
+    if (last != null && DateTime.now().difference(last) < const Duration(minutes: 10)) return;
+    _geoAttemptAt = DateTime.now();
+    try {
+      await _refreshGeo().timeout(_geoWait);
+    } catch (_) {}
+  }
+
+  static const _geoWait = Duration(seconds: 4);
+  DateTime? _geoAttemptAt;
 
   Future<void> _refreshGeo({bool force = false}) async {
     try {
@@ -56,20 +76,99 @@ class VpnController extends StateNotifier<VpnState> {
   /// Фоновая перепроверка кандидатов на замену, пока подключены (этап 2).
   Timer? _bgProbeTimer;
 
-  /// Текущая проба здоровья — чтобы при смене сети проверить туннель сразу.
-  Future<void> Function()? _healthTick;
-
-  void _onNetworkChanged() {
+  /// Смена сети или выход из сна (этап 2): подключены — сразу проверяем
+  /// туннель и при обрыве переподключаемся ([_recover]); отключены —
+  /// перепроверяем серверы в фоне. Новая сеть — возможно, другая страна.
+  void _onNetworkEvent(NetEvent e) {
     final s = state;
     if (s is VpnConnected) {
-      if (_isFailingOver) return;
-      log.i('Сеть сменилась — проверяем туннель сейчас', tag: 'VPN');
-      unawaited(_healthTick?.call());
+      if (!_isFailingOver && !_recovering) unawaited(_checkTunnelAfter(e, _sessionId));
     } else if (s is VpnDisconnected || s is VpnError) {
       ref.read(subscriptionProvider.notifier).networkChanged();
     }
-    // Новая сеть — возможно, другая страна.
-    if (_directNetwork()) unawaited(_refreshGeo(force: true));
+    if (e == NetEvent.changed && _directNetwork()) unawaited(_refreshGeo(force: true));
+  }
+
+  String _why(NetEvent e) => e == NetEvent.resumed ? 'после сна' : 'после смены сети';
+
+  /// Пара быстрых проб туннеля после смены сети; обе не ответили — обрыв.
+  Future<void> _checkTunnelAfter(NetEvent e, int mySession) async {
+    log.i('Сеть: ${e.name} — проверяем туннель', tag: 'VPN');
+    await Future.delayed(const Duration(seconds: 2)); // сеть поднимается
+    for (var i = 0; i < 2; i++) {
+      if (mySession != _sessionId || state is! VpnConnected) return;
+      final ms = await _bridge.measureLatency();
+      if (ms >= 0) {
+        log.i('Туннель жив ${_why(e)} ($ms мс)', tag: 'VPN');
+        return;
+      }
+      await Future.delayed(const Duration(seconds: 3));
+    }
+    if (mySession != _sessionId || state is! VpnConnected) return;
+    await _recover(_why(e));
+  }
+
+  // ── Восстановление после обрыва (этап 2) ──────────────────────────────
+  //
+  // Туннель умер после смены сети, сна или падения ядра. Сначала
+  // переподключаемся к ТОМУ ЖЕ серверу — это не «прыжок», критерии #60 не
+  // нарушаем. Не вышло, и автопереключение разрешено (тумблер включён и
+  // сервер не выбран вручную) — подбираем сервер заново (smartConnect).
+  // Иначе честно говорим, что сервер не отвечает. Не чаще 3 раз за 10 минут;
+  // без физической сети не дёргаемся — подождём следующего события сети.
+
+  bool _recovering = false;
+  final List<DateTime> _recoveries = [];
+
+  Future<void> _recover(String why) async {
+    if (_recovering) return;
+    final s = state;
+    final node = switch (s) {
+      VpnConnected(node: final n) => n,
+      VpnError(node: final n) => n,
+      _ => null,
+    };
+    if (node == null) return;
+    if (!NetworkWatcher.instance.hasNetwork) {
+      log.w('Туннель не отвечает $why, но физической сети нет — ждём сеть', tag: 'VPN');
+      return;
+    }
+    final now = DateTime.now();
+    _recoveries.removeWhere((t) => now.difference(t) > const Duration(minutes: 10));
+    final phase = ref.read(connectPhaseProvider.notifier);
+    if (_recoveries.length >= 3) {
+      log.w('Восстановление $why: слишком часто — останавливаемся', tag: 'VPN');
+      phase.state = ConnectPhase.notice('Связь с ${node.name} постоянно рвётся. Проверьте интернет или выберите другой сервер.');
+      return;
+    }
+    _recoveries.add(now);
+    _recovering = true;
+    try {
+      final plan = RecoveryPolicy.plan(
+        autoFailover: ref.read(settingsProvider).autoFailover,
+        manualPick: ref.read(nodeSelectionProvider) != null,
+      );
+      log.w('Туннель не отвечает $why — переподключаемся к ${node.name}', tag: 'VPN');
+      phase.state = ConnectPhase.connecting(node.name);
+      if (state is VpnConnected || state is VpnConnecting) await disconnect();
+      await connect(node);
+      if (state is VpnConnected) {
+        phase.state = ConnectPhase.notice('Соединение восстановлено $why');
+        return;
+      }
+      if (plan == RecoveryStep.sameNodeOnly) {
+        phase.state = ConnectPhase.notice(
+          '${node.name} не отвечает $why. Onyx его не меняет (выбран вручную или автопереключение выключено) — '
+          'выберите другой сервер или «Автовыбор».',
+        );
+        return;
+      }
+      log.w('${node.name} не поднялся $why — подбираем сервер заново', tag: 'VPN');
+      phase.state = ConnectPhase.idle;
+      await smartConnect();
+    } finally {
+      _recovering = false;
+    }
   }
 
   void _startBackgroundProbe(int mySession) {
@@ -112,6 +211,9 @@ class VpnController extends StateNotifier<VpnState> {
   // ── Подключение ────────────────────────────────────────────────────────
 
   Future<void> connect(Node rawNode) async {
+    if (state is VpnConnecting || state is VpnConnected) return;
+    // Регион «Авто»: сначала узнаём страну по IP, если ещё не знаем (этап 2).
+    await _ensureGeo();
     if (state is VpnConnecting || state is VpnConnected) return;
 
     final mySession = ++_sessionId;
@@ -554,8 +656,6 @@ class VpnController extends StateNotifier<VpnState> {
       }
     }
 
-    _healthTick = tick;
-
     // Первая проверка — быстро после подключения: если сервер мёртв
     // (connect timeout), не ждём плановые 20 с.
     _healthTimer = Timer(_firstCheckDelay, () async {
@@ -641,11 +741,21 @@ class VpnController extends StateNotifier<VpnState> {
     );
 
     // Свежий замер кандидатов: старые пинги из проверки подписки могли
-    // устареть на часы.
+    // устареть. Если пробы шли бы через сам VPN (Android, режим Xray), честно
+    // замерить кандидатов нельзя: медленный текущий сервер тогда не меняем, а
+    // мёртвый — меняем по последним данным (в рамках потолка задержки).
+    final canMeasure = _bridge.probesBypassTunnel;
+    if (!canMeasure && _lastHealthMs >= 0) {
+      log.i('Кандидатов не замерить мимо VPN — медленный сервер не меняем', tag: 'VPN');
+      _isFailingOver = false;
+      _startHealthMonitor(mySession);
+      return;
+    }
     final fresh = shortlist.isEmpty
         ? const <String, int>{}
-        : await DeepProbe(singboxExePath: BinaryManager.instance.singboxExe.path)
-            .measure(shortlist);
+        : canMeasure
+            ? await DeepProbe(singboxExePath: BinaryManager.instance.singboxExe.path).measure(shortlist)
+            : {for (final n in shortlist) n.id: n.latencyMs ?? 0};
     if (mySession != _sessionId || state is! VpnConnected) {
       _isFailingOver = false;
       return;
@@ -772,6 +882,13 @@ class VpnController extends StateNotifier<VpnState> {
       final current = state;
       final node = current is VpnConnected ? current.node : null;
       state = VpnError(message: error, node: node);
+      // Туннель упал сам, пока был поднят (ядро завершилось, Android-сторож):
+      // пробуем восстановить — тот же сервер, затем по правилам автопилота.
+      if (current is VpnConnected && !_isFailingOver) {
+        _healthTimer?.cancel();
+        _bgProbeTimer?.cancel();
+        unawaited(_recover('после сбоя'));
+      }
     });
   }
 

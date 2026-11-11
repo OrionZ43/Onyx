@@ -447,6 +447,16 @@ class SingboxBridgeAndroid implements SingboxBridge {
   @override
   BridgeState get state => _state;
 
+  // Цепочка (Xray → sing-box): своё приложение исключено из VPN, его сокеты и
+  // пробы идут напрямую. В режиме Xray — через VPN.
+  bool get _tunnelUp => _state == BridgeState.running || _state == BridgeState.starting;
+
+  @override
+  bool get probesBypassTunnel => !_tunnelUp || _chainProcess != null;
+
+  @override
+  bool get appTrafficBypassesTunnel => !_tunnelUp || _chainProcess != null;
+
   void _setState(BridgeState s) {
     if (_state == s) return;
     _state = s;

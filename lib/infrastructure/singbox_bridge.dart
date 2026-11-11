@@ -68,6 +68,19 @@ abstract class SingboxBridge {
   ///   • Windows — время HTTPS-запроса через локальный прокси sing-box.
   Future<int> measureLatency();
 
+  /// Пробы серверов (отдельные процессы sing-box) идут мимо поднятого
+  /// туннеля — их замеры честные и при включённом VPN (этап 2 автопилота):
+  ///   • Windows — да: правило `process_name: sing-box.exe → direct`;
+  ///   • Android, цепочка — да: приложение исключено из VPN;
+  ///   • Android, Xray — нет: сокеты приложения идут через VPN.
+  /// Без туннеля — всегда true.
+  bool get probesBypassTunnel;
+
+  /// Сокеты самого приложения (TCP-пинг, запросы страны по IP) идут мимо
+  /// туннеля: Android-цепочка — да; Windows (TUN ловит onyx.exe) и Xray —
+  /// нет. Без туннеля — всегда true.
+  bool get appTrafficBypassesTunnel;
+
   Stream<BridgeState> get stateStream;
   Stream<(int rx, int tx)> get statsStream;
   Stream<String> get errorStream;
