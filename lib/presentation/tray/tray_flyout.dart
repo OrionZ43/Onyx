@@ -18,6 +18,7 @@ import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../providers/connect_phase.dart';
+import '../providers/country_provider.dart';
 import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
 import '../providers/subscription_provider.dart';
@@ -236,7 +237,7 @@ class _MainPage extends ConsumerWidget {
         _Tile(
           onTap: onServers,
           child: Row(children: [
-            CountryFlag(code: node == null ? '' : countryOfName(node.name).code, size: t.isSignal ? 24 : 30),
+            CountryFlag(code: node == null ? '' : ref.watch(countryResolverProvider).of(node).code, size: t.isSignal ? 24 : 30),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -304,6 +305,7 @@ class _ServerPageState extends ConsumerState<_ServerPage> {
   @override
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
+    final cr = ref.watch(countryResolverProvider);
     final userGroups = ref.watch(groupsProvider);
     final picked = ref.watch(nodeSelectionProvider);
     final autoGroup = ref.watch(autoGroupProvider);
@@ -375,7 +377,7 @@ class _ServerPageState extends ConsumerState<_ServerPage> {
                         await chooseNode(ref, n);
                         widget.onBack();
                       },
-                      lead: CountryFlag(code: countryOfName(n.name).code, size: t.isSignal ? 20 : 26),
+                      lead: CountryFlag(code: cr.of(n).code, size: t.isSignal ? 20 : 26),
                       title: displayNodeName(n.name),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [NodeBadges(node: n), const SizedBox(width: 8), PingText(ms: n.latencyMs, width: 44)]),
                     );

@@ -19,8 +19,10 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
+import '../providers/country_provider.dart';
 import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
+import '../providers/own_nodes_provider.dart';
 import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/vpn_provider.dart';
@@ -30,6 +32,7 @@ import '../util/country.dart';
 import '../util/vpn_actions.dart';
 import 'add_source_sheet.dart';
 import 'country_flag.dart';
+import 'country_picker.dart';
 import 'home_parts.dart';
 import 'onyx_field.dart';
 import 'onyx_icon.dart';
@@ -94,6 +97,9 @@ class _Facets {
       );
 }
 
+/// Ключ секции «Свои» во «Все» — не код страны (те двухбуквенные).
+const _ownSection = 'own';
+
 class NodeListPanel extends ConsumerStatefulWidget {
   const NodeListPanel({super.key, this.inSheet = false});
   final bool inSheet;
@@ -156,6 +162,8 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
   Future<void> _nodeMenu(Node node) async {
     final t = OnyxTokens.of(context);
     final groups = ref.read(groupsProvider);
+    final cr = ref.read(countryResolverProvider);
+    final country = cr.of(node);
     final v = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -165,6 +173,17 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Text(displayNodeName(node.name), style: TextStyle(fontFamily: t.bodyFont, fontSize: 15, fontWeight: FontWeight.w500, color: t.text)),
+          ),
+          // Страна для флага (#68): если по названию не определилась или
+          // определилась неверно — выбрать вручную.
+          ListTile(
+            leading: CountryFlag(code: country.code, size: 22),
+            title: Text(country.isKnown ? 'Страна: ${country.name}' : 'Указать страну', style: TextStyle(fontFamily: t.bodyFont, color: t.text)),
+            subtitle: Text(
+              cr.isPicked(node) ? 'Выбрана вручную' : (country.isKnown ? 'Определена по названию' : 'По названию не определилась'),
+              style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, color: t.textMuted),
+            ),
+            onTap: () => Navigator.pop(c, 'country'),
           ),
           for (final g in groups)
             ListTile(
@@ -181,6 +200,16 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
       ),
     );
     if (v == null || !mounted) return;
+    if (v == 'country') {
+      final code = await showCountryPicker(
+        context,
+        serverName: displayNodeName(node.name),
+        picked: ref.read(countryOverridesProvider)[node.serverKey],
+        detected: cr.detected(node),
+      );
+      if (code != null) await ref.read(countryOverridesProvider.notifier).set(node.serverKey, code);
+      return;
+    }
     final ctl = ref.read(groupsProvider.notifier);
     if (v == '+') {
       final name = await askGroupName(context);
@@ -205,9 +234,19 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
     final userGroups = ref.watch(groupsProvider);
     final autoGroup = ref.watch(autoGroupProvider);
     final sourceCount = ref.watch(sourcesProvider.select((l) => l.length));
-    // Вкладка удалена (группу стёрли) — возвращаемся во «Все».
-    final tab = _tab == null || _tab == 'auto:fav' || userGroups.any((g) => g.id == _tab) ? _tab : null;
-    final base = tab == null ? sub.nodes : ref.watch(groupNodesProvider(tab));
+    // «Свои» (#68): серверы, добавленные пользователем ссылками.
+    final own = ref.watch(ownNodeIdsProvider);
+    final cr = ref.watch(countryResolverProvider);
+    // Вкладка удалена (группу стёрли, свои серверы убрали) — возвращаемся во «Все».
+    final tab = _tab == null ||
+            _tab == 'auto:fav' ||
+            (_tab == 'auto:own' && own.isNotEmpty) ||
+            userGroups.any((g) => g.id == _tab)
+        ? _tab
+        : null;
+    final base = tab == null
+        ? sub.nodes
+        : (tab == 'auto:own' ? ref.watch(ownNodesProvider) : ref.watch(groupNodesProvider(tab)));
     final pad = t.isMaterial ? 16.0 : 20.0;
 
     if (sub.nodes.isEmpty && sub.status != SubStatus.fetching) {
@@ -219,7 +258,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
 
     final q = _query.text.trim().toLowerCase();
     final nodes = base.where((n) {
-      final c = countryOfName(n.name);
+      final c = cr.of(n);
       if (_facets.voice && !n.udpSupported) return false;
       if (_facets.ai && !n.aiReachable) return false;
       if (_facets.country != null && c.code != _facets.country) return false;
@@ -231,11 +270,20 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
         return (a.latencyMs ?? 99999).compareTo(b.latencyMs ?? 99999);
       });
 
-    // Группы по стране; порядок — по лучшему пингу в группе.
+    // Во «Все» свои серверы — первой секцией (#68), остальные — группами по
+    // стране; порядок стран — по лучшему пингу в группе.
     final groups = <String, List<Node>>{};
     final names = <String, String>{};
+    if (tab == null) {
+      final mine = [for (final n in nodes) if (own.contains(n.id)) n];
+      if (mine.isNotEmpty) {
+        groups[_ownSection] = mine;
+        names[_ownSection] = 'Свои';
+      }
+    }
     for (final n in nodes) {
-      final c = countryOfName(n.name);
+      if (groups.containsKey(_ownSection) && own.contains(n.id)) continue;
+      final c = cr.of(n);
       groups.putIfAbsent(c.code, () => []).add(n);
       names[c.code] = c.name;
     }
@@ -243,7 +291,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
     final voiceCount = sub.nodes.where((n) => n.udpSupported).length;
     final countries = <String, String>{};
     for (final n in sub.nodes) {
-      final c = countryOfName(n.name);
+      final c = cr.of(n);
       countries[c.code] = c.name;
     }
 
@@ -266,6 +314,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
           tabs: [
             (null, 'Все', sub.nodes.length),
             ('auto:fav', 'Избранное', favs.length),
+            if (own.isNotEmpty) ('auto:own', 'Свои', own.length),
             for (final g in userGroups) (g.id, g.name, ref.watch(groupNodesProvider(g.id)).length),
           ],
           onChanged: (v) => setState(() => _tab = v),
@@ -322,6 +371,8 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
                   _MaterialSegment(
                     children: [for (final n in e.value) _NodeRow(
                         node: n,
+                        country: cr.of(n),
+                        inOwnList: tab == 'auto:own' || e.key == _ownSection,
                         selected: n.id == current?.id,
                         favorite: favs.contains(n.id),
                         onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),
@@ -333,6 +384,8 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
                 else
                   for (final n in e.value) _NodeRow(
                         node: n,
+                        country: cr.of(n),
+                        inOwnList: tab == 'auto:own' || e.key == _ownSection,
                         selected: n.id == current?.id,
                         favorite: favs.contains(n.id),
                         onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),
@@ -651,14 +704,23 @@ class _SegmentPosition extends InheritedWidget {
 class _NodeRow extends StatelessWidget {
   const _NodeRow({
     required this.node,
+    required this.country,
     required this.selected,
     required this.favorite,
     required this.onFavorite,
     required this.onLongPress,
     required this.onTap,
     this.quarantined = false,
+    this.inOwnList = false,
   });
   final Node node;
+
+  /// Строка во вкладке или секции «Свои»: значок «СВОЙ» там лишний — заголовок
+  /// уже это говорит, а место нужно имени.
+  final bool inOwnList;
+
+  /// Страна для флага: выбор пользователя → название (CountryResolver, #68).
+  final Country country;
   final bool selected;
 
   /// Не поднялся при подключении — автовыбор пропускает его 30 мин (#45).
@@ -682,7 +744,7 @@ class _NodeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
-    final c = countryOfName(node.name);
+    final c = country;
     final name = displayNodeName(node.name);
     final dead = !node.isAlive || quarantined;
 
@@ -711,7 +773,7 @@ class _NodeRow extends StatelessWidget {
                         style: text.bodyMedium!.copyWith(color: s.onSurfaceVariant)),
                   ]),
                 ),
-                NodeBadges(node: node),
+                NodeBadges(node: node, showOwn: !inOwnList),
                 const SizedBox(width: 10),
                 PingIndicator(ms: dead ? null : node.latencyMs),
                 _star(t),
@@ -747,7 +809,7 @@ class _NodeRow extends StatelessWidget {
               child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontFamily: t.bodyFont, fontSize: 16, color: dead ? t.textFaint : t.text)),
             ),
-            NodeBadges(node: node),
+            NodeBadges(node: node, showOwn: !inOwnList),
             const SizedBox(width: 10),
             PingText(ms: dead ? null : node.latencyMs, width: 36),
             const SizedBox(width: 8),
@@ -777,7 +839,7 @@ class _NodeRow extends StatelessWidget {
             child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontFamily: t.bodyFont, fontSize: 15, color: selected ? t.accent : (dead ? t.textFaint : t.text))),
           ),
-          NodeBadges(node: node),
+          NodeBadges(node: node, showOwn: !inOwnList),
           const SizedBox(width: 12),
           PingText(ms: dead ? null : node.latencyMs, width: 52),
           _star(t),

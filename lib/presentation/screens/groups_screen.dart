@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
+import '../providers/country_provider.dart';
 import '../providers/groups_provider.dart';
 import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
@@ -184,6 +185,7 @@ class GroupEditScreen extends ConsumerWidget {
     final ctl = ref.read(groupsProvider.notifier);
     final sources = ref.watch(sourcesProvider);
     final allNodes = ref.watch(subscriptionProvider.select((s) => s.nodes));
+    final cr = ref.watch(countryResolverProvider);
     final byId = {for (final n in allNodes) n.id: n};
     final auto = ref.watch(autoGroupProvider) == g.id;
     final pad = t.isMaterial ? 16.0 : 20.0;
@@ -263,7 +265,7 @@ class GroupEditScreen extends ConsumerWidget {
               ),
             for (final nid in g.nodeIds)
               _MemberRow(
-                lead: CountryFlag(code: byId[nid] == null ? '' : countryOfName(byId[nid]!.name).code, size: 26),
+                lead: CountryFlag(code: byId[nid] == null ? '' : cr.of(byId[nid]!).code, size: 26),
                 title: byId[nid] == null ? 'Сервер недоступен' : displayNodeName(byId[nid]!.name),
                 onRemove: () => ctl.removeNode(g.id, nid),
               ),
@@ -306,9 +308,10 @@ class _MembersPicker extends ConsumerWidget {
     final g = ref.watch(groupsProvider).where((x) => x.id == groupId).firstOrNull;
     if (g == null) return const SizedBox();
     final ctl = ref.read(groupsProvider.notifier);
+    final cr = ref.watch(countryResolverProvider);
     final sources = ref.watch(sourcesProvider);
     final nodes = [...ref.watch(subscriptionProvider.select((s) => s.nodes))]
-      ..sort((a, b) => countryOfName(a.name).name.compareTo(countryOfName(b.name).name));
+      ..sort((a, b) => cr.of(a).name.compareTo(cr.of(b).name));
     Widget check(bool v) => Icon(v ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, size: 22, color: v ? t.accent : t.textFaint);
     return ListView(padding: const EdgeInsets.fromLTRB(8, 0, 8, 24), children: [
       Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: _Caption('Источники целиком')),
@@ -326,7 +329,7 @@ class _MembersPicker extends ConsumerWidget {
       Padding(padding: const EdgeInsets.fromLTRB(12, 16, 12, 8), child: _Caption('Отдельные серверы')),
       for (final Node n in nodes)
         ListTile(
-          leading: CountryFlag(code: countryOfName(n.name).code, size: 26),
+          leading: CountryFlag(code: cr.of(n).code, size: 26),
           title: Text(displayNodeName(n.name), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: t.bodyFont, color: t.text)),
           trailing: check(g.nodeIds.contains(n.id)),
           onTap: () {

@@ -22,6 +22,7 @@ import 'package:onyx/infrastructure/update_service.dart';
 import 'package:onyx/presentation/providers/activity_provider.dart';
 import 'package:onyx/presentation/providers/autostart_provider.dart';
 import 'package:onyx/presentation/providers/connect_phase.dart';
+import 'package:onyx/presentation/providers/country_provider.dart';
 import 'package:onyx/presentation/providers/groups_provider.dart';
 import 'package:onyx/presentation/providers/sources_provider.dart';
 import 'package:onyx/presentation/providers/subscription_provider.dart';
@@ -38,6 +39,7 @@ import 'package:onyx/presentation/screens/settings_screen.dart';
 import 'package:onyx/presentation/screens/setup_screen.dart';
 import 'package:onyx/presentation/screens/subscription_manager_screen.dart';
 import 'package:onyx/presentation/tray/tray_flyout.dart';
+import 'package:onyx/presentation/util/country.dart';
 import 'package:onyx/presentation/widgets/add_source_sheet.dart';
 import 'package:onyx/presentation/widgets/country_flag.dart';
 import 'package:onyx/presentation/widgets/node_list_sheet.dart';
@@ -122,7 +124,8 @@ class FakeUpdate extends UpdateController {
 Node node(String id, String name, int? ping, {bool ai = false, bool alive = true, bool verified = true, String proto = 'vless', bool udp = false}) => Node(
       id: id,
       name: name,
-      host: '185.212.47.${10 + int.parse(id)}',
+      // Документационные диапазоны (RFC 5737): подписки — 198.51.100.x, свои — 203.0.113.x.
+      host: int.parse(id) <= 7 ? '198.51.100.$id' : '203.0.113.$id',
       port: 443,
       uuid: 'u',
       flow: '',
@@ -148,9 +151,10 @@ final nodes = [
   node('5', '🇩🇪 Франкфурт FRA-01', 41, ai: true),
   node('6', '🇩🇪 Франкфурт FRA-04', 63, proto: 'tuic', udp: true),
   node('7', '🇸🇪 Стокгольм STO-01', 47),
-  node('8', '🇵🇱 Варшава WAW-01', 55, ai: true),
-  node('9', '🇺🇸 Нью-Йорк NYC-02', 118, ai: true),
-  node('10', '🇯🇵 Токио TYO-01', 212),
+  // Свои — источник-ссылки «Мой VPS» (#68); имена как у ручных ссылок.
+  node('8', 'Riga-1 REALITY', 55, ai: true),
+  node('9', 'Finland HY2', 64, proto: 'hysteria2', udp: true),
+  node('10', 'home-vps', 47),
 ];
 
 final sub = SubscriptionState(
@@ -188,9 +192,10 @@ Future<void> loadFonts() async {
 
 // ── Сборка ──────────────────────────────────────────────────────────────────
 
-Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s, ConnectPhase phase = ConnectPhase.idle}) => ProviderScope(
+Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s, ConnectPhase phase = ConnectPhase.idle, Map<String, String> picks = const {}}) => ProviderScope(
       overrides: [
         connectPhaseProvider.overrideWith((ref) => phase),
+        countryOverridesProvider.overrideWith((ref) => CountryOverrides(picks)),
         autostartProvider.overrideWith((ref) => FakeAutostart(true)),
         activityProvider.overrideWith((ref) => ActivityLog(activity)),
         speedProvider.overrideWith((ref) => SpeedHistory(speedSamples)),
@@ -210,8 +215,18 @@ Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s, 
       ),
     );
 
+/// Дать анимации маршрута (лист, меню) начаться и закончиться: один кадр её
+/// запускает, дальше — шаги по времени. pumpAndSettle здесь не годится:
+/// секундный таймер сессии не даёт экрану «устояться».
+Future<void> settle(WidgetTester tester) async {
+  await tester.pump();
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
 Future<void> shot(WidgetTester tester, String name, Widget w, Size size, {bool android = true, Future<void> Function()? then}) async {
-  await tester.runAsync(() => precacheDotFlags(['nl', 'fi', 'de', 'se', 'pl', 'us', 'jp']));
+  await tester.runAsync(() => precacheDotFlags(['nl', 'fi', 'de', 'se', 'lv', 'pl', 'us', 'jp']));
   debugDefaultTargetPlatformOverride = android ? TargetPlatform.android : TargetPlatform.windows;
   tester.view.physicalSize = size * 2;
   tester.view.devicePixelRatio = 2;
@@ -309,6 +324,47 @@ void main() {
         final ctx = tester.element(find.byType(HomeScreen));
         showOnyxNodeSheet(ctx);
         await tester.pump(const Duration(seconds: 1));
+      });
+    });
+    // «Свои» серверы (#68): вкладка «Свои»; у home-vps страна выбрана вручную.
+    testWidgets('${k.name} phone-own', (tester) async {
+      await shot(tester, '${k.name}-phone-own', app(k, vpnOf('off'), const HomeScreen(), picks: const {'203.0.113.10': 'nl'}), phone, then: () async {
+        showOnyxNodeSheet(tester.element(find.byType(HomeScreen)));
+        await settle(tester);
+        await tester.tap(find.textContaining(RegExp('Свои|СВОИ'), findRichText: true).first);
+        await settle(tester);
+      });
+    });
+    // Выбор страны вручную: долгое нажатие на сервер → «Указать страну».
+    // Подключён свой сервер: значок «СВОЙ» на карточке главного экрана (#68).
+    testWidgets('${k.name} phone-own-home', (tester) async {
+      final own = nodes.firstWhere((n) => n.id == '9'); // Finland HY2
+      await shot(
+        tester,
+        '${k.name}-phone-own-home',
+        app(k, VpnConnected(node: own, connectedAt: DateTime.now(), rxBytes: 412000000, txBytes: 38000000), const HomeScreen()),
+        phone,
+      );
+    });
+    // Меню по долгому нажатию: пункт «Указать страну» (#68).
+    testWidgets('${k.name} phone-menu', (tester) async {
+      await shot(tester, '${k.name}-phone-menu', app(k, vpnOf('off'), const HomeScreen()), phone, then: () async {
+        showOnyxNodeSheet(tester.element(find.byType(HomeScreen)));
+        await settle(tester);
+        await tester.longPress(find.text('home-vps').first);
+        await settle(tester);
+      });
+    });
+    testWidgets('${k.name} phone-country', (tester) async {
+      await shot(tester, '${k.name}-phone-country', app(k, vpnOf('off'), const HomeScreen()), phone, then: () async {
+        // В листе — все страны: точечные флаги Signal рисуются из SVG заранее.
+        await tester.runAsync(() => precacheDotFlags([for (final c in allCountries()) c.code]));
+        showOnyxNodeSheet(tester.element(find.byType(HomeScreen)));
+        await settle(tester);
+        await tester.longPress(find.text('home-vps').first);
+        await settle(tester);
+        await tester.tap(find.text('Указать страну'));
+        await settle(tester);
       });
     });
     testWidgets('${k.name} phone empty', (tester) async {

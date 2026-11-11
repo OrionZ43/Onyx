@@ -8,6 +8,8 @@ import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../providers/connect_phase.dart';
+import '../providers/country_provider.dart';
+import '../providers/own_nodes_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../util/country.dart';
 import 'country_flag.dart';
@@ -388,7 +390,7 @@ class ServerCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = OnyxTokens.of(context);
     final n = node;
-    final country = n == null ? Country.unknown : countryOfName(n.name);
+    final country = n == null ? Country.unknown : ref.watch(countryResolverProvider).of(n);
     // Серверы есть, но ни один пока не ответил (проверка не прошла или все
     // недоступны) — это не «нет серверов»: автопилот проверит их по тапу.
     final listed = sub.nodes.isNotEmpty;
@@ -725,15 +727,64 @@ class _NoUdpBadge extends StatelessWidget {
   }
 }
 
-/// Протокол + голос + AI одной строкой (порядок одинаковый во всех темах).
-class NodeBadges extends StatelessWidget {
-  const NodeBadges({super.key, required this.node, this.showProtocol = true});
-  final Node node;
-  final bool showProtocol;
+/// «Свой» — сервер добавлен пользователем ссылкой, не из чужой подписки (#68).
+/// Тот же язык, что у AI: в Onyx — шампань с лёгкой заливкой (AI — только
+/// контур), в Signal — белый контур (AI — белая заливка).
+class OwnBadge extends StatelessWidget {
+  const OwnBadge({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    final Widget badge;
+    if (t.isMaterial) {
+      final s = Theme.of(context).colorScheme;
+      badge = Container(
+        height: 24,
+        padding: const EdgeInsets.only(left: 6, right: 8),
+        decoration: BoxDecoration(color: s.secondaryContainer, borderRadius: BorderRadius.circular(8)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.person_rounded, size: 14, color: s.onSecondaryContainer),
+          const SizedBox(width: 4),
+          Text('Свой', style: TextStyle(fontFamily: 'Roboto', fontSize: 12, fontWeight: FontWeight.w500, color: s.onSecondaryContainer)),
+        ]),
+      );
+    } else if (t.isSignal) {
+      badge = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(border: Border.all(color: t.text), borderRadius: BorderRadius.circular(4)),
+        child: Text('СВОЙ', style: TextStyle(fontFamily: t.monoFont, fontSize: 10.5, fontWeight: FontWeight.w600, letterSpacing: 0.6, color: t.text)),
+      );
+    } else {
+      badge = Container(
+        padding: const EdgeInsets.fromLTRB(6, 2, 5, 2),
+        decoration: BoxDecoration(
+          color: t.accent.withValues(alpha: .1),
+          border: Border.all(color: t.accent.withValues(alpha: .55)),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text('СВОЙ', style: TextStyle(fontFamily: t.displayFont, fontSize: 9.5, fontWeight: FontWeight.w600, letterSpacing: 1.3, color: t.accent)),
+      );
+    }
+    return Tooltip(message: 'Добавлен вручную', child: badge);
+  }
+}
+
+/// «Свой» + протокол + голос + AI одной строкой (порядок одинаковый во всех
+/// темах).
+class NodeBadges extends ConsumerWidget {
+  const NodeBadges({super.key, required this.node, this.showProtocol = true, this.showOwn = true});
+  final Node node;
+  final bool showProtocol;
+
+  /// Значок «СВОЙ» — кроме списков, где все серверы свои.
+  final bool showOwn;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final own = ref.watch(ownNodeIdsProvider).contains(node.id) && showOwn;
     final items = <Widget>[
+      if (own) const OwnBadge(),
       // VLESS — протокол по умолчанию: метку показываем только для остальных,
       // иначе она повторяется в каждой строке и съедает место под имя.
       if (showProtocol && node.protocol != NodeProtocol.vless) ProtocolBadge(protocol: node.protocol),

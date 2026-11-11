@@ -96,6 +96,18 @@ Country countryOfName(String name) {
   return Country.unknown;
 }
 
+/// Страна по коду (выбор пользователя, страна выхода из проверки).
+/// Неизвестный код — [Country.unknown].
+Country countryByCode(String code) {
+  final c = code.toLowerCase();
+  final name = _names[c];
+  return name == null ? Country.unknown : Country(c, name);
+}
+
+/// Все страны, для которых есть флаг, — по алфавиту (выбор страны вручную).
+List<Country> allCountries() =>
+    [for (final e in _names.entries) Country(e.key, e.value)]..sort((a, b) => a.name.compareTo(b.name));
+
 /// Имя сервера без emoji-флага и лишних разделителей — для заголовка строки.
 String displayNodeName(String name) {
   final cleaned = _withoutFlags(name).replaceAll(RegExp(r'^[\s|\-–—·•:]+'), '').trim();
