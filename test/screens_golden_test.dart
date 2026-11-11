@@ -157,6 +157,9 @@ final nodes = [
   node('10', 'home-vps', 47),
 ];
 
+/// Ручной выбор страны у home-vps (203.0.113.10) — Нидерланды (#68).
+const ownPicks = {'203.0.113.10': 'nl'};
+
 final sub = SubscriptionState(
   status: SubStatus.ready,
   nodes: nodes,
@@ -319,16 +322,41 @@ void main() {
         await shot(tester, '${k.name}-phone-$s', app(k, vpnOf(s), const HomeScreen()), phone);
       });
     }
+    // «Все» — с той же ручной страной у home-vps, что и во вкладке «Свои»
+    // (#68): на листе мокапа обе колонки — одно состояние.
     testWidgets('${k.name} phone list', (tester) async {
-      await shot(tester, '${k.name}-phone-list', app(k, vpnOf('off'), const HomeScreen()), phone, then: () async {
+      await shot(tester, '${k.name}-phone-list', app(k, vpnOf('off'), const HomeScreen(), picks: ownPicks), phone, then: () async {
         final ctx = tester.element(find.byType(HomeScreen));
         showOnyxNodeSheet(ctx);
         await tester.pump(const Duration(seconds: 1));
       });
     });
+    // Страна одна во всех местах: «Все», «Свои», карточка главного экрана —
+    // общий CountryResolver (#68).
+    testWidgets('${k.name} own-country-everywhere', (tester) async {
+      final home = nodes.firstWhere((n) => n.id == '10'); // home-vps, страна выбрана вручную
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      tester.view.physicalSize = phone * 2;
+      tester.view.devicePixelRatio = 2;
+      String flagOf(String name) => tester
+          .widget<CountryFlag>(find.descendant(of: find.ancestor(of: find.text(name).last, matching: find.byType(Row)).first, matching: find.byType(CountryFlag)))
+          .code;
+      await tester.pumpWidget(app(k, VpnConnected(node: home, connectedAt: DateTime.now()), const HomeScreen(), picks: ownPicks));
+      await settle(tester);
+      expect(flagOf('home-vps'), 'nl', reason: 'карточка главного экрана');
+      showOnyxNodeSheet(tester.element(find.byType(HomeScreen)));
+      await settle(tester);
+      expect(flagOf('home-vps'), 'nl', reason: '«Все»');
+      await tester.tap(find.textContaining(RegExp('Свои|СВОИ'), findRichText: true).first);
+      await settle(tester);
+      expect(flagOf('home-vps'), 'nl', reason: '«Свои»');
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+      debugDefaultTargetPlatformOverride = null;
+    });
     // «Свои» серверы (#68): вкладка «Свои»; у home-vps страна выбрана вручную.
     testWidgets('${k.name} phone-own', (tester) async {
-      await shot(tester, '${k.name}-phone-own', app(k, vpnOf('off'), const HomeScreen(), picks: const {'203.0.113.10': 'nl'}), phone, then: () async {
+      await shot(tester, '${k.name}-phone-own', app(k, vpnOf('off'), const HomeScreen(), picks: ownPicks), phone, then: () async {
         showOnyxNodeSheet(tester.element(find.byType(HomeScreen)));
         await settle(tester);
         await tester.tap(find.textContaining(RegExp('Свои|СВОИ'), findRichText: true).first);
