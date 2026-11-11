@@ -11,8 +11,11 @@ void showOnyxToast(BuildContext context, String text, {OnyxGlyph glyph = OnyxGly
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
   messenger.hideCurrentSnackBar();
+  // Короткое — 4 с, длинное (оговорки автопилота) — дольше, но не больше 10 с:
+  // ~20 знаков в секунду плюс время заметить.
+  final duration = Duration(milliseconds: (2000 + text.length * 50).clamp(4000, 10000));
   if (t.isMaterial) {
-    messenger.showSnackBar(SnackBar(content: Row(children: [
+    messenger.showSnackBar(SnackBar(duration: duration, content: Row(children: [
       Icon(glyph.material, size: 18, color: Theme.of(context).colorScheme.onInverseSurface),
       const SizedBox(width: 12),
       Expanded(child: Text(text)),
@@ -25,7 +28,7 @@ void showOnyxToast(BuildContext context, String text, {OnyxGlyph glyph = OnyxGly
       elevation: 0,
       behavior: SnackBarBehavior.floating,
       padding: EdgeInsets.zero,
-      duration: const Duration(seconds: 4),
+      duration: duration,
       content: Center(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

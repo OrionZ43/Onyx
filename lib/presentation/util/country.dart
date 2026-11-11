@@ -98,11 +98,17 @@ Country countryOfName(String name) {
 
 /// Имя сервера без emoji-флага и лишних разделителей — для заголовка строки.
 String displayNodeName(String name) {
-  final cleaned = String.fromCharCodes(
-    name.runes.where((r) => !_isRegional(r) && r != 0xFE0F),
-  ).replaceAll(RegExp(r'^[\s|\-–—·•:]+'), '').trim();
+  final cleaned = _withoutFlags(name).replaceAll(RegExp(r'^[\s|\-–—·•:]+'), '').trim();
   return cleaned.isEmpty ? name : cleaned;
 }
+
+/// Готовая фраза домена («Связь с 🇳🇱 AMS-03 постоянно рвётся…») — без
+/// emoji-флагов. Имена серверов в фразы автопилота попадают как есть, а
+/// Windows рисует флаг двумя буквами («NL»); флаг в интерфейсе — свой
+/// (CountryFlag). Пробелы, оставшиеся от флага, схлопываем.
+String uiText(String text) => _withoutFlags(text).replaceAll(RegExp(r'[ \t]{2,}'), ' ').trim();
+
+String _withoutFlags(String s) => String.fromCharCodes(s.runes.where((r) => !_isRegional(r) && r != 0xFE0F));
 
 bool _isRegional(int r) => r >= 0x1F1E6 && r <= 0x1F1FF;
 

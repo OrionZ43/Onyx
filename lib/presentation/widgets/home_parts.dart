@@ -95,7 +95,7 @@ class StatusHeader extends StatelessWidget {
       _ => '',
     };
     final disconnecting = vpn is VpnDisconnecting;
-    final errorText = vpn is VpnError ? (vpn as VpnError).message : '';
+    final errorText = vpn is VpnError ? uiText((vpn as VpnError).message) : '';
 
     // Ключ (капс) + крупная строка + подпись.
     final String key = switch (phase) {
@@ -505,7 +505,7 @@ class AutopilotView {
             ConnectFailure.sourcesUnreachable => 'Серверы не загрузились',
             ConnectFailure.allDead => 'Серверы не отвечают',
           },
-          detail: f.message,
+          detail: uiText(f.message),
           failure: f,
         ),
       _ => null,

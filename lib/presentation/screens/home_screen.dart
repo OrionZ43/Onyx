@@ -36,6 +36,7 @@ import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/update_provider.dart';
 import '../providers/vpn_provider.dart';
+import '../util/country.dart';
 import '../util/platform_kind.dart';
 import '../util/vpn_actions.dart';
 import '../widgets/add_source_sheet.dart';
@@ -92,7 +93,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// тихим тостом.
   void _onPhaseChanged(ConnectPhase? prev, ConnectPhase next) {
     if (next is ConnectNotice && mounted) {
-      showOnyxToast(context, next.message, glyph: next.message.startsWith('Переключились') ? OnyxGlyph.zap : OnyxGlyph.info);
+      showOnyxToast(context, uiText(next.message), glyph: next.message.startsWith('Переключились') ? OnyxGlyph.zap : OnyxGlyph.info);
     }
   }
 

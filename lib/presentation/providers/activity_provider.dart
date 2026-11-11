@@ -28,7 +28,8 @@ class ActivityLog extends StateNotifier<List<ActivityEvent>> {
 
   static const int limit = 12;
 
-  void add(String text, ActivityKind kind) {
+  void add(String raw, ActivityKind kind) {
+    final text = uiText(raw);
     if (state.isNotEmpty && state.first.text == text) return;
     state = [ActivityEvent(DateTime.now(), text, kind), ...state.take(limit - 1)];
   }

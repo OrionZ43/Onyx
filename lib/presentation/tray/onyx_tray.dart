@@ -54,7 +54,7 @@ class OnyxTray {
       }
 
       final state = pre
-          ? cp.label
+          ? uiText(cp.label)
           : switch (vpn) {
               VpnConnected() => 'Защищено',
               VpnConnecting() => 'Подключение…',
