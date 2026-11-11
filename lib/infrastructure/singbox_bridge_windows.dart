@@ -446,8 +446,14 @@ class SingboxBridgeWindows implements SingboxBridge {
       } catch (e) {
         log.w('Ошибка получения статистики трафика: $e', tag: 'BRIDGE');
         // Ядро через задачу (#55) — не наш дочерний процесс, его exitCode не
-        // слышим: молчание API 3 с подряд = ядро завершилось.
+        // слышим: молчание API 3 с подряд = ядро, вероятно, завершилось. Но
+        // на занятой машине API отвечает с задержкой (#69): пока процесс
+        // ядра жив, ждём до [coreSilenceLimit] и только потом объявляем сбой.
         if (_viaCore && ++failures >= 3 && _state == BridgeState.running) {
+          if (failures < coreSilenceLimit && coreProcessAlive()) {
+            if (failures == 3) log.w('API ядра молчит 3 с, но процесс ядра жив — ждём', tag: 'BRIDGE');
+            return;
+          }
           _readCoreLog();
           log.w('Ядро не отвечает — туннель завершился', tag: 'BRIDGE');
           _errorCtrl.add('sing-box неожиданно завершился${_lastFatal() != null ? ': ${_lastFatal()}' : ''}');
@@ -518,6 +524,13 @@ class SingboxBridgeWindows implements SingboxBridge {
 
   /// Туннель поднят через задачу ядра (а не нашим дочерним процессом).
   bool _viaCore = false;
+
+  /// Сколько секунд молчания API ядра терпим, пока процесс ядра жив (#69).
+  static const coreSilenceLimit = 15;
+
+  /// Жив ли процесс ядра (onyx-core.exe). Снимок процессов видит имена и у
+  /// процессов с правами администратора. В тестах подменяется.
+  static bool Function() coreProcessAlive = () => WinChildGuard.anyRunning(const ['onyx-core.exe']);
 
   /// Имя задачи ядра текущего пользователя (как в установщике).
   static String get coreTaskName =>

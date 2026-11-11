@@ -41,6 +41,36 @@ class NetworkWatcher {
   Timer? _timer;
   String? _last;
   DateTime? _lastPoll;
+  DateTime? _quietUntil;
+
+  /// Свой туннель поднимается или гаснет (#69): изменения сети в ближайшие
+  /// [d] — не «смена сети» и не «выход из сна». Подпись просто запоминаем
+  /// заново, событий нет. Повторный вызов продлевает тишину.
+  void quietFor(Duration d) {
+    final until = DateTime.now().add(d);
+    final cur = _quietUntil;
+    if (cur == null || until.isAfter(cur)) _quietUntil = until;
+  }
+
+  /// Идёт ли тишина в момент [now].
+  static bool isQuiet(DateTime? quietUntil, DateTime now) => quietUntil != null && now.isBefore(quietUntil);
+
+  /// Событие по итогам опроса (чистая функция — для тестов). Первый опрос —
+  /// без события; во время тишины своего (пере)подключения — без события
+  /// (#69); сменилась подпись — [NetEvent.changed]; долго не было опроса —
+  /// [NetEvent.resumed].
+  static NetEvent? decide({
+    required String? prevSig,
+    required String sig,
+    required DateTime? prevPoll,
+    required DateTime now,
+    DateTime? quietUntil,
+  }) {
+    if (isQuiet(quietUntil, now)) return null;
+    if (prevSig != null && sig != prevSig) return NetEvent.changed;
+    if (isSleepGap(prevPoll, now)) return NetEvent.resumed;
+    return null;
+  }
 
   /// События сети. Опрос стартует при первой подписке.
   Stream<NetEvent> get changes {
@@ -53,7 +83,6 @@ class NetworkWatcher {
     final now = DateTime.now();
     final prevPoll = _lastPoll;
     _lastPoll = now;
-    final resumed = isSleepGap(prevPoll, now);
     try {
       final ifs = await NetworkInterface.list(
         includeLoopback: false,
@@ -66,13 +95,17 @@ class NetworkWatcher {
       ]);
       final prev = _last;
       _last = sig;
-      if (prev != null && sig != prev) {
-        log.i('Сеть сменилась: [$prev] → [$sig]', tag: 'NET');
-        _ctrl.add(NetEvent.changed);
-      } else if (resumed) {
-        log.i('Похоже, устройство спало (${now.difference(prevPoll!).inSeconds} с без опроса)', tag: 'NET');
-        _ctrl.add(NetEvent.resumed);
+      final event = decide(prevSig: prev, sig: sig, prevPoll: prevPoll, now: now, quietUntil: _quietUntil);
+      if (event == null) {
+        if (prev != null && sig != prev) log.d('Сеть: [$prev] → [$sig] во время своего (пере)подключения — не событие', tag: 'NET');
+        return;
       }
+      if (event == NetEvent.changed) {
+        log.i('Сеть сменилась: [$prev] → [$sig]', tag: 'NET');
+      } else {
+        log.i('Похоже, устройство спало (${now.difference(prevPoll!).inSeconds} с без опроса)', tag: 'NET');
+      }
+      _ctrl.add(event);
     } catch (e) {
       log.d('Опрос сетей не удался: $e', tag: 'NET');
     }

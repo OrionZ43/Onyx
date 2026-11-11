@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -49,6 +52,59 @@ class LogService extends ChangeNotifier {
 
   List<LogEntry> get entries => List.unmodifiable(_entries);
 
+  // ── Журнал в файле (#69) ────────────────────────────────────────────
+  //
+  // «Журнал» и «События» живут в памяти и пропадают с выходом Onyx: после
+  // жалобы «сам сменил сервер» разобрать случай было не по чему. Теперь
+  // строки дублируются в файл: секреты вымараны, как при «Скопировать всё»,
+  // дамп конфига (CFG) не пишется. До [maxFileBytes], потом файл уходит в
+  // «.1» (одна копия) — на диске не больше двух мегабайт.
+
+  static int maxFileBytes = 1024 * 1024;
+  File? _file;
+  int _fileBytes = 0;
+
+  /// Файл журнала, если запись в файл включена.
+  File? get file => _file;
+
+  /// Выключить запись в файл (тесты).
+  @visibleForTesting
+  void detachFile() {
+    _file = null;
+    _fileBytes = 0;
+  }
+
+  /// Включить запись журнала в `<dir>/onyx.log`.
+  void persistTo(Directory dir) {
+    try {
+      dir.createSync(recursive: true);
+      final f = File('${dir.path}${Platform.pathSeparator}onyx.log');
+      _fileBytes = f.existsSync() ? f.lengthSync() : 0;
+      _file = f;
+      _appendToFile('${'=' * 12} Onyx запущен ${DateTime.now().toIso8601String()} ${'=' * 12}');
+    } catch (_) {
+      _file = null; // без файла — не беда, журнал в памяти остаётся
+    }
+  }
+
+  void _appendToFile(String line) {
+    final f = _file;
+    if (f == null) return;
+    try {
+      if (_fileBytes > maxFileBytes) {
+        final old = File('${f.path}.1');
+        if (old.existsSync()) old.deleteSync();
+        f.renameSync(old.path);
+        _fileBytes = 0;
+      }
+      final bytes = utf8.encode('$line\n');
+      f.writeAsBytesSync(bytes, mode: FileMode.append);
+      _fileBytes += bytes.length;
+    } catch (_) {
+      // Файл занят или диск полон — журнал в памяти всё равно есть.
+    }
+  }
+
   void _add(LogLevel level, String message, String tag) {
     _entries.add(
       LogEntry(
@@ -60,6 +116,12 @@ class LogService extends ChangeNotifier {
     );
     if (_entries.length > _maxEntries) {
       _entries.removeAt(0);
+    }
+    if (_file != null && tag != 'CFG') {
+      final e = _entries.last;
+      final t = e.timestamp;
+      final day = '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+      _appendToFile('$day ${_redact(e.toString())}');
     }
     // Дублируем в консоль разработчика (полный, немаскированный текст —
     // это локальная консоль во время разработки, не покидает устройство)

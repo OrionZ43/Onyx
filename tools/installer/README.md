@@ -35,6 +35,9 @@ pwsh tools\core\fetch-core.ps1 -Out dist\core
 # запускатель ядра с правами админа (#55) — в core\ рядом с sing-box
 cd tools\onyx_core; dart pub get; cd ..\..
 dart compile exe tools\onyx_core\bin\onyx_core.dart -o dist\core\onyx-core.exe
+# #69: оконная подсистема — задача ядра не открывает окно консоли (иначе на
+# Windows 11 при подключении всплывает Терминал, а закрыть его = уронить туннель)
+dart run tool\pe_subsystem.dart --gui dist\core\onyx-core.exe
 # 2. установщик
 pwsh tools\installer\build-installer.ps1 -SourceDir dist -Version 0.3.0
 ```

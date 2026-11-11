@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:local_notifier/local_notifier.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_kind.dart';
@@ -36,6 +37,12 @@ bool _launchHidden = false;
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Журнал ещё и в файл (#69): «Журнал» и «События» в памяти пропадают с
+  // выходом Onyx, а разбирать жалобу потом не по чему.
+  try {
+    final support = await getApplicationSupportDirectory();
+    log.persistTo(Directory('${support.path}${Platform.pathSeparator}logs'));
+  } catch (_) {}
   final prefs = await SharedPreferences.getInstance();
   // «Запускать свёрнутым»: окно не показываем, Onyx живёт в трее.
   final startMinimized = prefs.getBool(StartMinimizedNotifier.key) ?? false;

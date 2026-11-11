@@ -216,6 +216,12 @@ class DeepProbe {
   /// Путь к sing-box.exe (из BinaryManager.instance.singboxExe.path).
   final String singboxExePath;
 
+  /// Сколько проб (отдельных sing-box) работает прямо сейчас. Пока они
+  /// есть, медленная проба здоровья туннеля не в счёт (#69): пробы грузят
+  /// сеть и процессор, тормозит не сервер.
+  static int get inFlight => _inFlight;
+  static int _inFlight = 0;
+
   /// Сколько нод проверяем параллельно в одном батче.
   /// 5 — баланс между скоростью и нагрузкой на систему.
   static const _batchSize = 5;
@@ -413,6 +419,7 @@ class DeepProbe {
         ['run', '-c', configPath],
         mode: ProcessStartMode.detached,
       );
+      _inFlight++;
       WinChildGuard.adopt(process.pid);
       // Ждём слушатель до 3 с вместо фиксированных 2 с.
       var up = false;
@@ -440,6 +447,7 @@ class DeepProbe {
       try {
         process?.kill();
       } catch (_) {}
+      if (process != null) _inFlight--;
       if (configPath != null) {
         try {
           File(configPath).deleteSync();
@@ -504,6 +512,7 @@ class DeepProbe {
         ['run', '-c', configPath],
         mode: ProcessStartMode.detached,
       );
+      _inFlight++;
       // Пробы не переживают onyx.exe: задание Windows погасит их при любом выходе (#57)
       WinChildGuard.adopt(process.pid);
       log.d('[${node.name}] PID=${process.pid}, SOCKS5 порт=$port', tag: 'DEEP');
@@ -561,6 +570,7 @@ class DeepProbe {
       try {
         process?.kill();
       } catch (_) {}
+      if (process != null) _inFlight--;
       try {
         File(configPath).deleteSync();
       } catch (_) {}
@@ -727,6 +737,7 @@ class DeepProbe {
             configPath,
           ],
           mode: ProcessStartMode.detached);
+      _inFlight++;
       activeProcs[port] = process;
       WinChildGuard.adopt(process.pid); // #57
       log.d(
@@ -773,6 +784,7 @@ class DeepProbe {
       try {
         process?.kill();
       } catch (_) {}
+      if (process != null) _inFlight--;
       activeProcs.remove(port);
       try {
         File(configPath).deleteSync();

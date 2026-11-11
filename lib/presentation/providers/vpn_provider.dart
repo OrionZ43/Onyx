@@ -61,6 +61,11 @@ class VpnController extends StateNotifier<VpnState> {
   }
 
   static const _geoWait = Duration(seconds: 4);
+
+  /// Сколько после своего подключения или отключения изменения сети — не
+  /// события (#69): поднимается или гаснет свой туннель, Windows
+  /// перестраивает маршруты.
+  static const _ownNetChange = Duration(seconds: 20);
   DateTime? _geoAttemptAt;
 
   Future<void> _refreshGeo({bool force = false}) async {
@@ -224,6 +229,8 @@ class VpnController extends StateNotifier<VpnState> {
     if (state is VpnConnecting || state is VpnConnected) return;
 
     final mySession = ++_sessionId;
+    // Свой туннель сейчас поднимется: это не «смена сети» (#69).
+    NetworkWatcher.instance.quietFor(_ownNetChange);
     _healthTimer?.cancel();
 
     final node = _sanitizer.sanitize(rawNode);
@@ -287,6 +294,7 @@ class VpnController extends StateNotifier<VpnState> {
 
     log.i('VPN подключён!', tag: 'VPN');
     state = VpnConnected(node: node, connectedAt: DateTime.now());
+    NetworkWatcher.instance.quietFor(_ownNetChange);
     unawaited(_notif.show(
       nodeName: node.name,
       rxBytes: 0,
@@ -455,6 +463,12 @@ class VpnController extends StateNotifier<VpnState> {
   /// живой транспорт, если GFW задушит UDP или заблокирует TCP-порт.
   /// Мёртвых членов группы urltest отсеет сам; берём не больше 3.
   List<Node> _transportFallbacks(Node node) {
+    // Запасной транспорт того же сервера — тоже автоматическая смена (sing-box
+    // сам переключает urltest-группу). Сервер выбран вручную или тумблер
+    // автопереключения выключен — ровно то, что выбрали (#69).
+    if (!ref.read(settingsProvider).autoFailover || ref.read(nodeSelectionProvider) != null) {
+      return const [];
+    }
     final nodes = ref.read(subscriptionProvider).nodes;
     return nodes
         .where((n) =>
@@ -511,6 +525,8 @@ class VpnController extends StateNotifier<VpnState> {
     if (node == null) return;
 
     _sessionId++;
+    // Свой туннель гаснет: это не «смена сети» (#69).
+    NetworkWatcher.instance.quietFor(_ownNetChange);
 
     log.i('Отключаемся...', tag: 'VPN');
     state = VpnDisconnecting(node: node);
@@ -595,10 +611,19 @@ class VpnController extends StateNotifier<VpnState> {
   static const _badSamplesToSwitch = 3;
 
   int _badSamples = 0;
+
+  /// Сколько плохих проб подряд были «нет ответа вовсе» (#69). Мёртвым сервер
+  /// считается, только если ВСЕ плохие пробы такие, а не одна последняя.
+  int _deadSamples = 0;
   bool _isFailingOver = false;
 
   /// Последний замер текущей ноды (мс; −1 — не ответила).
   int _lastHealthMs = -1;
+
+  /// Идёт ли сейчас своя проверка серверов (Deep Probe: десятки sing-box).
+  /// Пока идёт, медленная проба здоровья не в счёт (#69). В тестах подменяется.
+  static bool Function(Ref ref) probesBusy =
+      (ref) => ref.read(subscriptionProvider.notifier).isProbing || DeepProbe.inFlight > 0;
 
   /// Когда Onyx в последний раз сам сменил сервер (гистерезис).
   DateTime? _lastAutoSwitch;
@@ -612,6 +637,7 @@ class VpnController extends StateNotifier<VpnState> {
   void _startHealthMonitor(int mySession) {
     _healthTimer?.cancel();
     _badSamples = 0;
+    _deadSamples = 0;
     _isFailingOver = false;
     Future<void> check() async {
       if (mySession != _sessionId) return;
@@ -627,10 +653,12 @@ class VpnController extends StateNotifier<VpnState> {
           log.d('Health: связь в норме (было $_badSamples плохих)', tag: 'VPN');
         }
         _badSamples = 0;
+        _deadSamples = 0;
         return;
       }
 
       _badSamples++;
+      if (_lastHealthMs < 0) _deadSamples++;
       // Не дёргаемся на одиночном спайке — быстрые переподтверждения.
       while (_badSamples < _badSamplesToSwitch) {
         log.w('Health: плохая проба $_badSamples/$_badSamplesToSwitch', tag: 'VPN');
@@ -641,9 +669,11 @@ class VpnController extends StateNotifier<VpnState> {
         if (!stillBad) {
           log.d('Health: спайк прошёл, нода восстановилась', tag: 'VPN');
           _badSamples = 0;
+          _deadSamples = 0;
           return;
         }
         _badSamples++;
+        if (_lastHealthMs < 0) _deadSamples++;
       }
 
       log.w('Health: нода деградировала ($_badSamples плохих проб подряд)', tag: 'VPN');
@@ -673,8 +703,9 @@ class VpnController extends StateNotifier<VpnState> {
     });
   }
 
-  /// Одна проба: меряет задержку через туннель и решает, плохая ли она.
-  /// Плохая = нет ответа (-1) или задержка выше порога.
+  /// Одна проба: меряет задержку через туннель и решает, плохая ли она
+  /// ([FailoverPolicy.healthSampleBad]): нет ответа (-1) или задержка выше
+  /// порога — но медленная, пока идёт своя проверка серверов, не в счёт.
   Future<bool> _sampleIsBad(int mySession) async {
     final ms = await _bridge.measureLatency();
     if (mySession != _sessionId) return false;
@@ -684,10 +715,11 @@ class VpnController extends StateNotifier<VpnState> {
       log.d('Health: туннель не ответил (-1)', tag: 'VPN');
       return true;
     }
-    final bad = ms > _latencyThresholdMs;
+    final busy = probesBusy(ref);
+    final bad = FailoverPolicy.healthSampleBad(ms, thresholdMs: _latencyThresholdMs, probesBusy: busy);
     log.d(
       'Health: задержка $msмс (порог $_latencyThresholdMs) → '
-      '${bad ? "плохо" : "ок"}',
+      '${bad ? "плохо" : ms > _latencyThresholdMs ? "медленно, но идёт проверка серверов — не в счёт" : "ок"}',
       tag: 'VPN',
     );
     return bad;
@@ -714,23 +746,31 @@ class VpnController extends StateNotifier<VpnState> {
       return;
     }
     final deadNode = current.node;
-    if (watchdog) _lastHealthMs = -1;
+    if (watchdog) {
+      _lastHealthMs = -1;
+      _deadSamples = _badSamplesToSwitch;
+    }
     final settings = ref.read(settingsProvider);
     final picked = ref.read(nodeSelectionProvider);
 
     final gate = FailoverPolicy.gate(
       autoFailover: settings.autoFailover,
       manualPick: picked != null,
-      currentDead: _lastHealthMs < 0,
+      // Мёртв — только если не ответил ни на одну из плохих проб (#69).
+      currentDead: _deadSamples >= _badSamplesToSwitch,
       now: DateTime.now(),
+      connectedAt: current.connectedAt,
       lastAutoSwitch: _lastAutoSwitch,
       noBetterUntil: _noBetterUntil,
     );
     if (gate != FailoverGate.allowed) {
       log.i('Автопереключение не выполняется: ${gate.name}', tag: 'VPN');
-      _notifyUnstable(gate == FailoverGate.manual
-          ? '${deadNode.name} нестабилен — выбран вручную, остаёмся'
-          : '${deadNode.name} — нестабилен');
+      // Только что подключились — молча ждём: сервер отвечает, это не сбой.
+      if (gate != FailoverGate.settling) {
+        _notifyUnstable(gate == FailoverGate.manual
+            ? '${deadNode.name} нестабилен — выбран вручную, остаёмся'
+            : '${deadNode.name} — нестабилен');
+      }
       _isFailingOver = false;
       // Возобновляем мониторинг — вдруг восстановится.
       _startHealthMonitor(mySession);
@@ -819,6 +859,19 @@ class VpnController extends StateNotifier<VpnState> {
         : ConnectPhase.idle;
   }
 
+  /// Сторож моста: через 8 с после подключения через туннель 0 байт. Это ещё
+  /// не значит, что сервер мёртв (#69): человек мог просто ничего не открыть.
+  /// Сначала проба через туннель; ответила — не трогаем сервер.
+  Future<void> _onNoTraffic(int mySession) async {
+    final ms = await _bridge.measureLatency();
+    if (mySession != _sessionId || state is! VpnConnected) return;
+    if (ms >= 0) {
+      log.i('WATCHDOG: трафика не было, но туннель отвечает ($ms мс) — сервер не меняем', tag: 'VPN');
+      return;
+    }
+    await _failover(mySession, watchdog: true);
+  }
+
   /// Уведомление «сервер нестабилен» — не чаще [FailoverPolicy.notifyEvery]
   /// (раньше при долгой деградации приходило каждые 20–30 с).
   void _notifyUnstable(String text) {
@@ -883,7 +936,7 @@ class VpnController extends StateNotifier<VpnState> {
 
     _errorSub = _bridge.errorStream.listen((error) {
       if (error == 'WATCHDOG_NO_TRAFFIC') {
-        _failover(_sessionId, watchdog: true);
+        unawaited(_onNoTraffic(_sessionId));
         return;
       }
 

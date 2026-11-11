@@ -17,6 +17,10 @@ enum FailoverGate {
 
   /// Недавно искали замену и не нашли — не перемеряем каждые 20 с.
   backoff,
+
+  /// Только что подключились, а сервер хоть как-то отвечает (#69): первые
+  /// минуты сеть и проверки ещё «успокаиваются», медленная проба — не повод.
+  settling,
 }
 
 /// Правила автопереключения серверов (#60).
@@ -62,6 +66,11 @@ class FailoverPolicy {
   /// После безуспешного поиска замены — пауза перед следующим.
   static const backoff = Duration(minutes: 1);
 
+  /// Первые минуты после подключения не меняем сервер, пока он отвечает
+  /// (#69). Тогда же доделывается фоновая проверка серверов, поднимаются
+  /// маршруты, и пробы через туннель бывают медленными без вины сервера.
+  static const settleTime = Duration(minutes: 3);
+
   /// Уведомление «сервер нестабилен» — не чаще.
   static const notifyEvery = Duration(minutes: 5);
 
@@ -69,6 +78,13 @@ class FailoverPolicy {
   /// не сильно медленнее самого быстрого: ≤ 1.5× + 50 мс.
   static const preferenceSlack = 1.5;
   static const preferenceSlackMs = 50;
+
+  /// Плохая ли проба здоровья: сервер не ответил ([ms] < 0) или ответил
+  /// медленнее [thresholdMs]. Медленная проба, пока идёт своя проверка
+  /// серверов (десятки sing-box мимо туннеля грузят сеть и процессор), не в
+  /// счёт (#69): тормозит не сервер. Неответ — в счёт всегда.
+  static bool healthSampleBad(int ms, {required int thresholdMs, required bool probesBusy}) =>
+      ms < 0 || (ms > thresholdMs && !probesBusy);
 
   /// Сохранённая задержка в пределах потолка. Нет данных — не отсекаем:
   /// перед прыжком всё равно будет свежий замер.
@@ -78,18 +94,23 @@ class FailoverPolicy {
     return ms <= (n.isQuic ? quicCeilingMs : tcpCeilingMs);
   }
 
-  /// Можно ли прыгать сейчас. [currentDead] — текущий сервер не ответил на
-  /// последнюю пробу вовсе (а не просто медленный).
+  /// Можно ли прыгать сейчас. [currentDead] — текущий сервер не ответил ни
+  /// на одну из плохих проб (а не просто медленный). [connectedAt] — когда
+  /// подключились к текущему серверу.
   static FailoverGate gate({
     required bool autoFailover,
     required bool manualPick,
     required bool currentDead,
     required DateTime now,
+    DateTime? connectedAt,
     DateTime? lastAutoSwitch,
     DateTime? noBetterUntil,
   }) {
     if (!autoFailover) return FailoverGate.disabled;
     if (manualPick) return FailoverGate.manual;
+    if (!currentDead && connectedAt != null && now.difference(connectedAt) < settleTime) {
+      return FailoverGate.settling;
+    }
     if (!currentDead && lastAutoSwitch != null && now.difference(lastAutoSwitch) < cooldown) {
       return FailoverGate.cooldown;
     }

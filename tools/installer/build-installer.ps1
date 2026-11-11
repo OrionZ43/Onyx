@@ -35,6 +35,16 @@ foreach ($f in @("onyx.exe", "core\sing-box.exe", "core\wintun.dll", "core\onyx-
   if (-not (Test-Path (Join-Path $SourceDir $f))) { throw "В $SourceDir нет $f" }
 }
 
+# #69: onyx-core.exe должен быть оконным (подсистема PE = 2). Консольный задача
+# планировщика запускает с окном консоли (на Windows 11 — Терминал), а закрыть
+# его = уронить туннель. Ставится: dart run tool\pe_subsystem.dart --gui <exe>
+$corePe = [IO.File]::ReadAllBytes((Join-Path $SourceDir "core\onyx-core.exe"))
+$peOff = [BitConverter]::ToInt32($corePe, 0x3C)
+$coreSubsystem = [BitConverter]::ToUInt16($corePe, $peOff + 24 + 68)
+if ($coreSubsystem -ne 2) {
+  throw "core\onyx-core.exe — подсистема $coreSubsystem, нужна 2 (оконная): dart run tool\pe_subsystem.dart --gui core\onyx-core.exe"
+}
+
 Write-Host "ISCC: $IsccPath"
 & $IsccPath /Qp "/DAppVersion=$Version" "/DSourceDir=$SourceDir" "/DOutputDir=$OutputDir" "/DOutputName=$OutputName" (Join-Path $root "tools\installer\onyx.iss")
 if ($LASTEXITCODE -ne 0) { throw "ISCC завершился с кодом $LASTEXITCODE" }

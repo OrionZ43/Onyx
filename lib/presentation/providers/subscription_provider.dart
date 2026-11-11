@@ -132,7 +132,10 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   }
 
   final Ref _ref;
-  final _probe = const SmartProbe();
+  final SmartProbe _probe = probeEngine();
+
+  /// Движок TCP-пинга (в тестах подменяется).
+  static SmartProbe Function() probeEngine = () => const SmartProbe();
   static const _cacheKey = 'cached_nodes';
   static const _staleAfter = Duration(minutes: 30);
   Timer? _staleTimer;
@@ -343,27 +346,37 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     // На Windows при поднятом TUN TCP-пинг бессмыслен (#41): рукопожатие
     // завершается локально в туннеле — у всех ~1 мс и «живы». Тогда только
     // Deep Probe: его sing-box ходит мимо туннеля (правило конфига, #60).
-    final underTun = tunActive();
+    var underTun = tunActive();
     final List<Node> probed;
     if (underTun) {
       log.i('VPN поднят — TCP-пинг пропущен, проверяем Deep Probe', tag: 'PROBE');
       probed = [...targets]..sort(NodeScorer.compare);
     } else {
-      probed = await _probe.probeAll(
+      final tcp = await _probe.probeAll(
         targets,
         onProgress: (done, total) {
           if (mounted) state = state.copyWith(status: SubStatus.probing, probedCount: done);
         },
       );
       if (!mounted) return;
-      _probedIds.addAll(probed.map((n) => n.id));
-      _apply(probed, (cur, upd) => cur.copyWith(
-            isAlive: upd.isAlive,
-            latencyMs: upd.latencyMs,
-            // При повторной проверке сбрасываем «работает», пока Deep Probe не
-            // подтвердит заново — иначе мёртвая нода висела бы зелёной.
-            isTrulyWorking: upd.isAlive ? cur.isTrulyWorking : false,
-          ));
+      if (tunActive()) {
+        // Туннель поднялся, пока шёл TCP-пинг (#69): часть рукопожатий уже
+        // закончилась локально в TUN — «живы» с ~1 мс. Такие замеры не берём,
+        // правду скажет Deep Probe изнутри пробы.
+        log.i('VPN поднялся во время TCP-пинга — его результаты отброшены', tag: 'PROBE');
+        underTun = true;
+        probed = [...targets]..sort(NodeScorer.compare);
+      } else {
+        probed = tcp;
+        _probedIds.addAll(probed.map((n) => n.id));
+        _apply(probed, (cur, upd) => cur.copyWith(
+              isAlive: upd.isAlive,
+              latencyMs: upd.latencyMs,
+              // При повторной проверке сбрасываем «работает», пока Deep Probe не
+              // подтвердит заново — иначе мёртвая нода висела бы зелёной.
+              isTrulyWorking: upd.isAlive ? cur.isTrulyWorking : false,
+            ));
+      }
     }
     state = state.copyWith(status: SubStatus.ready, probedCount: probed.length);
     _saveCache(state.nodes);

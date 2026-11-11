@@ -119,6 +119,8 @@ class BinaryManager {
   /// разложит его без сети за доли секунды, SetupScreen не нужен.
   bool get isReady {
     if (Platform.isAndroid) return true;
+    // До init() папки ещё нет — «не готов», а не LateInitializationError.
+    if (!_initialized) return false;
     final local = singboxExe.existsSync() &&
         _versionCurrent &&
         _ruleSetsReady &&

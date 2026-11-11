@@ -105,6 +105,8 @@ jobs:
           dart pub get
           cd ../..
           dart compile exe tools/onyx_core/bin/onyx_core.dart -o build/onyx-core.exe
+          # #69: оконная подсистема — задача ядра не открывает окно консоли
+          dart run tool/pe_subsystem.dart --gui build/onyx-core.exe
 
       - name: Package payload ZIP
         run: |
