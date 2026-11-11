@@ -164,12 +164,12 @@ ru.ReadyElevationHeader=Разрешение администратора (Windo
 ru.ReadyElevationNote=Для установки самого Onyx это разрешение не нужно.
 ru.ReasonStop=закрыть запущенный Onyx
 ru.ReasonLeftovers=остановить оставшиеся процессы Onyx
-ru.ReasonLegacy=убрать следы старых версий Onyx
+ru.ReasonLegacy=удалить остатки старых версий Onyx
 ru.ReasonCore=установить компонент VPN-туннеля
 ru.WaitingForPermission=Ждём разрешения администратора — нажмите «Да» в запросе Windows.
 ru.OnyxRunningNoAdmin=Onyx сейчас запущен, а без разрешения администратора установщик не может его закрыть.%n%nЗакройте Onyx (значок лисы у часов → «Выход») и запустите установку снова.
-ru.CoreLeft=Компонент VPN-туннеля не установлен: Windows не дала разрешение. Без него Onyx не сможет подключиться — запустите установку ещё раз и разрешите изменения.
-ru.LegacyLeft=Следы старой версии Onyx не удалены: для этого нужно разрешение администратора. Запустите установку ещё раз и разрешите изменения.
+ru.CoreLeft=Компонент VPN-туннеля не установлен: разрешение администратора не получено. Без него Onyx не сможет подключиться — запустите установку ещё раз и нажмите «Да» в запросе Windows.
+ru.LegacyLeft=Остатки старой версии Onyx не удалены: для этого нужно разрешение администратора. Запустите установку ещё раз и нажмите «Да» в запросе Windows.
 ru.UninstallDeleteData=Удалить также данные Onyx — подписки, серверы и настройки?%n%nЕсли собираетесь установить Onyx снова, нажмите «Нет»: всё сохранится.
 ru.UninstallCloseOnyx=Onyx сейчас запущен, а без разрешения администратора его не закрыть.%n%nЗакройте Onyx (значок лисы у часов → «Выход») и запустите удаление снова.
 
@@ -187,8 +187,8 @@ en.ReasonLegacy=remove leftovers of old Onyx versions
 en.ReasonCore=install the VPN tunnel component
 en.WaitingForPermission=Waiting for administrator permission — click Yes in the Windows prompt.
 en.OnyxRunningNoAdmin=Onyx is running now, and Setup cannot close it without administrator permission.%n%nClose Onyx (fox icon near the clock → Exit) and run Setup again.
-en.CoreLeft=The VPN tunnel component was not installed: Windows did not grant permission. Onyx cannot connect without it — run Setup again and allow the changes.
-en.LegacyLeft=Leftovers of an old Onyx version were not removed: this needs administrator permission. Run Setup again and allow the changes.
+en.CoreLeft=The VPN tunnel component was not installed: administrator permission was not granted. Onyx cannot connect without it — run Setup again and click Yes in the Windows prompt.
+en.LegacyLeft=Leftovers of an old Onyx version were not removed: this needs administrator permission. Run Setup again and click Yes in the Windows prompt.
 en.UninstallDeleteData=Also delete Onyx data — subscriptions, servers and settings?%n%nIf you plan to install Onyx again, choose No: everything will be kept.
 en.UninstallCloseOnyx=Onyx is running now and cannot be closed without administrator permission.%n%nClose Onyx (fox icon near the clock → Exit) and run the uninstaller again.
 
@@ -206,8 +206,8 @@ zh.ReasonLegacy=清理旧版本 Onyx 的残留
 zh.ReasonCore=安装 VPN 隧道组件
 zh.WaitingForPermission=正在等待管理员权限，请在 Windows 弹出的提示中点击“是”。
 zh.OnyxRunningNoAdmin=Onyx 正在运行，没有管理员权限安装程序无法关闭它。%n%n请先关闭 Onyx（时钟旁的狐狸图标 → 退出），然后重新运行安装程序。
-zh.CoreLeft=VPN 隧道组件未安装：Windows 没有授予权限。没有它 Onyx 无法连接——请重新运行安装程序并允许更改。
-zh.LegacyLeft=旧版本 Onyx 的残留未清理：这需要管理员权限。请重新运行安装程序并允许更改。
+zh.CoreLeft=VPN 隧道组件未安装：未获得管理员权限。没有它 Onyx 无法连接——请重新运行安装程序，并在 Windows 提示中点击“是”。
+zh.LegacyLeft=旧版本 Onyx 的残留未清理：这需要管理员权限。请重新运行安装程序，并在 Windows 提示中点击“是”。
 zh.UninstallDeleteData=同时删除 Onyx 的数据（订阅、服务器和设置）吗？%n%n如果您还打算重新安装 Onyx，请选择“否”，所有数据都会保留。
 zh.UninstallCloseOnyx=Onyx 正在运行，没有管理员权限无法关闭它。%n%n请先关闭 Onyx（时钟旁的狐狸图标 → 退出），然后重新运行卸载程序。
 
@@ -847,6 +847,15 @@ begin
     WizardSelectTasks('!autostart');
 end;
 
+// Блок памятки — через пустую строку от предыдущего. Первый блок — без
+// отступа сверху: при обновлении страница папки пропущена, MemoDirInfo пуст.
+procedure AddMemoBlock(var Memo: String; const Block, NewLine: String);
+begin
+  if Block = '' then exit;
+  if Memo <> '' then Memo := Memo + NewLine + NewLine;
+  Memo := Memo + Block;
+end;
+
 // Страница «Всё готово к установке»: честно предупреждаем о запросе UAC
 // до нажатия «Установить» — заголовок и причины отдельными короткими строками
 // (памятка не переносит длинные строки).
@@ -856,17 +865,19 @@ var
   Reasons: String;
   Dummy: Boolean;
 begin
-  Result := MemoDirInfo;
-  if MemoTasksInfo <> '' then
-    Result := Result + NewLine + NewLine + MemoTasksInfo;
+  Result := '';
+  AddMemoBlock(Result, MemoDirInfo, NewLine);
+  AddMemoBlock(Result, MemoTasksInfo, NewLine);
   Reasons := '';
   Dummy := OnyxRunning;
   if OnyxElevated then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonStop');
   if LegacyPresent or HadOldAutostart then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonLegacy');
   if not CoreUpToDate then Reasons := Reasons + NewLine + Space + CustomMessage('ReasonCore');
   if Reasons <> '' then
-    Result := Result + NewLine + NewLine + CustomMessage('ReadyElevationHeader') + Reasons +
-      NewLine + NewLine + CustomMessage('ReadyElevationNote');
+  begin
+    AddMemoBlock(Result, CustomMessage('ReadyElevationHeader') + Reasons, NewLine);
+    AddMemoBlock(Result, CustomMessage('ReadyElevationNote'), NewLine);
+  end;
 end;
 
 // Пока Windows спрашивает разрешение, страница «Подготовка к установке» иначе
