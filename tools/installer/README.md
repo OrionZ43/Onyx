@@ -13,9 +13,10 @@
 
 | Что | Как |
 |---|---|
-| Права | `PrivilegesRequired=lowest`: файлы в `%LOCALAPPDATA%\Onyx` без UAC (там же жила v0.2.0). |
-| UAC | Один повышенный шаг (PowerShell через `runas`, команда в `-EncodedCommand`), только если нужно: закрыть запущенный Onyx (он работает с правами админа), убрать следы v0.2.0, включить или выключить автозапуск. Без этих условий UAC нет совсем. Предупреждение — на странице «Всё готово к установке». |
-| Автозапуск | Задача планировщика `\Onyx\Onyx Autostart` «при входе пользователя», наивысшие права: ключ `Run` не запускает программы, которым нужен админ. Аргумент `--autostart`. Если задача уже есть и указывает на эту папку, обновление UAC ради неё не спрашивает. |
+| Права | `PrivilegesRequired=lowest`: файлы приложения — в `%LOCALAPPDATA%\Onyx` без UAC (там же жила v0.2.0). **onyx.exe работает без прав администратора (#55)** — UAC при запуске нет. |
+| Ядро туннеля (#55) | WinTUN требует админа, поэтому туннель поднимает `onyx-core.exe` из `C:\Program Files\Onyx\core` (туда пишет только администратор; рядом `sing-box.exe` и `wintun.dll`). Его запускает задача `\Onyx\OnyxCore_<пользователь>`: по требованию, наивысшие права, SDDL — пользователю только чтение и запуск, менять задачу он не может. Приложение запускает и снимает её без UAC (`schtasks /Run`, флаг `core.stop`). `onyx-core` считает конфиг пользователя недоверенным: пересобирает его по белому списку (`lib/domain/core_config_sanitizer.dart` — без путей записи `log.output`, `cache_file`, `external_ui`, `services`, `*_path`), пишет в `C:\Program Files\Onyx\run` (журнал — пользователям только чтение), пути берёт от собственного расположения, а не из переменных окружения. Туннель гаснет по `core.stop`, когда закрылся `onyx.exe` (PID + проверка имени) и вместе с `onyx-core` (задание Windows). |
+| UAC | Один повышенный шаг (PowerShell через `runas`, команда в `-EncodedCommand`), только если нужно: поставить или обновить ядро (SHA-256 файлов в Program Files ≠ установщику или задачи нет), убрать следы старых версий (v0.2.0, старый автозапуск с правами админа), закрыть старый Onyx, запущенный с правами админа. Новый Onyx, его ядро и пробы закрываются без прав. Обычное обновление приложения — без UAC. Предупреждение — на странице «Всё готово к установке». |
+| Автозапуск (#58) | Значение `Onyx` в `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`"<папка>\onyx.exe" --autostart`) — без прав; его же переключает приложение (`lib/infrastructure/win_autostart.dart`). Галочка в установщике выставляется по факту (значение есть или был старый автозапуск); тихое обновление его не трогает. Старая задача `\Onyx\Onyx Autostart` с наивысшими правами (запускала exe из папки пользователя от имени админа) удаляется. |
 | Наследие v0.2.0 | Задача `OnyxVpnService` (от SYSTEM), запись `HKLM\…\Uninstall\Onyx` (64-битное представление реестра: сам Setup 32-битный, его PowerShell тоже — ключ удаляется через `RegistryKey.OpenBaseKey(…, Registry64)`), `OnyxService.exe`, `.bak` старого апдейтера, ярлыки `Onyx.lnk` (заменяются). |
 | Ярлыки | `Пуск\Onyx` с `AppUserModelID=Onyx` (так его ищет `local_notifier` — уведомления Windows), рабочий стол — по галочке. |
 | Языки | ru (по умолчанию), en, zh (`lang/ChineseSimplified.isl`, неофициальный перевод Inno 6.5+). Выбор — по языку Windows, диалог только если язык не из трёх. |
@@ -31,6 +32,9 @@ flutter build windows --release --dart-define=APP_VERSION=0.3.0
 dart compile exe tools\onyx_updater\bin\onyx_updater.dart -o build\OnyxUpdater.exe
 # ...скопировать build\windows\x64\runner\Release\* и OnyxUpdater.exe в dist\
 pwsh tools\core\fetch-core.ps1 -Out dist\core
+# запускатель ядра с правами админа (#55) — в core\ рядом с sing-box
+cd tools\onyx_core; dart pub get; cd ..\..
+dart compile exe tools\onyx_core\bin\onyx_core.dart -o dist\core\onyx-core.exe
 # 2. установщик
 pwsh tools\installer\build-installer.ps1 -SourceDir dist -Version 0.3.0
 ```

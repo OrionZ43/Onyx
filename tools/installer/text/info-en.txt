@@ -7,7 +7,7 @@ What Setup will do
 • If Onyx is already installed, Setup updates it. Your subscriptions, servers and settings are kept.
 
 When Windows asks for permission
-Onyx creates a VPN network adapter, so it runs with administrator rights: Windows asks for permission every time Onyx starts. Setup itself asks only in three cases: if Onyx is running right now (it has to be closed), if the old version 0.2.0 has to be removed, and if you turn on start with Windows.
+Onyx itself runs without administrator rights. Only the VPN network adapter needs them — it is created by a separate tunnel component that Setup installs into "Program Files". So Windows asks for permission only during setup: on the first install, when the tunnel component is updated, and if leftovers of an old Onyx version have to be removed. Starting Onyx and connecting need no permission.
 
 Onyx is distributed under the MIT license.
 © 2026 Z43 Studios · github.com/OrionZ43/Onyx

@@ -61,8 +61,11 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+# onyx.exe работает БЕЗ прав администратора (#55): UAC при каждом запуске
+# больше не нужен. Права нужны только туннелю — его поднимает onyx-core.exe
+# из Program Files через задачу планировщика (регистрирует установщик).
 set_target_properties(${BINARY_NAME} PROPERTIES
-        LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\""
+        LINK_FLAGS "/MANIFESTUAC:\"level='asInvoker' uiAccess='false'\""
 )
 
 
