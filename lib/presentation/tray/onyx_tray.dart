@@ -18,6 +18,7 @@ import '../providers/groups_provider.dart';
 import '../providers/node_provider.dart';
 import '../providers/vpn_provider.dart';
 import '../util/country.dart';
+import '../widgets/home_parts.dart' show PingText;
 
 class OnyxTray {
   OnyxTray({required this.ref});
@@ -63,7 +64,8 @@ class OnyxTray {
               _ => cp is ConnectFailed ? 'Не удалось подключиться' : 'Не защищено',
             };
       final serverName = current == null ? 'нет сервера' : displayNodeName(current.name);
-      final ping = current?.latencyMs == null ? '' : ' · ${current!.latencyMs} мс';
+      final pl = current == null ? null : PingText.label(current);
+      final ping = pl == null ? '' : ' · $pl';
       // Windows обрезает тултип трея до 127 символов.
       var tip = 'Onyx — $state\n$serverName$ping';
       if (tip.length > 120) tip = tip.substring(0, 120);

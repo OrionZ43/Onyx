@@ -254,7 +254,7 @@ class _MainPage extends ConsumerWidget {
                 ),
               ]),
             ),
-            if (node != null) PingText(ms: node.latencyMs),
+            if (node != null) PingText(ms: node.rttMs, approx: node.rttIsEstimate),
             const SizedBox(width: 6),
             OnyxIcon(OnyxGlyph.chevronRight, size: 14, color: t.textFaint),
           ]),
@@ -313,7 +313,7 @@ class _ServerPageState extends ConsumerState<_ServerPage> {
     final vpn = ref.watch(vpnControllerProvider);
     final current = vpn is VpnConnected ? vpn.node : picked;
     final base = _group == null ? ref.watch(subscriptionProvider.select((s) => s.nodes)) : ref.watch(groupNodesProvider(_group!));
-    final nodes = [...base.where((n) => n.isAlive)]..sort((a, b) => (a.latencyMs ?? 99999).compareTo(b.latencyMs ?? 99999));
+    final nodes = [...base.where((n) => n.isAlive)]..sort((a, b) => (a.rttMs ?? 99999).compareTo(b.rttMs ?? 99999));
     final chips = <(String?, String)>[
       ...autoGroupEntries(hasOwn: ref.watch(ownNodeIdsProvider).isNotEmpty).map((e) => (e.key, e.value)),
       ...userGroups.map((g) => (g.id, g.name)),
@@ -380,7 +380,7 @@ class _ServerPageState extends ConsumerState<_ServerPage> {
                       },
                       lead: CountryFlag(code: cr.of(n).code, size: t.isSignal ? 20 : 26),
                       title: displayNodeName(n.name),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [NodeBadges(node: n), const SizedBox(width: 8), PingText(ms: n.latencyMs, width: 44)]),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [NodeBadges(node: n), const SizedBox(width: 8), PingText(ms: n.rttMs, approx: n.rttIsEstimate, width: 52)]),
                     );
                   },
                 ),

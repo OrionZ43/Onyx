@@ -149,13 +149,14 @@ final nodes = [
   node('1', '🇳🇱 Амстердам AMS-03', 38, ai: true, udp: true),
   node('2', '🇳🇱 Амстердам AMS-01', 44, ai: true),
   node('3', '🇳🇱 Роттердам RTM-02', 52),
-  node('4', '🇫🇮 Хельсинки HEL-02', 29, ai: true, proto: 'hysteria2', udp: true),
+  // HY2/TUIC: latencyMs — время HTTPS через сервер (≈ 4 RTT); на экране — rttMs = latencyMs ÷ 4 (#73).
+  node('4', '🇫🇮 Хельсинки HEL-02', 116, ai: true, proto: 'hysteria2', udp: true),
   node('5', '🇩🇪 Франкфурт FRA-01', 41, ai: true),
-  node('6', '🇩🇪 Франкфурт FRA-04', 63, proto: 'tuic', udp: true),
+  node('6', '🇩🇪 Франкфурт FRA-04', 252, proto: 'tuic', udp: true),
   node('7', '🇸🇪 Стокгольм STO-01', 47),
   // Свои — источник-ссылки «Мой VPS» (#68); имена как у ручных ссылок.
   node('8', 'Riga-1 REALITY', 55, ai: true),
-  node('9', 'Finland HY2', 64, proto: 'hysteria2', udp: true),
+  node('9', 'Finland HY2', 256, proto: 'hysteria2', udp: true),
   node('10', 'home-vps', 47),
 ];
 

@@ -355,9 +355,21 @@ class PingIndicator extends StatelessWidget {
 
 /// Пинг числом: «38 мс» / «38MS».
 class PingText extends StatelessWidget {
-  const PingText({super.key, required this.ms, this.width});
+  const PingText({super.key, required this.ms, this.width, this.approx = false});
+
+  /// Пинг в одной шкале для всех протоколов — Node.rttMs (#73).
   final int? ms;
   final double? width;
+
+  /// Пересчитан из времени HTTPS (HY2/TUIC — Node.rttIsEstimate): «≈ 29».
+  final bool approx;
+
+  /// Пинг сервера для подписей: «38 мс», «≈ 29 мс» (HY2/TUIC), null — нет замера.
+  static String? label(Node n) {
+    final ms = n.rttMs;
+    if (ms == null) return null;
+    return n.rttIsEstimate ? '≈ $ms мс' : '$ms мс';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -366,14 +378,19 @@ class PingText extends StatelessWidget {
     final slow = ms! > 150;
     final c = slow && t.isOnyx ? const Color(0xFFB98B5E) : t.textMuted;
     final Widget w = t.isSignal
-        ? Text('$ms', style: TextStyle(fontFamily: t.monoFont, fontSize: 13, fontWeight: FontWeight.w500, color: c))
+        ? Text.rich(TextSpan(children: [
+            if (approx) TextSpan(text: '≈', style: TextStyle(fontFamily: t.monoFont, fontSize: 11, color: t.textFaint)),
+            TextSpan(text: '$ms', style: TextStyle(fontFamily: t.monoFont, fontSize: 13, fontWeight: FontWeight.w500, color: c)),
+          ]))
         : Text.rich(
             TextSpan(children: [
+              if (approx) TextSpan(text: '≈ ', style: TextStyle(fontFamily: t.displayFont, fontSize: 11, color: t.textFaint)),
               TextSpan(text: '$ms', style: TextStyle(fontFamily: t.displayFont, fontSize: 13, fontWeight: FontWeight.w500, color: c)),
               TextSpan(text: ' мс', style: TextStyle(fontFamily: t.displayFont, fontSize: 11, color: t.textFaint)),
             ]),
           );
-    return SizedBox(width: width, child: Align(alignment: Alignment.centerRight, child: w));
+    final box = SizedBox(width: width, child: Align(alignment: Alignment.centerRight, child: w));
+    return approx ? Tooltip(message: 'Оценка: время HTTPS-запроса через сервер, делённое на 4', child: box) : box;
   }
 }
 
@@ -455,7 +472,7 @@ class ServerCard extends ConsumerWidget {
                 ),
               ),
               if (n != null) ...[NodeBadges(node: n), const SizedBox(width: 10)],
-              if (t.isMaterial) PingIndicator(ms: n?.latencyMs) else PingText(ms: n?.latencyMs),
+              if (t.isMaterial) PingIndicator(ms: n?.rttMs) else PingText(ms: n?.rttMs, approx: n?.rttIsEstimate ?? false),
               const SizedBox(width: 6),
               OnyxIcon(locked ? OnyxGlyph.shield : OnyxGlyph.chevronRight, size: t.isMaterial ? 24 : 16, color: t.textFaint),
             ],

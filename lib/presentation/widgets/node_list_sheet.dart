@@ -269,7 +269,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
     }).toList()
       ..sort((a, b) {
         if (a.isAlive != b.isAlive) return a.isAlive ? -1 : 1;
-        return (a.latencyMs ?? 99999).compareTo(b.latencyMs ?? 99999);
+        return (a.rttMs ?? 99999).compareTo(b.rttMs ?? 99999);
       });
 
     // Во «Все» свои серверы — первой секцией (#68), остальные — группами по
@@ -771,13 +771,13 @@ class _NodeRow extends StatelessWidget {
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleMedium!.copyWith(color: selected ? s.onSecondaryContainer : s.onSurface)),
-                    Text(node.latencyMs == null ? (dead ? 'Недоступен' : '—') : '${node.latencyMs} мс',
+                    Text(node.rttMs == null ? (dead ? 'Недоступен' : '—') : PingText.label(node)!,
                         style: text.bodyMedium!.copyWith(color: s.onSurfaceVariant)),
                   ]),
                 ),
                 NodeBadges(node: node, showOwn: !inOwnList),
                 const SizedBox(width: 10),
-                PingIndicator(ms: dead ? null : node.latencyMs),
+                PingIndicator(ms: dead ? null : node.rttMs),
                 _star(t),
                 if (selected) ...[const SizedBox(width: 10), Icon(Icons.check_rounded, size: 22, color: s.onSecondaryContainer)],
               ]),
@@ -813,9 +813,9 @@ class _NodeRow extends StatelessWidget {
             ),
             NodeBadges(node: node, showOwn: !inOwnList),
             const SizedBox(width: 10),
-            PingText(ms: dead ? null : node.latencyMs, width: 36),
+            PingText(ms: dead ? null : node.rttMs, approx: node.rttIsEstimate, width: 40),
             const SizedBox(width: 8),
-            PingIndicator(ms: dead ? null : node.latencyMs),
+            PingIndicator(ms: dead ? null : node.rttMs),
             _star(t),
           ]),
         ),
@@ -843,7 +843,7 @@ class _NodeRow extends StatelessWidget {
           ),
           NodeBadges(node: node, showOwn: !inOwnList),
           const SizedBox(width: 12),
-          PingText(ms: dead ? null : node.latencyMs, width: 52),
+          PingText(ms: dead ? null : node.rttMs, approx: node.rttIsEstimate, width: 60),
           _star(t),
         ]),
       ),
