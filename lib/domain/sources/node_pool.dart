@@ -26,15 +26,20 @@ abstract final class NodePool {
     final order = <String>[];
     for (final s in sources) {
       if (!s.enabled) continue;
+      // Добавленные ссылками — «свои» серверы (#68), подписка — чужие.
+      final own = s.kind == SourceKind.links;
       for (final n in nodesBySource[s.id] ?? const <Node>[]) {
         final existing = out[n.id];
         if (existing != null) {
           if (!existing.sourceIds.contains(s.id)) {
-            out[n.id] = existing.copyWith(sourceIds: [...existing.sourceIds, s.id]);
+            out[n.id] = existing.copyWith(
+              sourceIds: [...existing.sourceIds, s.id],
+              isOwn: existing.isOwn || own,
+            );
           }
           continue;
         }
-        var merged = n.copyWith(sourceIds: [s.id]);
+        var merged = n.copyWith(sourceIds: [s.id], isOwn: own);
         final p = prev[n.id];
         if (p != null) {
           merged = merged.copyWith(
@@ -43,6 +48,7 @@ abstract final class NodePool {
             isTrulyWorking: p.isTrulyWorking,
             aiReachable: p.aiReachable,
             udpSupported: p.udpSupported,
+            exitCountry: p.exitCountry,
           );
         }
         out[n.id] = merged;
@@ -65,7 +71,7 @@ abstract final class NodePool {
 
   /// Ноды группы [groupId] среди [nodes] (уже склеенных включённых).
   ///
-  /// null / '' — все; `src:<id>` — источник; `auto:fav|udp|ai` — фильтры;
+  /// null / '' — все; `src:<id>` — источник; `auto:fav|udp|ai|own` — фильтры;
   /// иначе — пользовательская группа из [groups] (отдельные ноды + целые
   /// источники). Неизвестная группа — пустой список.
   static List<Node> nodesOf(
@@ -82,6 +88,8 @@ abstract final class NodePool {
         return nodes.where((n) => n.udpSupported).toList();
       case NodeGroup.aiId:
         return nodes.where((n) => n.aiReachable).toList();
+      case NodeGroup.ownId:
+        return nodes.where((n) => n.isOwn).toList();
     }
     if (groupId.startsWith(NodeGroup.sourcePrefix)) {
       final sid = groupId.substring(NodeGroup.sourcePrefix.length);
@@ -121,7 +129,8 @@ abstract final class NodePool {
 
   /// Все пригодные ноды в порядке выбора: проверенные быстрые → живые по
   /// TCP быстрые → проверенные медленные → живые медленные; внутри — по
-  /// [NodeScorer]. Мёртвые и [exclude] не входят.
+  /// [NodeScorer], свои — раньше чужих ([ownFirst]). Мёртвые и [exclude] не
+  /// входят.
   static List<Node> rank(
     Iterable<Node> nodes, {
     String? excludeId,
@@ -130,13 +139,42 @@ abstract final class NodePool {
     final pool = nodes.where((n) => n.id != excludeId && !exclude.contains(n.id)).toList();
     final fast = pool.where(FailoverPolicy.latencyAcceptable).toList();
     final slow = pool.where((n) => !FailoverPolicy.latencyAcceptable(n)).toList();
-    List<Node> sorted(Iterable<Node> it) => it.toList()..sort(NodeScorer.compare);
+    List<Node> sorted(Iterable<Node> it) => ownFirst(it.toList()..sort(NodeScorer.compare));
     return [
       ...sorted(fast.where((n) => n.isTrulyWorking)),
       ...sorted(fast.where((n) => !n.isTrulyWorking && n.isAlive)),
       ...sorted(slow.where((n) => n.isTrulyWorking)),
       ...sorted(slow.where((n) => !n.isTrulyWorking && n.isAlive)),
     ];
+  }
+
+  /// «Свои» серверы при прочих равных — раньше чужих (#68). Внутри одного
+  /// яруса [rank] (уже отсортированного [NodeScorer]) своя нода встаёт перед
+  /// чужими, если её задержка не хуже лучшей чужой больше чем в
+  /// 1/[FailoverPolicy.improvement] раза (≈ 133 %, тот же коэффициент
+  /// «заметно лучше», что у автопрыжка #60). Задержки нет — не отсекаем.
+  /// Ярусы и потолки #60 не трогаются: своя медленная нода не обгонит
+  /// чужую быструю. Порядок внутри своих и внутри чужих сохраняется.
+  static List<Node> ownFirst(List<Node> sorted) {
+    if (!sorted.any((n) => n.isOwn) || sorted.every((n) => n.isOwn)) return sorted;
+    final bestOther = sorted.firstWhere((n) => !n.isOwn);
+    bool wins(Node n) {
+      if (!n.isOwn) return false;
+      final mine = rttMs(n);
+      final theirs = rttMs(bestOther);
+      if (mine == null || theirs == null) return true;
+      return mine * FailoverPolicy.improvement <= theirs;
+    }
+
+    return [...sorted.where(wins), ...sorted.where((n) => !wins(n))];
+  }
+
+  /// Задержка в единицах одного RTT, чтобы сравнивать разные протоколы: у
+  /// QUIC хранится время HTTPS-запроса (≈ 3 RTT, см. потолки #60).
+  static double? rttMs(Node n) {
+    final ms = n.latencyMs;
+    if (ms == null) return null;
+    return n.isQuic ? ms / 3 : ms.toDouble();
   }
 
   /// Кого перепроверять перед автопрыжком (#60): до [limit] лучших

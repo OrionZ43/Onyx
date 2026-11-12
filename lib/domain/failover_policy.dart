@@ -147,13 +147,20 @@ class FailoverPolicy {
     });
     final fastest = ms(ok.first);
     bool close(Node n) => ms(n) <= fastest * preferenceSlack + preferenceSlackMs;
+    // Свой сервер (#68) при прочих равных раньше чужого: если его свежий
+    // замер не хуже самого быстрого больше чем в 1/[improvement] раза.
+    bool ownClose(Node n) => n.isOwn && ms(n) * improvement <= fastest;
     Node? firstWhere(bool Function(Node) test) {
+      for (final n in ok) {
+        if (ownClose(n) && test(n)) return n;
+      }
       for (final n in ok) {
         if (close(n) && test(n)) return n;
       }
       return null;
     }
 
+    // Нужное для дела (UDP для голоса, ИИ) — важнее, чем «свой».
     if (preferUdp && preferAi) {
       final both = firstWhere((n) => n.udpSupported && n.aiReachable);
       if (both != null) return both;
@@ -166,7 +173,7 @@ class FailoverPolicy {
       final ai = firstWhere((n) => n.aiReachable);
       if (ai != null) return ai;
     }
-    return ok.first;
+    return firstWhere((_) => true) ?? ok.first;
   }
 }
 

@@ -26,6 +26,9 @@ class NodeGroup {
   static const udpId = 'auto:udp';
   static const aiId = 'auto:ai';
 
+  /// «Свои» серверы — добавленные ссылками, а не подпиской (#68).
+  static const ownId = 'auto:own';
+
   static String idForSource(String sourceId) => '$sourcePrefix$sourceId';
 
   NodeGroup copyWith({String? name, List<String>? nodeIds, List<String>? sourceIds}) =>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import '../core/log_service.dart';
@@ -6,6 +7,7 @@ import 'entities/node.dart';
 import 'node_scorer.dart'; // ← NEW: Умная система весов
 import 'singbox_config_builder.dart';
 import 'udp_probe.dart';
+import '../infrastructure/geo_ip.dart';
 import '../infrastructure/win_child_guard.dart';
 
 // ── TCP ProbeResult ───────────────────────────────────────────────────────────
@@ -502,6 +504,7 @@ class DeepProbe {
     bool aiOk = false;
     bool udpOk = false;
     int? latency;
+    String? exitCountry;
     // TCP-пинг изнутри пробы (под TUN): -2 — не мерили, -1 — сервер не ответил
     var tcpMs = -2;
 
@@ -559,6 +562,12 @@ class DeepProbe {
         );
       }
 
+      // Страна выхода (#68) — один раз на ноду: сервер не переезжает.
+      if (basicOk && node.exitCountry == null) {
+        exitCountry = await exitCountryViaProxy(port).timeout(_httpTimeout, onTimeout: () => null);
+        log.d('[${node.name}] страна выхода: ${exitCountry ?? "не узнали"}', tag: 'DEEP');
+      }
+
       log.i(
         '${basicOk ? "✓" : "✗"} [${node.name}] '
         'база=${basicOk ? "ok" : "нет"} AI=${aiOk ? "ok" : "нет"} UDP=${udpOk ? "ok" : "нет"}',
@@ -584,7 +593,34 @@ class DeepProbe {
       aiReachable: aiOk,
       udpSupported: udpOk,
       latencyMs: tcpMs >= 0 ? tcpMs : latency,
+      exitCountry: exitCountry,
     );
+  }
+
+  /// Страна выхода через запущенную пробу (#68): Cloudflare trace ЧЕРЕЗ сам
+  /// сервер, `loc=XX` → «xx». Cloudflare видит IP сервера, как при любом
+  /// сёрфинге через него; сторонним GeoIP-сервисам адрес сервера не уходит.
+  /// Сертификат проверяется: ответ должен прийти от Cloudflare, а не от
+  /// сервера-посредника. null — не ответил или нет loc.
+  static Future<String?> exitCountryViaProxy(int proxyPort, {String host = 'www.cloudflare.com'}) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 4)
+      ..findProxy = (_) => 'PROXY 127.0.0.1:$proxyPort';
+    try {
+      final req = await client.getUrl(Uri.parse('https://$host/cdn-cgi/trace'));
+      req.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
+      final resp = await req.close().timeout(_httpTimeout);
+      if (resp.statusCode != 200) {
+        await resp.drain<void>();
+        return null;
+      }
+      final body = await resp.transform(const Utf8Decoder(allowMalformed: true)).join().timeout(_httpTimeout);
+      return GeoIp.parseTrace(body)?.toLowerCase();
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
   }
 
   /// TCP-пинг сервера через запущенную пробу: SOCKS5 CONNECT к host:port.

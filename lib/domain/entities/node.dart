@@ -65,6 +65,8 @@ class Node {
     this.isAlive = false,
     this.isTrulyWorking = false, // ← прошёл реальную HTTP-проверку
     this.aiReachable = false, // ← прошёл проверку доступа к ИИ-сервисам
+    this.exitCountry,
+    this.isOwn = false,
     this.muxEnabled = false,
     this.muxProtocol = 'smux',
     this.muxMaxStreams = 32,
@@ -158,6 +160,20 @@ class Node {
   /// используют свои списки и иногда отдают блок как обычную 200-страницу).
   final bool aiReachable;
 
+  /// Страна выхода — откуда сервер выходит в интернет по факту (#68): код
+  /// ISO 3166-1 в нижнем регистре («fi», «lv»). Проставляет Deep Probe
+  /// запросом Cloudflare trace (loc=) ЧЕРЕЗ сам сервер — Cloudflare видит IP
+  /// сервера, как при любом сёрфинге, адрес сервера сторонним GeoIP-сервисам
+  /// не уходит. null — ещё не узнали. Для UI: выбор пользователя → страна из
+  /// имени → [exitCountry].
+  final String? exitCountry;
+
+  /// «Свой» сервер (#68): нода из источника, добавленного ссылками
+  /// (SourceKind.links), а не из подписки. Вычисляется при склейке
+  /// источников ([NodePool.merge]), в кэш не пишется. Автовыбор и
+  /// автопереключение при прочих равных берут свои раньше чужих.
+  final bool isOwn;
+
   // Mux (применяется санитайзером)
   final bool muxEnabled;
   final String muxProtocol;
@@ -170,6 +186,8 @@ class Node {
     bool? isAlive,
     bool? isTrulyWorking,
     bool? aiReachable,
+    String? exitCountry,
+    bool? isOwn,
     String? fingerprint,
     String? flow,
     bool? muxEnabled,
@@ -210,6 +228,8 @@ class Node {
       isAlive: isAlive ?? this.isAlive,
       isTrulyWorking: isTrulyWorking ?? this.isTrulyWorking,
       aiReachable: aiReachable ?? this.aiReachable,
+      exitCountry: exitCountry ?? this.exitCountry,
+      isOwn: isOwn ?? this.isOwn,
       muxEnabled: muxEnabled ?? this.muxEnabled,
       muxProtocol: muxProtocol ?? this.muxProtocol,
       muxMaxStreams: muxMaxStreams ?? this.muxMaxStreams,
@@ -280,6 +300,7 @@ class Node {
     'isAlive': isAlive,
     'isTrulyWorking': isTrulyWorking,
     'aiReachable': aiReachable,
+    if (exitCountry != null) 'exitCountry': exitCountry,
     'muxEnabled': muxEnabled,
     'muxProtocol': muxProtocol,
     'muxMaxStreams': muxMaxStreams,
@@ -319,6 +340,7 @@ class Node {
     isAlive: json['isAlive'] as bool? ?? false,
     isTrulyWorking: json['isTrulyWorking'] as bool? ?? false,
     aiReachable: json['aiReachable'] as bool? ?? false,
+    exitCountry: json['exitCountry'] as String?,
     muxEnabled: json['muxEnabled'] as bool? ?? false,
     muxProtocol: json['muxProtocol'] as String? ?? 'smux',
     muxMaxStreams: json['muxMaxStreams'] as int? ?? 32,

@@ -463,6 +463,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
               aiReachable: upd.aiReachable,
               udpSupported: upd.udpSupported,
               latencyMs: upd.latencyMs,
+              // Страна выхода узнаётся один раз (#68): пустой ответ не стирает старую.
+              exitCountry: upd.exitCountry ?? cur.exitCountry,
             ));
       },
       onProgress: (done, total) {
