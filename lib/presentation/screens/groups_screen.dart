@@ -11,6 +11,7 @@ import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../providers/country_provider.dart';
 import '../providers/groups_provider.dart';
+import '../providers/own_nodes_provider.dart';
 import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../util/country.dart';
@@ -21,10 +22,15 @@ import '../widgets/onyx_switch.dart';
 /// Встроенные автогруппы (спец-id домена).
 const Map<String?, String> kAutoGroups = {
   null: 'Все',
-  'auto:fav': 'Избранное',
-  'auto:udp': 'Голос',
-  'auto:ai': 'AI',
+  NodeGroup.favoritesId: 'Избранное',
+  NodeGroup.ownId: 'Свои',
+  NodeGroup.udpId: 'Голос',
+  NodeGroup.aiId: 'AI',
 };
+
+/// Автогруппы для выбора: «Свои» (#68) — только если свои серверы есть.
+Iterable<MapEntry<String?, String>> autoGroupEntries({required bool hasOwn}) =>
+    kAutoGroups.entries.where((e) => hasOwn || e.key != NodeGroup.ownId);
 
 String groupLabel(String? id, List<NodeGroup> all) =>
     kAutoGroups[id] ?? all.where((g) => g.id == id).firstOrNull?.name ?? 'Все';
@@ -101,7 +107,7 @@ class GroupsScreen extends ConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: pad),
               sliver: SliverToBoxAdapter(
                 child: Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final e in kAutoGroups.entries) _Pill(label: e.value, selected: auto == e.key, onTap: () => ref.read(autoGroupProvider.notifier).setAutoGroup(e.key)),
+                  for (final e in autoGroupEntries(hasOwn: ref.watch(ownNodeIdsProvider).isNotEmpty)) _Pill(label: e.value, selected: auto == e.key, onTap: () => ref.read(autoGroupProvider.notifier).setAutoGroup(e.key)),
                   for (final g in groups) _Pill(label: g.name, selected: auto == g.id, onTap: () => ref.read(autoGroupProvider.notifier).setAutoGroup(g.id)),
                 ]),
               ),

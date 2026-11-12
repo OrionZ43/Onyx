@@ -141,6 +141,8 @@ Node node(String id, String name, int? ping, {bool ai = false, bool alive = true
       protocol: proto,
       udpSupported: udp,
       sourceIds: [int.parse(id) <= 7 ? 'z' : 'v'],
+      // Свои (#68) — из источника-ссылок «Мой VPS»; в приложении признак ставит NodePool.merge.
+      isOwn: int.parse(id) > 7,
     );
 
 final nodes = [

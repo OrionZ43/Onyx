@@ -112,7 +112,8 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
   final _query = TextEditingController();
   _Facets _facets = const _Facets();
 
-  /// Вкладка-группа: null — «Все», 'auto:fav' — «Избранное», иначе id группы.
+  /// Вкладка-группа: null — «Все», 'auto:fav' — «Избранное», 'auto:own' — «Свои»,
+  /// иначе id группы.
   String? _tab;
 
   @override
@@ -147,7 +148,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
       backgroundColor: t.isMaterial ? null : t.surface,
       builder: (c) => SafeArea(
         child: ListView(shrinkWrap: true, children: [
-          for (final e in [...kAutoGroups.entries.map((e) => (e.key, e.value)), ...groups.map((g) => (g.id, g.name))])
+          for (final e in [...autoGroupEntries(hasOwn: ref.read(ownNodeIdsProvider).isNotEmpty).map((e) => (e.key, e.value)), ...groups.map((g) => (g.id, g.name))])
             ListTile(
               title: Text(e.$2, style: TextStyle(fontFamily: t.bodyFont, color: t.text)),
               trailing: e.$1 == cur ? OnyxIcon(OnyxGlyph.check, size: 18, color: t.accent) : null,
@@ -180,7 +181,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
             leading: CountryFlag(code: country.code, size: 22),
             title: Text(country.isKnown ? 'Страна: ${country.name}' : 'Указать страну', style: TextStyle(fontFamily: t.bodyFont, color: t.text)),
             subtitle: Text(
-              cr.isPicked(node) ? 'Выбрана вручную' : (country.isKnown ? 'Определена по названию' : 'По названию не определилась'),
+              cr.sourceOf(node).label,
               style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, color: t.textMuted),
             ),
             onTap: () => Navigator.pop(c, 'country'),
@@ -206,6 +207,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
         serverName: displayNodeName(node.name),
         picked: ref.read(countryOverridesProvider)[node.serverKey],
         detected: cr.detected(node),
+        detectedHow: cr.detectedHow(node),
       );
       if (code != null) await ref.read(countryOverridesProvider.notifier).set(node.serverKey, code);
       return;
@@ -240,13 +242,13 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
     // Вкладка удалена (группу стёрли, свои серверы убрали) — возвращаемся во «Все».
     final tab = _tab == null ||
             _tab == 'auto:fav' ||
-            (_tab == 'auto:own' && own.isNotEmpty) ||
+            (_tab == NodeGroup.ownId && own.isNotEmpty) ||
             userGroups.any((g) => g.id == _tab)
         ? _tab
         : null;
     final base = tab == null
         ? sub.nodes
-        : (tab == 'auto:own' ? ref.watch(ownNodesProvider) : ref.watch(groupNodesProvider(tab)));
+        : ref.watch(groupNodesProvider(tab));
     final pad = t.isMaterial ? 16.0 : 20.0;
 
     if (sub.nodes.isEmpty && sub.status != SubStatus.fetching) {
@@ -314,7 +316,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
           tabs: [
             (null, 'Все', sub.nodes.length),
             ('auto:fav', 'Избранное', favs.length),
-            if (own.isNotEmpty) ('auto:own', 'Свои', own.length),
+            if (own.isNotEmpty) (NodeGroup.ownId, 'Свои', own.length),
             for (final g in userGroups) (g.id, g.name, ref.watch(groupNodesProvider(g.id)).length),
           ],
           onChanged: (v) => setState(() => _tab = v),
@@ -372,7 +374,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
                     children: [for (final n in e.value) _NodeRow(
                         node: n,
                         country: cr.of(n),
-                        inOwnList: tab == 'auto:own' || e.key == _ownSection,
+                        inOwnList: tab == NodeGroup.ownId || e.key == _ownSection,
                         selected: n.id == current?.id,
                         favorite: favs.contains(n.id),
                         onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),
@@ -385,7 +387,7 @@ class _NodeListPanelState extends ConsumerState<NodeListPanel> {
                   for (final n in e.value) _NodeRow(
                         node: n,
                         country: cr.of(n),
-                        inOwnList: tab == 'auto:own' || e.key == _ownSection,
+                        inOwnList: tab == NodeGroup.ownId || e.key == _ownSection,
                         selected: n.id == current?.id,
                         favorite: favs.contains(n.id),
                         onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),

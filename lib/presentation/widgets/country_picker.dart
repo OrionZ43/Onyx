@@ -21,6 +21,7 @@ Future<String?> showCountryPicker(
   required String serverName,
   String? picked,
   required Country detected,
+  String? detectedHow,
 }) {
   final t = OnyxTokens.of(context);
   return showModalBottomSheet<String>(
@@ -28,15 +29,18 @@ Future<String?> showCountryPicker(
     isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: t.isMaterial ? null : t.surface,
-    builder: (_) => _CountryPicker(serverName: serverName, picked: picked, detected: detected),
+    builder: (_) => _CountryPicker(serverName: serverName, picked: picked, detected: detected, detectedHow: detectedHow),
   );
 }
 
 class _CountryPicker extends StatefulWidget {
-  const _CountryPicker({required this.serverName, required this.picked, required this.detected});
+  const _CountryPicker({required this.serverName, required this.picked, required this.detected, this.detectedHow});
   final String serverName;
   final String? picked;
   final Country detected;
+
+  /// «по названию» или «по проверке сервера».
+  final String? detectedHow;
 
   @override
   State<_CountryPicker> createState() => _CountryPickerState();
@@ -121,7 +125,9 @@ class _CountryPickerState extends State<_CountryPicker> {
                     child: OnyxIcon(OnyxGlyph.zap, size: 13, color: t.isSignal ? t.text : t.accent),
                   ),
                   title: 'Определять автоматически',
-                  subtitle: widget.detected.isKnown ? 'Сейчас: ${widget.detected.name} — по названию' : 'По названию и проверке сервера',
+                  subtitle: widget.detected.isKnown
+                      ? 'Сейчас: ${widget.detected.name}${widget.detectedHow == null ? '' : ' — ${widget.detectedHow}'}'
+                      : 'По названию и проверке сервера',
                   selected: widget.picked == null,
                   onTap: () => Navigator.pop(context, ''),
                 ),

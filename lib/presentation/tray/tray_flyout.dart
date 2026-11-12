@@ -20,10 +20,11 @@ import '../../domain/entities/vpn_state.dart';
 import '../providers/connect_phase.dart';
 import '../providers/country_provider.dart';
 import '../providers/groups_provider.dart';
+import '../providers/own_nodes_provider.dart';
 import '../providers/node_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/vpn_provider.dart';
-import '../screens/groups_screen.dart' show kAutoGroups, groupLabel;
+import '../screens/groups_screen.dart' show autoGroupEntries, groupLabel;
 import '../util/country.dart';
 import '../util/vpn_actions.dart';
 import '../widgets/country_flag.dart';
@@ -314,7 +315,7 @@ class _ServerPageState extends ConsumerState<_ServerPage> {
     final base = _group == null ? ref.watch(subscriptionProvider.select((s) => s.nodes)) : ref.watch(groupNodesProvider(_group!));
     final nodes = [...base.where((n) => n.isAlive)]..sort((a, b) => (a.latencyMs ?? 99999).compareTo(b.latencyMs ?? 99999));
     final chips = <(String?, String)>[
-      ...kAutoGroups.entries.map((e) => (e.key, e.value)),
+      ...autoGroupEntries(hasOwn: ref.watch(ownNodeIdsProvider).isNotEmpty).map((e) => (e.key, e.value)),
       ...userGroups.map((g) => (g.id, g.name)),
     ];
     final autoHere = picked == null && autoGroup == _group;

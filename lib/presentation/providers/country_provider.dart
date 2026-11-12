@@ -1,8 +1,8 @@
 // Страна сервера для флага и группировки (#68).
 //
 // Порядок: выбор пользователя → страна из названия (emoji-флаг, страна или
-// город, код) → страна выхода из проверки сервера (Node.exitCountry —
-// появится у «Оникс»). Выбор пользователя хранится по адресу сервера
+// город, код) → страна выхода из проверки сервера (Node.exitCountry, Deep
+// Probe — «Оникс»). Выбор пользователя хранится по адресу сервера
 // (serverKey): все транспорты одного сервера получают одну страну.
 // Только для вида — маршрутизацию и выбор сервера не меняет.
 
@@ -65,11 +65,45 @@ class CountryResolver {
     return detected(n);
   }
 
-  /// Страна без выбора пользователя — подсказка «Определять автоматически».
-  Country detected(Node n) => countryOfName(n.name);
+  /// Страна без выбора пользователя: из названия, иначе страна выхода из
+  /// проверки сервера (Node.exitCountry — Deep Probe, Cloudflare trace через
+  /// сам сервер, «Оникс»).
+  Country detected(Node n) {
+    final byName = countryOfName(n.name);
+    if (byName.isKnown) return byName;
+    final exit = n.exitCountry;
+    return exit == null ? Country.unknown : countryByCode(exit);
+  }
+
+  /// Откуда страна — для подписи в меню сервера и в выборе страны.
+  CountrySource sourceOf(Node n) {
+    if (isPicked(n) && countryByCode(overrides[n.serverKey]!).isKnown) return CountrySource.picked;
+    if (countryOfName(n.name).isKnown) return CountrySource.name;
+    if (n.exitCountry != null && countryByCode(n.exitCountry!).isKnown) return CountrySource.probe;
+    return CountrySource.none;
+  }
+
+  /// Как страна определилась бы без выбора пользователя — для строки
+  /// «Определять автоматически»: «по названию», «по проверке сервера» или null.
+  String? detectedHow(Node n) {
+    if (countryOfName(n.name).isKnown) return 'по названию';
+    if (n.exitCountry != null && countryByCode(n.exitCountry!).isKnown) return 'по проверке сервера';
+    return null;
+  }
 
   /// Страну выбрал пользователь.
   bool isPicked(Node n) => overrides.containsKey(n.serverKey);
+}
+
+/// Откуда взялась страна сервера.
+enum CountrySource {
+  picked('Выбрана вручную'),
+  name('Определена по названию'),
+  probe('Определена по проверке сервера'),
+  none('Пока не определилась — уточнится после проверки');
+
+  const CountrySource(this.label);
+  final String label;
 }
 
 final countryResolverProvider =
