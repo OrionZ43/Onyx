@@ -121,6 +121,27 @@ class Node {
   bool get isQuic =>
       protocol == NodeProtocol.hysteria2 || protocol == NodeProtocol.tuic;
 
+  /// Во сколько раз время HTTPS-запроса через QUIC-сервер больше одного RTT
+  /// (#73). В это время входят рукопожатие QUIC, авторизация, запрос к
+  /// сайту, TLS и сам HTTP. У друга из Китая 12.11 на тех же серверах HY2
+  /// давал 923 и 1051 мс при TCP-пинге REALITY 218 и 273 мс — в 3,9–4,2 раза.
+  static const httpsRttFactor = 4;
+
+  /// Задержка в одних единицах для всех протоколов — примерно один RTT
+  /// (#73). У TCP-нод [latencyMs] — TCP-пинг (одно рукопожатие), у QUIC-нод —
+  /// время HTTPS-запроса через сервер; его делим на [httpsRttFactor]. По ней
+  /// сравниваем ноды, проверяем потолки #60 и показываем «пинг» в UI —
+  /// иначе HY2 выглядел вчетверо медленнее REALITY на том же сервере.
+  int? get rttMs {
+    final ms = latencyMs;
+    if (ms == null) return null;
+    return isQuic ? (ms / httpsRttFactor).round() : ms;
+  }
+
+  /// [rttMs] пересчитан из времени HTTPS (QUIC), а не замерен одним
+  /// рукопожатием — в UI можно показать «≈».
+  bool get rttIsEstimate => isQuic && latencyMs != null;
+
   /// Ключ «того же сервера» для автопереключения транспорта: ноды с одним
   /// host, но разными протоколами (REALITY + Hysteria2 от нашего скрипта).
   String get serverKey => host.toLowerCase();
@@ -259,10 +280,11 @@ class Node {
   }
 
   NodeQuality get quality {
-    if (!isAlive || latencyMs == null) return NodeQuality.dead;
+    final rtt = rttMs; // одна шкала для TCP и QUIC (#73)
+    if (!isAlive || rtt == null) return NodeQuality.dead;
     if (!isTrulyWorking) return NodeQuality.poor;
-    if (latencyMs! < 150) return NodeQuality.excellent;
-    if (latencyMs! < 400) return NodeQuality.good;
+    if (rtt < 150) return NodeQuality.excellent;
+    if (rtt < 400) return NodeQuality.good;
     return NodeQuality.poor;
   }
 

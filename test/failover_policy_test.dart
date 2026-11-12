@@ -33,9 +33,10 @@ void main() {
       expect(FailoverPolicy.latencyAcceptable(_reality('1.1.1.1', ms: 2000)), isFalse);
     });
 
-    test('QUIC: хранится время HTTPS-запроса — потолок 1200 мс', () {
-      expect(FailoverPolicy.latencyAcceptable(_hy2('2.2.2.2', ms: 1100)), isTrue);
-      expect(FailoverPolicy.latencyAcceptable(_hy2('2.2.2.2', ms: 1300)), isFalse);
+    test('QUIC: хранится время HTTPS-запроса ≈ 4 RTT — тот же потолок 400 мс RTT (#73)', () {
+      expect(FailoverPolicy.latencyAcceptable(_hy2('2.2.2.2', ms: 1300)), isTrue); // раньше отсекался
+      expect(FailoverPolicy.latencyAcceptable(_hy2('2.2.2.2', ms: 1600)), isTrue);
+      expect(FailoverPolicy.latencyAcceptable(_hy2('2.2.2.2', ms: 1700)), isFalse);
     });
 
     test('нет данных о задержке — не отсекаем (будет свежий замер)', () {
@@ -161,9 +162,11 @@ void main() {
       expect(next?.name, 'b');
     });
 
-    test('все кандидаты выше потолка 1200 мс — не прыгаем', () {
-      final next = FailoverPolicy.choose(candidates: [a, b], fresh: {a.id: 2000, b.id: 1500}, currentMs: -1);
+    test('все кандидаты выше потолка 1600 мс (≈ 4 RTT по 400 мс, #73) — не прыгаем', () {
+      final next = FailoverPolicy.choose(candidates: [a, b], fresh: {a.id: 2000, b.id: 1700}, currentMs: -1);
       expect(next, isNull);
+      // Китай: RTT ~300 мс → HTTPS ~1250 мс — раньше «не на что прыгать».
+      expect(FailoverPolicy.choose(candidates: [a, b], fresh: {a.id: 2000, b.id: 1250}, currentMs: -1)?.name, 'b');
     });
 
     test('кандидат не отвечает или замера нет — не кандидат', () {

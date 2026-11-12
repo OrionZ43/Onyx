@@ -122,24 +122,31 @@ abstract final class NodePool {
     Iterable<Node> nodes, {
     String? excludeId,
     Set<String> exclude = const {},
+    bool preferUdpNative = false,
   }) {
-    final ranked = rank(nodes, excludeId: excludeId, exclude: exclude);
+    final ranked = rank(nodes, excludeId: excludeId, exclude: exclude, preferUdpNative: preferUdpNative);
     return ranked.isEmpty ? null : ranked.first;
   }
 
   /// Все пригодные ноды в порядке выбора: проверенные быстрые → живые по
   /// TCP быстрые → проверенные медленные → живые медленные; внутри — по
   /// [NodeScorer], свои — раньше чужих ([ownFirst]). Мёртвые и [exclude] не
-  /// входят.
+  /// входят. [preferUdpNative] (режим Discord, #73): внутри яруса HY2/TUIC с
+  /// рабочим UDP — раньше TCP-туннелей при сопоставимой задержке
+  /// ([udpNativeFirst]).
   static List<Node> rank(
     Iterable<Node> nodes, {
     String? excludeId,
     Set<String> exclude = const {},
+    bool preferUdpNative = false,
   }) {
     final pool = nodes.where((n) => n.id != excludeId && !exclude.contains(n.id)).toList();
     final fast = pool.where(FailoverPolicy.latencyAcceptable).toList();
     final slow = pool.where((n) => !FailoverPolicy.latencyAcceptable(n)).toList();
-    List<Node> sorted(Iterable<Node> it) => ownFirst(it.toList()..sort(NodeScorer.compare));
+    List<Node> sorted(Iterable<Node> it) {
+      final byScore = it.toList()..sort(NodeScorer.compare);
+      return ownFirst(preferUdpNative ? udpNativeFirst(byScore) : byScore);
+    }
     return [
       ...sorted(fast.where((n) => n.isTrulyWorking)),
       ...sorted(fast.where((n) => !n.isTrulyWorking && n.isAlive)),
@@ -160,8 +167,8 @@ abstract final class NodePool {
     final bestOther = sorted.firstWhere((n) => !n.isOwn);
     bool wins(Node n) {
       if (!n.isOwn) return false;
-      final mine = rttMs(n);
-      final theirs = rttMs(bestOther);
+      final mine = n.rttMs;
+      final theirs = bestOther.rttMs;
       if (mine == null || theirs == null) return true;
       return mine * FailoverPolicy.improvement <= theirs;
     }
@@ -169,12 +176,25 @@ abstract final class NodePool {
     return [...sorted.where(wins), ...sorted.where((n) => !wins(n))];
   }
 
-  /// Задержка в единицах одного RTT, чтобы сравнивать разные протоколы: у
-  /// QUIC хранится время HTTPS-запроса (≈ 3 RTT, см. потолки #60).
-  static double? rttMs(Node n) {
-    final ms = n.latencyMs;
-    if (ms == null) return null;
-    return n.isQuic ? ms / 3 : ms.toDouble();
+  /// Режим Discord (#73): голосу лучше UDP-нативный протокол (HY2/TUIC) — UDP
+  /// идёт без TCP, и потери не задерживают весь поток, как у xudp внутри
+  /// REALITY. Внутри яруса такая нода с подтверждённым UDP встаёт перед
+  /// остальными, если её задержка ([Node.rttMs], одна шкала) не хуже лучшей
+  /// не-QUIC больше чем в 1/[FailoverPolicy.improvement] раза. Порядок внутри
+  /// групп сохраняется.
+  static List<Node> udpNativeFirst(List<Node> sorted) {
+    bool native(Node n) => n.isQuic && n.udpSupported;
+    if (!sorted.any(native) || sorted.every(native)) return sorted;
+    final bestTcp = sorted.firstWhere((n) => !native(n));
+    bool wins(Node n) {
+      if (!native(n)) return false;
+      final mine = n.rttMs;
+      final theirs = bestTcp.rttMs;
+      if (mine == null || theirs == null) return true;
+      return mine * FailoverPolicy.improvement <= theirs;
+    }
+
+    return [...sorted.where(wins), ...sorted.where((n) => !wins(n))];
   }
 
   /// Кого перепроверять перед автопрыжком (#60): до [limit] лучших
@@ -186,13 +206,14 @@ abstract final class NodePool {
     required List<Node> groupNodes,
     required List<Node> allNodes,
     bool preferAi = false,
+    bool preferUdpNative = false,
     Set<String> exclude = const {},
     int limit = FailoverPolicy.shortlistSize,
   }) {
     final seen = <String>{};
     final out = <Node>[];
     for (final pool in [groupNodes, allNodes]) {
-      for (final n in rank(pool, excludeId: excludeId, exclude: exclude)) {
+      for (final n in rank(pool, excludeId: excludeId, exclude: exclude, preferUdpNative: preferUdpNative)) {
         if (!FailoverPolicy.latencyAcceptable(n) || !seen.add(n.id)) continue;
         out.add(n);
       }

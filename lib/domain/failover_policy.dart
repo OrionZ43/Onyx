@@ -41,17 +41,33 @@ enum FailoverGate {
 class FailoverPolicy {
   const FailoverPolicy._();
 
-  /// Потолок сохранённой задержки. У обычных серверов это TCP-пинг
-  /// (≈ 1 RTT): 400 мс и выше — для игр и голоса уже «заведомо плохо».
+  /// Потолок сохранённой задержки в единицах одного RTT ([Node.rttMs]):
+  /// 400 мс и выше — для игр и голоса уже «заведомо плохо». Один для всех
+  /// протоколов (#73).
   static const tcpCeilingMs = 400;
 
-  /// У QUIC (Hysteria2/TUIC) TCP-пинга нет — хранится время HTTPS-запроса
-  /// через сервер (≈ 3 RTT), поэтому потолок втрое выше.
-  static const quicCeilingMs = 1200;
+  /// Тот же потолок в единицах, в которых у QUIC (Hysteria2/TUIC) хранится
+  /// задержка: время HTTPS-запроса ≈ [Node.httpsRttFactor] RTT. Раньше
+  /// было 1200 (≈ 3 RTT), и HY2 отсекался раньше REALITY с тем же RTT.
+  static const quicCeilingMs = tcpCeilingMs * Node.httpsRttFactor;
 
-  /// Потолок свежего замера кандидата — время HTTPS-запроса через сервер,
-  /// те же единицы, что у монитора здоровья (≈ 3 RTT по 400 мс).
-  static const freshCeilingMs = 1200;
+  /// Потолок свежего замера кандидата — время HTTPS-запроса через сервер
+  /// (у всех протоколов замер одинаковый), те же единицы, что у монитора
+  /// здоровья: ≈ [Node.httpsRttFactor] RTT по [tcpCeilingMs] — та же шкала,
+  /// что у потолка сохранённой задержки (#73). Было 1200 (≈ 3 RTT): у друга
+  /// из Китая (RTT 220–280 мс) нормальные серверы давали 900–1100 мс — на
+  /// грани, и при мёртвом текущем заменить его было бы не на что.
+  static const freshCeilingMs = tcpCeilingMs * Node.httpsRttFactor;
+
+  /// Сохранённая задержка в единицах свежего замера (время HTTPS-запроса
+  /// через сервер) — когда кандидатов не замерить мимо VPN (#73). У TCP-нод
+  /// хранится TCP-пинг (≈ 1 RTT), у QUIC — уже время HTTPS. Нет данных — 0,
+  /// как раньше: при мёртвом текущем такой кандидат не хуже прочих.
+  static int storedAsFreshMs(Node n) {
+    final ms = n.latencyMs;
+    if (ms == null) return 0;
+    return n.isQuic ? ms : ms * Node.httpsRttFactor;
+  }
 
   /// Кандидат должен быть заметно быстрее текущего: не больше 75% его
   /// последнего замера (если текущий вообще отвечает).
@@ -89,9 +105,9 @@ class FailoverPolicy {
   /// Сохранённая задержка в пределах потолка. Нет данных — не отсекаем:
   /// перед прыжком всё равно будет свежий замер.
   static bool latencyAcceptable(Node n) {
-    final ms = n.latencyMs;
-    if (ms == null) return true;
-    return ms <= (n.isQuic ? quicCeilingMs : tcpCeilingMs);
+    final rtt = n.rttMs; // одна шкала для TCP и QUIC (#73)
+    if (rtt == null) return true;
+    return rtt <= tcpCeilingMs;
   }
 
   /// Можно ли прыгать сейчас. [currentDead] — текущий сервер не ответил ни
@@ -161,6 +177,20 @@ class FailoverPolicy {
     }
 
     // Нужное для дела (UDP для голоса, ИИ) — важнее, чем «свой».
+    if (preferUdp) {
+      // Голосу лучше UDP-нативный протокол (HY2/TUIC): UDP идёт без TCP, и
+      // потери не задерживают весь поток, как у xudp внутри REALITY (#73).
+      // Берём его, если он не хуже самого быстрого больше чем на треть;
+      // среди таких свой — раньше чужого.
+      bool native(Node n) =>
+          n.isQuic && n.udpSupported && (!preferAi || n.aiReachable) && ms(n) * improvement <= fastest;
+      for (final n in ok) {
+        if (n.isOwn && native(n)) return n;
+      }
+      for (final n in ok) {
+        if (native(n)) return n;
+      }
+    }
     if (preferUdp && preferAi) {
       final both = firstWhere((n) => n.udpSupported && n.aiReachable);
       if (both != null) return both;

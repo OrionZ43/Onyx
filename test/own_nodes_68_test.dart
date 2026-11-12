@@ -73,10 +73,10 @@ void main() {
       expect(NodePool.rank([_vless(1, 'free', ms: 120), _vless(2, 'own', ms: 100, working: false, own: true)]).first.name, 'free');
     });
 
-    test('QUIC сравнивается по RTT: время HTTPS ≈ 3 RTT', () {
-      // Своя HY2: 330 мс HTTPS ≈ 110 мс RTT, чужая REALITY: 90 мс TCP → 110 ≤ 120.
+    test('QUIC сравнивается по RTT: время HTTPS ≈ 4 RTT (#73)', () {
+      // Своя HY2: 330 мс HTTPS ≈ 83 мс RTT (÷4, #73), чужая REALITY: 90 мс TCP.
       expect(NodePool.rank([_vless(1, 'free', ms: 90), _hy2(2, 'own', ms: 330, own: true)]).first.name, 'own');
-      expect(NodePool.rttMs(_hy2(2, 'x', ms: 330)), closeTo(110, 0.01));
+      expect(_hy2(2, 'x', ms: 330).rttMs, 83);
     });
 
     test('нет своих или только свои — порядок как раньше', () {

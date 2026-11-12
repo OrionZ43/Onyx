@@ -404,8 +404,9 @@ class VpnController extends StateNotifier<VpnState> {
       final sub = ref.read(subscriptionProvider);
       final groupId = ref.read(autoGroupProvider);
       final pool = groupId == null ? sub.nodes : ref.read(groupNodesProvider(groupId));
-      return NodePool.best(pool.where(good), exclude: sub.quarantined) ??
-          NodePool.best(sub.nodes.where(good), exclude: sub.quarantined);
+      // Для голоса Discord — UDP-нативный протокол при сопоставимой задержке (#73).
+      return NodePool.best(pool.where(good), exclude: sub.quarantined, preferUdpNative: discord) ??
+          NodePool.best(sub.nodes.where(good), exclude: sub.quarantined, preferUdpNative: discord);
     }
 
     if (candidate() == null) {
@@ -780,11 +781,13 @@ class VpnController extends StateNotifier<VpnState> {
     log.w('🔄 ${deadNode.name} деградировал — ищем замену', tag: 'VPN');
     final sub = ref.read(subscriptionProvider);
     final groupId = ref.read(autoGroupProvider);
+    final wantUdp = settings.discordMode || SubscriptionController.discordRunning();
     final shortlist = NodePool.failoverShortlist(
       excludeId: deadNode.id,
       groupNodes: groupId == null ? sub.nodes : ref.read(groupNodesProvider(groupId)),
       allNodes: sub.nodes,
       preferAi: deadNode.aiReachable,
+      preferUdpNative: wantUdp,
       exclude: sub.quarantined,
     );
 
@@ -803,7 +806,7 @@ class VpnController extends StateNotifier<VpnState> {
         ? const <String, int>{}
         : canMeasure
             ? await DeepProbe(singboxExePath: BinaryManager.instance.singboxExe.path).measure(shortlist)
-            : {for (final n in shortlist) n.id: n.latencyMs ?? 0};
+            : {for (final n in shortlist) n.id: FailoverPolicy.storedAsFreshMs(n)};
     if (mySession != _sessionId || state is! VpnConnected) {
       _isFailingOver = false;
       return;
@@ -812,7 +815,7 @@ class VpnController extends StateNotifier<VpnState> {
       candidates: shortlist,
       fresh: fresh,
       currentMs: _lastHealthMs,
-      preferUdp: settings.discordMode || SubscriptionController.discordRunning(),
+      preferUdp: wantUdp,
       preferAi: deadNode.aiReachable,
     );
 

@@ -126,7 +126,9 @@ class NodeScorer {
     // Мёртвые ноды получают максимальный штрафной счёт.
     if (!node.isAlive) return _deadScore;
 
-    int s = node.latencyMs ?? 9999;
+    // Задержка в одной шкале для всех протоколов (#73): у QUIC — пересчёт из
+    // времени HTTPS ([Node.rttMs]), иначе HY2 проигрывал REALITY вчетверо.
+    int s = node.rttMs ?? 9999;
 
     // Бонус за протокол REALITY (наивысший приоритет).
     if (node.security == 'reality') {
@@ -166,7 +168,7 @@ class NodeScorer {
     if (!node.isAlive) return 'DEAD → score=$_deadScore';
 
     final parts = <String>[];
-    final ms = node.latencyMs ?? 9999;
+    final ms = node.rttMs ?? 9999;
 
     if (node.security == 'reality') parts.add('REALITY +${_realityBonus}pts');
     if (node.isQuic) parts.add('QUIC +${_quicBonus}pts');

@@ -539,9 +539,12 @@ class DeepProbe {
       );
       sw.stop();
       if (basicOk && (node.isQuic || node.latencyMs == null)) {
-        // Для QUIC-нод TCP-пинга не было: берём время HTTPS-запроса
+        // TCP-пинга не было (у QUIC его нет вовсе): берём время HTTPS-запроса
         // через прокси (грубо, с запасом — включает TLS к cp.cloudflare.com).
-        latency = sw.elapsedMilliseconds;
+        // У TCP-нод хранится TCP-пинг — пересчитываем в его единицы (≈ 1 RTT,
+        // #73), иначе такая нода выглядела бы вчетверо медленнее.
+        final https = sw.elapsedMilliseconds;
+        latency = node.isQuic ? https : (https / Node.httpsRttFactor).round();
       }
       if (basicOk) {
         // UDP — то, на чём живут голос, камера и стримы Discord.
