@@ -107,7 +107,9 @@ class SmartProbe {
     } else {
       log.w('✗ ${node.name} — недоступен: ${r.error}', tag: 'PROBE');
     }
-    return node.copyWith(isAlive: r.isAlive, latencyMs: r.latencyMs);
+    // Не ответил — прошлый пинг стираем (#87), иначе мёртвый сервер
+    // показывался бы со старой цифрой.
+    return node.copyWith(isAlive: r.isAlive, latencyMs: r.latencyMs, clearLatency: !r.isAlive);
   }
 
   Future<ProbeResult> _tcpProbe(Node node) async {
@@ -217,6 +219,82 @@ class DeepProbe {
 
   /// Путь к sing-box.exe (из BinaryManager.instance.singboxExe.path).
   final String singboxExePath;
+
+  /// Итог полной проверки ноды (#87). Чистая функция — покрыта тестами.
+  ///
+  /// Проверка прошла ([basicOk]) — нода жива и работает. Задержка: TCP-пинг
+  /// изнутри пробы ([tcpMs] ≥ 0), у QUIC — время HTTPS-запроса [httpsMs],
+  /// у TCP-ноды без TCP-пинга — прежний TCP-пинг или HTTPS ÷
+  /// [Node.httpsRttFactor] (#73).
+  ///
+  /// Не прошла:
+  ///   • QUIC (Hysteria2/TUIC) — других признаков жизни у них нет (TCP-пинга
+  ///     не бывает): нода мёртвая, прошлый пинг стираем. Раньше оставались
+  ///     вчерашние цифра и «живость», и сервер, до которого из этой сети не
+  ///     доходит ни пакета, выглядел рабочим;
+  ///   • TCP-нода — по TCP-пингу изнутри пробы, если мерили: ответил — жива
+  ///     с этим пингом, нет (−1) — мёртвая, пинг стираем; не мерили (−2) —
+  ///     живость и пинг остаются от TCP-пинга этого же круга (этап 1).
+  static Node outcome(
+    Node node, {
+    required bool basicOk,
+    int tcpMs = -2,
+    int? httpsMs,
+    bool aiOk = false,
+    bool udpOk = false,
+    String? exitCountry,
+  }) {
+    if (basicOk) {
+      final int? latency = tcpMs >= 0
+          ? tcpMs
+          : node.isQuic
+              ? httpsMs
+              : node.latencyMs ?? (httpsMs == null ? null : (httpsMs / Node.httpsRttFactor).round());
+      return node.copyWith(
+        isAlive: true,
+        isTrulyWorking: true,
+        aiReachable: aiOk,
+        udpSupported: udpOk,
+        latencyMs: latency,
+        exitCountry: exitCountry,
+      );
+    }
+    final bool? alive = node.isQuic ? false : (tcpMs == -2 ? null : tcpMs >= 0);
+    return node.copyWith(
+      isAlive: alive,
+      isTrulyWorking: false,
+      aiReachable: false,
+      udpSupported: false,
+      latencyMs: !node.isQuic && tcpMs >= 0 ? tcpMs : null,
+      clearLatency: alive == false,
+      exitCountry: exitCountry,
+    );
+  }
+
+  /// Результат TCP-пинга (этап 1) поверх текущей ноды пула. Не ответил —
+  /// пинг стирается (#87); «работает» сбрасывается до подтверждения Deep
+  /// Probe — иначе мёртвая нода висела бы зелёной.
+  static Node mergeTcp(Node cur, Node upd) => cur.copyWith(
+        isAlive: upd.isAlive,
+        latencyMs: upd.latencyMs,
+        clearLatency: upd.latencyMs == null,
+        isTrulyWorking: upd.isAlive ? cur.isTrulyWorking : false,
+      );
+
+  /// Результат полной проверки поверх текущей ноды пула. Живость: под TUN
+  /// ([underTun]) и у QUIC — из самой проверки ([outcome]); у TCP-нод вне
+  /// TUN — TCP-пинг этапа 1 или подтверждённая работа. Пинг, стёртый
+  /// проверкой, стирается и в пуле (#87). Страна выхода узнаётся один раз
+  /// (#68): пустой ответ не стирает старую.
+  static Node mergeDeep(Node cur, Node upd, {bool underTun = false}) => cur.copyWith(
+        isAlive: (underTun || cur.isQuic) ? upd.isAlive : (cur.isAlive || upd.isTrulyWorking),
+        isTrulyWorking: upd.isTrulyWorking,
+        aiReachable: upd.aiReachable,
+        udpSupported: upd.udpSupported,
+        latencyMs: upd.latencyMs,
+        clearLatency: upd.latencyMs == null,
+        exitCountry: upd.exitCountry ?? cur.exitCountry,
+      );
 
   /// Сколько проб (отдельных sing-box) работает прямо сейчас. Пока они
   /// есть, медленная проба здоровья туннеля не в счёт (#69): пробы грузят
@@ -503,7 +581,7 @@ class DeepProbe {
     bool basicOk = false;
     bool aiOk = false;
     bool udpOk = false;
-    int? latency;
+    int? httpsMs;
     String? exitCountry;
     // TCP-пинг изнутри пробы (под TUN): -2 — не мерили, -1 — сервер не ответил
     var tcpMs = -2;
@@ -538,14 +616,9 @@ class DeepProbe {
         onTimeout: () => false,
       );
       sw.stop();
-      if (basicOk && (node.isQuic || node.latencyMs == null)) {
-        // TCP-пинга не было (у QUIC его нет вовсе): берём время HTTPS-запроса
-        // через прокси (грубо, с запасом — включает TLS к cp.cloudflare.com).
-        // У TCP-нод хранится TCP-пинг — пересчитываем в его единицы (≈ 1 RTT,
-        // #73), иначе такая нода выглядела бы вчетверо медленнее.
-        final https = sw.elapsedMilliseconds;
-        latency = node.isQuic ? https : (https / Node.httpsRttFactor).round();
-      }
+      // Время HTTPS-запроса через прокси (грубо, с запасом — включает TLS к
+      // cp.cloudflare.com): задержка QUIC-нод и TCP-нод без TCP-пинга ([outcome]).
+      if (basicOk) httpsMs = sw.elapsedMilliseconds;
       if (basicOk) {
         // UDP — то, на чём живут голос, камера и стримы Discord.
         final udp = await UdpProbe.viaSocks5(
@@ -588,14 +661,15 @@ class DeepProbe {
       } catch (_) {}
     }
 
-    return node.copyWith(
-      // Мерили TCP-пинг изнутри пробы — он и есть свежая «живость» и задержка
-      // (те же единицы, что у обычного TCP-пинга: одно рукопожатие).
-      isAlive: tcpMs == -2 ? null : (tcpMs >= 0 || basicOk),
-      isTrulyWorking: basicOk,
-      aiReachable: aiOk,
-      udpSupported: udpOk,
-      latencyMs: tcpMs >= 0 ? tcpMs : latency,
+    // TCP-пинг изнутри пробы — свежая «живость» и задержка (те же единицы,
+    // что у обычного TCP-пинга: одно рукопожатие); провал стирает старое (#87).
+    return outcome(
+      node,
+      basicOk: basicOk,
+      tcpMs: tcpMs,
+      httpsMs: httpsMs,
+      aiOk: aiOk,
+      udpOk: udpOk,
       exitCountry: exitCountry,
     );
   }
