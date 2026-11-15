@@ -1,4 +1,7 @@
-// Скриншоты темы Material 3 Expressive (golden-тесты).
+// Скриншоты темы Material 3 Expressive, которых нет у других тем: поиск,
+// снекбар, раскадровка кнопки. Экраны M3 (главный, серверы, настройки,
+// подписки, мини-панель…) снимает screens_golden_test.dart вместе с Onyx и
+// Signal — файлы m3-*.
 //
 // Обновить: flutter test --update-goldens test/m3_screens_golden_test.dart
 // PNG ложатся в test/goldens/m3-*.png и копируются в docs/redesign/screens/.
@@ -12,10 +15,7 @@ import 'package:onyx/core/theme/app_theme.dart';
 import 'package:onyx/core/theme/theme_kind.dart';
 import 'package:onyx/domain/entities/vpn_state.dart';
 import 'package:onyx/presentation/m3/m3_server_list.dart';
-import 'package:onyx/presentation/providers/subscription_provider.dart';
 import 'package:onyx/presentation/screens/home_screen.dart';
-import 'package:onyx/presentation/screens/settings_screen.dart';
-import 'package:onyx/presentation/screens/subscription_manager_screen.dart';
 import 'package:onyx/presentation/widgets/hero/hero_state.dart';
 import 'package:onyx/presentation/widgets/hero/m3_shape_button.dart';
 import 'package:onyx/presentation/widgets/m3/m3_search.dart';
@@ -44,19 +44,6 @@ void main() {
     await loadFonts();
   });
 
-  for (final s in ['off', 'ing', 'on', 'err']) {
-    testWidgets('m3 phone $s', (tester) async {
-      await shot(tester, 'm3-phone-$s', app(m3, vpnOf(s), const HomeScreen()), phone);
-    });
-  }
-
-  testWidgets('m3 phone list', (tester) async {
-    await shot(tester, 'm3-phone-list', app(m3, vpnOf('off'), const HomeScreen()), phone, then: () async {
-      showM3ServerSheet(tester.element(find.byType(M3ShapeButton)));
-      await frames(tester, 1200);
-    });
-  });
-
   testWidgets('m3 phone search', (tester) async {
     await shot(tester, 'm3-phone-search', app(m3, vpnOf('off'), const HomeScreen()), phone, then: () async {
       showM3ServerSheet(tester.element(find.byType(M3ShapeButton)));
@@ -70,33 +57,10 @@ void main() {
 
   testWidgets('m3 phone switch', (tester) async {
     await shot(tester, 'm3-phone-switch', app(m3, vpnOf('on'), const HomeScreen()), phone, then: () async {
-      tester.state<M3SnackbarHostState>(find.byType(M3SnackbarHost)).show('Автопереключение на Амстердам AMS-03 · 38 мс вместо 44');
+      tester.state<M3SnackbarHostState>(find.byType(M3SnackbarHost)).show('Переключились: Хельсинки HEL-02 → Амстердам AMS-03');
       await frames(tester, 800);
     });
   });
-
-  testWidgets('m3 phone empty', (tester) async {
-    await shot(tester, 'm3-phone-empty', app(m3, vpnOf('off'), const HomeScreen(), s: const SubscriptionState()), phone);
-  });
-
-  testWidgets('m3 phone settings', (tester) async {
-    await shot(tester, 'm3-phone-settings', app(m3, vpnOf('off'), const SettingsScreen()), phone);
-  });
-
-  testWidgets('m3 phone subs', (tester) async {
-    SharedPreferences.setMockInitialValues({
-      ...prefs,
-      'saved_subscriptions': ['Основная||https://example.com/sub', 'Резерв||https://backup.example.org/s/onyx'],
-    });
-    await shot(tester, 'm3-phone-subs', app(m3, vpnOf('off'), const SubscriptionManagerScreen()), phone);
-    SharedPreferences.setMockInitialValues(prefs);
-  });
-
-  for (final s in ['off', 'on']) {
-    testWidgets('m3 desktop $s', (tester) async {
-      await shot(tester, 'm3-desktop-$s', app(m3, vpnOf(s), const HomeScreen()), desk, android: false);
-    });
-  }
 
   // Раскадровка кнопки: покой, шесть кадров подключения через 325 мс
   // (полшага цикла LoadingIndicator), подключено, ошибка.

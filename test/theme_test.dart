@@ -33,16 +33,15 @@ void main() {
     expect(AppThemeKind.byName('nope'), AppThemeKind.onyx);
   });
 
-  test('Material 3 не выпущена: её нет в выборе, сохранённая — Onyx', () async {
-    expect(AppThemeKind.selectable, [AppThemeKind.onyx, AppThemeKind.signal]);
+  test('все три темы в выборе, сохранённая Material читается (#105)', () async {
+    expect(AppThemeKind.selectable, [AppThemeKind.onyx, AppThemeKind.signal, AppThemeKind.material]);
     expect(AppThemeKind.byName('signal'), AppThemeKind.signal);
-    // Выбрана в тестовой сборке — после обновления Onyx, а не тема без выбора.
-    expect(AppThemeKind.byName('material'), AppThemeKind.onyx);
+    expect(AppThemeKind.byName('material'), AppThemeKind.material);
     SharedPreferences.setMockInitialValues({ThemeKindNotifier.key: 'material'});
     final n = ThemeKindNotifier();
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
-    expect(n.state, AppThemeKind.onyx);
+    expect(n.state, AppThemeKind.material);
     n.dispose();
   });
 }

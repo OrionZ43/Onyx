@@ -5,7 +5,6 @@
 // токены и источники — docs/m3/. Решения по Onyx — docs/redesign/m3.md.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
@@ -15,18 +14,17 @@ import '../../core/theme/m3/app_spacing.dart';
 import '../../core/theme/m3/app_typography.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
-import '../../infrastructure/platform_features.dart';
-import '../providers/settings_provider.dart';
+import '../providers/connect_phase.dart';
+import '../providers/country_provider.dart';
+import '../providers/own_nodes_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../util/country.dart';
-import '../util/platform_kind.dart';
 import '../widgets/country_flag.dart' show PolygonClipper;
 import '../widgets/hero/hero_state.dart';
-import '../widgets/home_parts.dart' show SecondTicker, formatBytes, formatClock;
-import '../widgets/m3/m3_button_group.dart';
+import '../widgets/home_parts.dart' show AutopilotView, SecondTicker, formatBytes, formatClock;
 import '../widgets/m3/m3_buttons.dart';
 import '../widgets/m3/m3_snackbar.dart';
-import '../widgets/m3/m3_toggle_button.dart';
+import '../widgets/m3/m3_wavy_linear_progress.dart';
 import '../widgets/m3/segmented_list.dart';
 
 // ── Флаг в форме ────────────────────────────────────────────────────────────
@@ -104,11 +102,18 @@ class M3ShapeIcon extends StatelessWidget {
 
 /// Пинг: полосы сигнала Material Symbols (`signal_cellular_alt*`) и число.
 /// Медленный сервер (> 150 мс) — одна полоса цветом `error`.
+///
+/// [ms] — в одной шкале для всех протоколов (Node.rttMs, #73); у HY2/TUIC это
+/// оценка из времени HTTPS — [approx] ставит «≈».
 class M3Ping extends StatelessWidget {
-  const M3Ping({super.key, required this.ms, this.alive = true});
+  const M3Ping({super.key, required this.ms, this.alive = true, this.approx = false});
+
+  /// Пинг сервера одной строкой — для [M3Ping] в списках и подписей.
+  factory M3Ping.of(Node n) => M3Ping(ms: n.rttMs, alive: n.isAlive, approx: n.rttIsEstimate);
 
   final int? ms;
   final bool alive;
+  final bool approx;
 
   static IconData iconFor(int? ms) => switch (ms) {
         null => Symbols.signal_cellular_null,
@@ -126,7 +131,7 @@ class M3Ping extends StatelessWidget {
       Icon(iconFor(p), size: 16, opticalSize: 20, color: c),
       const SizedBox(width: AppSpacing.space50),
       Text(
-        p == null ? (alive ? 'нет данных' : 'недоступен') : '$p мс',
+        p == null ? (alive ? 'Нет данных' : 'Недоступен') : '${approx ? '≈ ' : ''}$p мс',
         style: context.text.bodyMedium!.copyWith(
           color: c,
           fontFeatures: const [FontFeature.tabularFigures()],
@@ -162,42 +167,140 @@ class M3AiBadge extends StatelessWidget {
   }
 }
 
+/// «Свой» сервер — добавлен пользователем ссылкой (#68): человек в форме
+/// `Cookie6Sided`, `secondaryContainer`. Пара к [M3AiBadge] — тот же приём
+/// «иконка в форме», другая форма и роль, чтобы не спорить с AI.
+class M3OwnBadge extends StatelessWidget {
+  const M3OwnBadge({super.key, this.size = 28});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme s = context.colors;
+    return Tooltip(
+      message: 'Добавлен вручную',
+      child: Semantics(
+        label: 'Свой сервер, добавлен вручную',
+        child: M3ShapeIcon(
+          icon: Symbols.person,
+          shape: MaterialShapes.cookie6Sided,
+          color: s.secondaryContainer,
+          onColor: s.onSecondaryContainer,
+          size: size,
+        ),
+      ),
+    );
+  }
+}
+
+/// Пинг и свойства сервера одной строкой — вспомогательный текст пункта
+/// списка: пинг, протокол (кроме VLESS — он по умолчанию), голос (UDP).
+/// «Нет UDP» — только у работающего сервера, где STUN молчит (#45).
+class M3NodeMeta extends StatelessWidget {
+  const M3NodeMeta({super.key, required this.node, this.leading});
+  final Node node;
+
+  /// Текст перед пингом, например страна на карточке сервера.
+  final String? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    // В узком месте (панель окна, длинная страна) — перенос на вторую строку,
+    // а не обрезка за краем. Пинг, протокол и голос переносятся вместе:
+    // страна в первой строке, замеры — во второй, без одинокого значка.
+    Wrap line(List<Widget> children) =>
+        Wrap(spacing: AppSpacing.space100, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: children);
+    final Wrap metrics = line([M3Ping.of(node), ...M3NodeBadges.meta(context, node)]);
+    return leading == null ? metrics : line([Text(leading!), metrics]);
+  }
+}
+
+/// Значки сервера в теме M3 без пинга: протокол (кроме VLESS), голос (UDP)
+/// или «нет UDP», «Свой», AI — для мини-панели и общих экранов (NodeBadges).
+/// В списках M3 протокол и голос идут в строке [M3NodeMeta], фигуры —
+/// отдельно, рядом со звездой.
+class M3NodeBadges extends StatelessWidget {
+  const M3NodeBadges({super.key, required this.node, this.own = false, this.showProtocol = true});
+  final Node node;
+  final bool own;
+  final bool showProtocol;
+
+  /// Протокол и голос — те же, что в строке [M3NodeMeta].
+  static List<Widget> meta(BuildContext context, Node node, {bool showProtocol = true}) {
+    final ColorScheme s = context.colors;
+    final TextStyle style = context.text.labelMedium!.copyWith(color: s.onSurfaceVariant);
+    return [
+      if (showProtocol && node.protocol != NodeProtocol.vless) Text(NodeProtocol.label(node.protocol), style: style),
+      if (node.udpStatus == UdpStatus.ok)
+        Tooltip(
+          message: 'UDP проходит — голос Discord и звонки работают',
+          child: Icon(Symbols.mic, size: 16, opticalSize: 20, color: s.onSurfaceVariant),
+        ),
+      if (node.udpStatus == UdpStatus.blocked)
+        Tooltip(
+          message: 'UDP заблокирован на этом сервере — голос Discord и звонки не пойдут',
+          child: Text('нет UDP', style: style),
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Widget> items = [
+      ...meta(context, node, showProtocol: showProtocol),
+      if (own) const M3OwnBadge(size: 24),
+      if (node.aiReachable) const M3AiBadge(size: 24),
+    ];
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < items.length; i++) ...[if (i > 0) const SizedBox(width: AppSpacing.space100), items[i]],
+    ]);
+  }
+}
+
 // ── Статус ──────────────────────────────────────────────────────────────────
 
 /// Крупный статус над кнопкой — emphasized display, как «hero moment»
 /// типографики M3 Expressive; строка под ним — bodyLarge `onSurfaceVariant`.
 class M3StatusHeadline extends StatelessWidget {
-  const M3StatusHeadline({super.key, required this.vpn, this.compact = false});
+  const M3StatusHeadline({super.key, required this.vpn, this.compact = false, this.autopilot});
 
   final VpnState vpn;
   final bool compact;
 
+  /// Этап автопилота «Оникс» поверх состояния VPN (#47): «Обновляю
+  /// подписку», «Проверяю серверы · 7 из 20», отказ с причиной.
+  final AutopilotView? autopilot;
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme s = context.colors;
-    final HeroPhase phase = heroPhaseOf(vpn);
-    final String title = switch (phase) {
-      HeroPhase.off => 'Не защищено',
-      HeroPhase.connecting => vpn is VpnDisconnecting ? 'Отключение…' : 'Подключение…',
-      HeroPhase.on => 'Защищено',
-      HeroPhase.error => 'Нет соединения',
-    };
+    final AutopilotView? ap = autopilot;
+    final HeroPhase phase = ap?.phase ?? heroPhaseOf(vpn);
+    final String title = ap?.title ??
+        switch (phase) {
+          HeroPhase.off => 'Не защищено',
+          HeroPhase.connecting => vpn is VpnDisconnecting ? 'Отключение…' : 'Подключение…',
+          HeroPhase.on => 'Защищено',
+          HeroPhase.error => 'Нет соединения',
+        };
     final TextStyle big = (compact ? context.text.headlineLarge! : context.text.displaySmall!).emphasized;
     final TextStyle line = context.text.bodyLarge!.copyWith(color: s.onSurfaceVariant);
 
-    final Widget supporting = switch (vpn) {
-      VpnConnected() => SecondTicker(
-          active: true,
-          builder: (_) => Text(
-            'Трафик зашифрован · ${formatClock((vpn as VpnConnected).uptime)}',
-            style: line.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-          ),
-        ),
-      VpnConnecting(node: final n) => Text('${displayNodeName(n.name)} · устанавливаем туннель', style: line),
-      VpnDisconnecting() => Text('Закрываем туннель', style: line),
-      VpnError(message: final m) => Text(m, style: line, maxLines: 2),
-      VpnDisconnected() => Text('Трафик идёт напрямую', style: line),
-    };
+    final Widget supporting = ap != null
+        ? Text(ap.detail ?? (ap.phase == HeroPhase.connecting ? 'Onyx подбирает сервер' : ''), style: line, maxLines: 3)
+        : switch (vpn) {
+            VpnConnected() => SecondTicker(
+                active: true,
+                builder: (_) => Text(
+                  'Трафик зашифрован · ${formatClock((vpn as VpnConnected).uptime)}',
+                  style: line.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+                ),
+              ),
+            VpnConnecting(node: final n) => Text('${displayNodeName(n.name)} · устанавливаем туннель', style: line),
+            VpnDisconnecting() => Text('Закрываем туннель', style: line),
+            VpnError(message: final m) => Text(uiText(m), style: line, maxLines: 2),
+            VpnDisconnected() => Text('Трафик идёт напрямую', style: line),
+          };
 
     return Semantics(
       liveRegion: true,
@@ -205,8 +308,49 @@ class M3StatusHeadline extends StatelessWidget {
         Text(title, textAlign: TextAlign.center, style: big.copyWith(color: phase == HeroPhase.error ? s.error : s.onSurface)),
         const SizedBox(height: AppSpacing.space100),
         DefaultTextStyle.merge(textAlign: TextAlign.center, child: supporting),
+        // Проверка серверов — определённый прогресс: волнистый линейный
+        // индикатор M3 Expressive (Progress indicators → Wavy).
+        if (ap?.progress != null) ...[
+          const SizedBox(height: AppSpacing.space200),
+          SizedBox(width: 220, child: M3WavyLinearProgress(value: ap!.progress!)),
+        ],
       ]),
     );
+  }
+}
+
+/// Действия, когда автопилот не смог подключиться (#47): «Обновить и
+/// повторить» — главное (filled), «Добавить сервер» — второстепенное
+/// (outlined). Стандартная группа кнопок M3 Expressive, маленький размер.
+class M3PhaseActions extends StatelessWidget {
+  const M3PhaseActions({super.key, required this.failure, required this.onRefresh, required this.onAddServer});
+
+  final ConnectFailed failure;
+  final VoidCallback onRefresh;
+  final VoidCallback onAddServer;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool refresh = failure.actions.contains(ConnectAction.refresh);
+    final bool add = failure.actions.contains(ConnectAction.addServer);
+    return Wrap(alignment: WrapAlignment.center, spacing: AppSpacing.space100, runSpacing: AppSpacing.space100, children: [
+      if (refresh)
+        M3Button(
+          onPressed: onRefresh,
+          icon: const Icon(Symbols.refresh),
+          size: M3ButtonSize.small,
+          color: M3ButtonColor.filled,
+          child: const Text('Обновить и повторить'),
+        ),
+      if (add)
+        M3Button(
+          onPressed: onAddServer,
+          icon: const Icon(Symbols.add),
+          size: M3ButtonSize.small,
+          color: refresh ? M3ButtonColor.outlined : M3ButtonColor.filled,
+          child: const Text('Добавить сервер'),
+        ),
+    ]);
   }
 }
 
@@ -234,99 +378,49 @@ class M3HeroCaption extends StatelessWidget {
 /// Текущий сервер — пункт списка M3 Expressive в своей группе: флаг, имя,
 /// страна и пинг, AI-бейдж. Нажатие открывает список серверов; во время
 /// подключения справа — значок защиты вместо стрелки.
-class M3ServerCard extends StatelessWidget {
-  const M3ServerCard({super.key, required this.node, required this.sub, required this.locked, required this.onTap});
+class M3ServerCard extends ConsumerWidget {
+  const M3ServerCard({super.key, required this.node, required this.sub, required this.locked, required this.onTap, this.trailing});
 
   final Node? node;
   final SubscriptionState sub;
   final bool locked;
   final VoidCallback onTap;
 
+  /// Вместо стрелки — например текстовая кнопка «Сменить» в панели окна.
+  final Widget? trailing;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ColorScheme s = context.colors;
     final Node? n = node;
-    final Country country = n == null ? Country.unknown : countryOfName(n.name);
+    // Страна одна для всех экранов: выбор пользователя → название → проверка (#68).
+    final Country country = n == null ? Country.unknown : ref.watch(countryResolverProvider).of(n);
+    final bool own = n != null && ref.watch(ownNodeIdsProvider).contains(n.id);
+    // Серверы есть, но ни один ещё не ответил, — это не «нет серверов».
+    final bool listed = sub.nodes.isNotEmpty;
     final Widget supporting = switch (sub.status) {
       SubStatus.fetching => const Text('Загружаем список…'),
       SubStatus.probing => Text('Проверяем серверы ${sub.probedCount} из ${sub.nodes.length}'),
       SubStatus.deepProbing => Text('AI-проба ${sub.deepProbedCount} из ${sub.deepProbeTotal}'),
-      _ when n == null => const Text('Добавьте подписку'),
-      _ => Row(mainAxisSize: MainAxisSize.min, children: [
-          Flexible(child: Text(country.isKnown ? country.name : 'Сервер', overflow: TextOverflow.ellipsis)),
-          const SizedBox(width: AppSpacing.space100),
-          M3Ping(ms: n.latencyMs, alive: n.isAlive),
-        ]),
+      _ when n == null => Text(listed ? 'Лучший выберется при подключении' : 'Добавьте подписку'),
+      _ => M3NodeMeta(node: n, leading: country.isKnown ? country.name : 'Сервер'),
     };
     return SegmentedList(children: [
       M3ListItem(
         leading: M3Flag(code: country.code),
         overline: const Text('Сервер'),
-        headline: Text(n == null ? 'Нет серверов' : displayNodeName(n.name), maxLines: 1, overflow: TextOverflow.ellipsis),
+        headline: Text(n != null ? displayNodeName(n.name) : (listed ? 'Автовыбор' : 'Нет серверов'),
+            maxLines: 1, overflow: TextOverflow.ellipsis),
         supporting: supporting,
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (own) ...[const M3OwnBadge(), const SizedBox(width: AppSpacing.space100)],
           if (n?.aiReachable == true) ...[const M3AiBadge(), const SizedBox(width: AppSpacing.space100)],
-          Icon(locked ? Symbols.verified_user : Symbols.chevron_right, color: s.onSurfaceVariant),
+          trailing ?? Icon(locked ? Symbols.verified_user : Symbols.chevron_right, color: s.onSurfaceVariant),
         ]),
         onTap: onTap,
         semanticsLabel: n == null ? 'Серверы' : 'Сервер ${displayNodeName(n.name)}, открыть список',
       ),
     ]);
-  }
-}
-
-// ── Функции: группа переключателей ──────────────────────────────────────────
-
-/// Тихие функции — стандартная группа кнопок M3 Expressive
-/// (https://m3.material.io/components/button-groups): переключатели
-/// «Авто» и «AI-канал», третьим — «Маршруты» (Windows) или ссылка на
-/// системный Kill switch (Android: состояния у приложения нет, это обычная
-/// кнопка, а не переключатель).
-class M3FeatureToggles extends ConsumerWidget {
-  const M3FeatureToggles({super.key});
-
-  static const M3ButtonSize size = M3ButtonSize.small;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final n = ref.read(settingsProvider.notifier);
-
-    M3ButtonGroupItem toggle(String label, IconData icon, bool value, ValueChanged<bool> onChanged) => M3ButtonGroupItem(
-          builder: (context, states) => M3ToggleButton(
-            checked: value,
-            onCheckedChange: (v) {
-              HapticFeedback.selectionClick();
-              onChanged(v);
-            },
-            icon: Icon(icon),
-            size: size,
-            color: M3ToggleButtonColor.tonal,
-            statesController: states,
-            child: Text(label),
-          ),
-        );
-
-    return M3ButtonGroup(
-      spacing: M3ButtonGroupDefaults.spacingFor(size),
-      children: [
-        toggle('Авто', Symbols.bolt, settings.autoFailover, n.toggleAutoFailover),
-        toggle('AI-канал', Symbols.auto_awesome, settings.aiDirectLane, n.toggleAiDirectLane),
-        if (uiIsAndroid)
-          M3ButtonGroupItem(
-            builder: (context, states) => M3Button(
-              onPressed: () => PlatformFeatures.instance.openVpnSettings(),
-              icon: const Icon(Symbols.verified_user),
-              size: size,
-              color: M3ButtonColor.outlined,
-              statesController: states,
-              child: const Text('Kill switch'),
-            ),
-          )
-        else
-          toggle('Маршруты', Symbols.language, settings.smartRouting, n.toggleSmartRouting),
-      ],
-    );
   }
 }
 

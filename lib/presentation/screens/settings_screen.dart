@@ -526,21 +526,26 @@ class _Tile extends StatelessWidget {
 /// Регион маршрутизации (#47): пункт со значением, выбор — в листе. По
 /// умолчанию — «Авто» (домен «Оникс»: часовой пояс и язык системы; для РФ и
 /// Беларуси — РФ/РБ); на главном экране и в мини-панели регион не показан.
+/// Короткое имя региона: «Авто», «РФ/РБ», «Китай» (все темы).
+String regionShort(RoutingRegion r) => switch (r) {
+      RoutingRegion.auto => 'Авто',
+      RoutingRegion.russia => 'РФ/РБ',
+      RoutingRegion.china => 'Китай',
+    };
+
+/// Значение пункта «Регион маршрутизации»: для «Авто» — во что развернулся.
+String regionValue(RoutingRegion r, RoutingRegion effective) =>
+    r == RoutingRegion.auto ? 'Авто · ${regionShort(effective)}' : regionShort(r);
+
+/// Подпись варианта в выборе региона; для «Авто» — во что он сейчас развернулся.
+String regionHint(RoutingRegion r, RoutingRegion effective) => switch (r) {
+      RoutingRegion.auto => 'По IP, часовому поясу и языку системы · сейчас ${regionShort(effective)}',
+      RoutingRegion.russia => 'Российские и белорусские сайты — напрямую',
+      RoutingRegion.china => 'Китайские сайты и сервисы — напрямую',
+    };
+
 class _RegionTile extends ConsumerWidget {
   const _RegionTile();
-
-  static String _short(RoutingRegion r) => switch (r) {
-        RoutingRegion.auto => 'Авто',
-        RoutingRegion.russia => 'РФ/РБ',
-        RoutingRegion.china => 'Китай',
-      };
-
-  /// Подпись варианта; для «Авто» — во что он сейчас развернулся.
-  static String _hint(RoutingRegion r, RoutingRegion effective) => switch (r) {
-        RoutingRegion.auto => 'По IP, часовому поясу и языку системы · сейчас ${_short(effective)}',
-        RoutingRegion.russia => 'Российские и белорусские сайты — напрямую',
-        RoutingRegion.china => 'Китайские сайты и сервисы — напрямую',
-      };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -550,7 +555,7 @@ class _RegionTile extends ConsumerWidget {
       glyph: OnyxGlyph.globe,
       title: 'Регион маршрутизации',
       subtitle: 'Сайты этой страны — напрямую, мимо туннеля.',
-      trailing: region == RoutingRegion.auto ? 'Авто · ${_short(s.effectiveRegion)}' : _short(region),
+      trailing: regionValue(region, s.effectiveRegion),
       onTap: () => _pick(context, ref, region, s.effectiveRegion),
     );
   }
@@ -572,7 +577,7 @@ class _RegionTile extends ConsumerWidget {
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24),
               title: Text(r.label, style: TextStyle(fontFamily: t.bodyFont, fontSize: 14.5, fontWeight: FontWeight.w500, color: t.text)),
-              subtitle: Text(_hint(r, effective), style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, color: t.textMuted)),
+              subtitle: Text(regionHint(r, effective), style: TextStyle(fontFamily: t.bodyFont, fontSize: 12.5, color: t.textMuted)),
               trailing: r == current ? OnyxIcon(OnyxGlyph.check, size: 18, color: t.isSignal ? AppTheme.signalRec : t.accent) : null,
               onTap: () => Navigator.pop(c, r),
             ),

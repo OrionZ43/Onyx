@@ -10,7 +10,9 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../../core/theme/m3/app_spacing.dart';
 import '../../core/theme/m3/app_typography.dart';
+import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
+import '../widgets/add_source_sheet.dart' show looksLikeSubscriptionUrl;
 import '../widgets/m3/empty_state.dart';
 import '../widgets/m3/m3_buttons.dart';
 import '../widgets/m3/m3_loading_indicator.dart';
@@ -25,6 +27,7 @@ class M3SubscriptionImport extends ConsumerStatefulWidget {
 
 class _M3SubscriptionImportState extends ConsumerState<M3SubscriptionImport> {
   final TextEditingController _ctl = TextEditingController();
+  bool _adding = false;
 
   @override
   void dispose() {
@@ -42,28 +45,39 @@ class _M3SubscriptionImportState extends ConsumerState<M3SubscriptionImport> {
     final String text = data?.text?.trim() ?? '';
     if (!mounted) return;
     if (!_looksLikeLink(text)) {
-      showM3Message(context, 'В буфере нет ссылки на подписку');
+      showM3Message(context, 'В буфере нет подписки или ссылок серверов');
       return;
     }
     _ctl.text = text;
     _submit();
   }
 
-  void _submit() {
-    final String url = _ctl.text.trim();
-    if (!_looksLikeLink(url)) {
-      showM3Message(context, 'Это не похоже на ссылку подписки');
+  // Добавляет источник (#40), как SubscriptionImport тем Onyx и Signal: URL —
+  // подписка, иначе — набор ссылок серверов; отказ — понятная причина (lastError).
+  Future<void> _submit() async {
+    final String raw = _ctl.text.trim();
+    if (!_looksLikeLink(raw)) {
+      showM3Message(context, 'Это не похоже на подписку или ссылку сервера');
       return;
     }
     HapticFeedback.lightImpact();
-    ref.read(subscriptionProvider.notifier).loadFromUrl(url);
+    setState(() => _adding = true);
+    final SourcesController ctl = ref.read(sourcesProvider.notifier);
+    final res = looksLikeSubscriptionUrl(raw) ? await ctl.addSubscription(raw) : await ctl.addLinks(raw);
+    if (!mounted) return;
+    setState(() => _adding = false);
+    if (res == null) {
+      showM3Message(context, ctl.lastError ?? 'Не удалось добавить: проверьте ссылку');
+    } else {
+      _ctl.clear();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme s = context.colors;
     final SubscriptionState sub = ref.watch(subscriptionProvider);
-    final bool loading = sub.status == SubStatus.fetching;
+    final bool loading = _adding || sub.status == SubStatus.fetching;
 
     final Widget form = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -77,8 +91,8 @@ class _M3SubscriptionImportState extends ConsumerState<M3SubscriptionImport> {
           onSubmitted: (_) => _submit(),
           style: context.text.bodyLarge,
           decoration: InputDecoration(
-            labelText: 'Ссылка на подписку',
-            hintText: 'https://… или vless://…',
+            labelText: 'Подписка или ссылки',
+            hintText: 'https://… или vless://, hy2://…',
             prefixIcon: const Icon(Symbols.link),
             suffixIcon: Padding(
               padding: const EdgeInsets.only(right: AppSpacing.space50),
@@ -89,8 +103,6 @@ class _M3SubscriptionImportState extends ConsumerState<M3SubscriptionImport> {
                 color: M3IconButtonColor.standard,
               ),
             ),
-            errorText: sub.status == SubStatus.error ? sub.error : null,
-            errorMaxLines: 3,
           ),
         ),
         const SizedBox(height: AppSpacing.space300),
@@ -114,7 +126,7 @@ class _M3SubscriptionImportState extends ConsumerState<M3SubscriptionImport> {
           constraints: const BoxConstraints(maxWidth: 420),
           child: EmptyState(
             title: 'Добавьте серверы',
-            description: 'Вставьте ссылку на подписку — Onyx проверит каждый сервер, '
+            description: 'Вставьте ссылку на подписку или ссылки серверов — Onyx проверит каждый, '
                 'отметит AI-совместимые и выберет лучший.',
             illustrationSize: const Size(148, 132),
             action: DefaultTextStyle.merge(style: TextStyle(color: s.onSurface), child: form),

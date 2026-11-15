@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
+import '../m3/m3_parts.dart' show M3NodeBadges;
 import '../providers/connect_phase.dart';
 import '../providers/country_provider.dart';
 import '../providers/own_nodes_provider.dart';
@@ -800,6 +801,9 @@ class NodeBadges extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final own = ref.watch(ownNodeIdsProvider).contains(node.id) && showOwn;
+    // Тема Material 3: значки-фигуры M3 («Свой», AI) и текст протокола, как в
+    // списках M3 (M3NodeMeta), — мини-панель и общие экраны выглядят так же.
+    if (OnyxTokens.of(context).isMaterial) return M3NodeBadges(node: node, own: own, showProtocol: showProtocol);
     final items = <Widget>[
       if (own) const OwnBadge(),
       // VLESS — протокол по умолчанию: метку показываем только для остальных,

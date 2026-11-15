@@ -42,6 +42,8 @@ import 'package:onyx/presentation/tray/tray_flyout.dart';
 import 'package:onyx/presentation/util/country.dart';
 import 'package:onyx/presentation/widgets/add_source_sheet.dart';
 import 'package:onyx/presentation/widgets/country_flag.dart';
+import 'package:onyx/presentation/m3/m3_parts.dart' show M3Flag;
+import 'package:onyx/presentation/widgets/m3/segmented_list.dart' show M3ListItem;
 import 'package:onyx/presentation/widgets/node_list_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -206,7 +208,9 @@ Future<void> loadFonts() async {
 
 // ── Сборка ──────────────────────────────────────────────────────────────────
 
-Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s, ConnectPhase phase = ConnectPhase.idle, Map<String, String> picks = const {}}) => ProviderScope(
+Widget app(AppThemeKind kind, VpnState vpn, Widget home,
+        {SubscriptionState? s, List<SubscriptionSource>? src, ConnectPhase phase = ConnectPhase.idle, Map<String, String> picks = const {}}) =>
+    ProviderScope(
       overrides: [
         connectPhaseProvider.overrideWith((ref) => phase),
         countryOverridesProvider.overrideWith((ref) => CountryOverrides(picks)),
@@ -217,7 +221,7 @@ Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s, 
         vpnControllerProvider.overrideWith((ref) => FakeVpn(vpn)),
         subscriptionProvider.overrideWith((ref) => FakeSub(s ?? sub)),
         updateControllerProvider.overrideWith(FakeUpdate.new),
-        sourcesProvider.overrideWith((ref) => FakeSources(sources)),
+        sourcesProvider.overrideWith((ref) => FakeSources(src ?? sources)),
         groupsProvider.overrideWith((ref) => FakeGroups(groups)),
         favoritesProvider.overrideWith((ref) => FakeFavorites({'1', '4'})),
         autoGroupProvider.overrideWith((ref) => FakeAutoGroup(null)),
@@ -307,6 +311,9 @@ Widget flyoutScene(int frame) => Builder(builder: (context) {
         ),
       ]);
     });
+/// Префикс файлов снимка: тема Material — «m3» (docs/redesign/screens/m3-*.png).
+String tag(AppThemeKind k) => k == AppThemeKind.material ? 'm3' : k.name;
+
 void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -314,32 +321,34 @@ void main() {
   });
 
   const phone = Size(390, 844), desk = Size(1100, 720);
-  final kinds = [AppThemeKind.onyx, AppThemeKind.signal];
+  final kinds = [AppThemeKind.onyx, AppThemeKind.signal, AppThemeKind.material];
 
   for (final k in kinds) {
     for (final s in ['off', 'on']) {
       testWidgets('${k.name} flyout $s', (tester) async {
-        await shot(tester, '${k.name}-flyout-$s', app(k, vpnOf(s), Scaffold(body: flyoutScene(0))), const Size(760, 620), android: false);
+        await shot(tester, '${tag(k)}-flyout-$s', app(k, vpnOf(s), Scaffold(body: flyoutScene(0))), const Size(760, 620), android: false);
       });
     }
     testWidgets('${k.name} flyout servers', (tester) async {
-      await shot(tester, '${k.name}-flyout-servers', app(k, vpnOf('on'), Scaffold(body: flyoutScene(0))), const Size(760, 620), android: false, then: () async {
+      await shot(tester, '${tag(k)}-flyout-servers', app(k, vpnOf('on'), Scaffold(body: flyoutScene(0))), const Size(760, 620), android: false, then: () async {
         await tester.tap(find.text('Автовыбор · из «Все»').first, warnIfMissed: false);
         await tester.pump(const Duration(milliseconds: 400));
       });
     });
     for (final s in ['off', 'ing', 'on', 'err']) {
       testWidgets('${k.name} phone $s', (tester) async {
-        await shot(tester, '${k.name}-phone-$s', app(k, vpnOf(s), const HomeScreen()), phone);
+        await shot(tester, '${tag(k)}-phone-$s', app(k, vpnOf(s), const HomeScreen()), phone);
       });
     }
     // «Все» — с той же ручной страной у home-vps, что и во вкладке «Свои»
     // (#68): на листе мокапа обе колонки — одно состояние.
     testWidgets('${k.name} phone list', (tester) async {
-      await shot(tester, '${k.name}-phone-list', app(k, vpnOf('off'), const HomeScreen(), picks: ownPicks), phone, then: () async {
+      await shot(tester, '${tag(k)}-phone-list', app(k, vpnOf('off'), const HomeScreen(), picks: ownPicks), phone, then: () async {
         final ctx = tester.element(find.byType(HomeScreen));
         showOnyxNodeSheet(ctx);
         await tester.pump(const Duration(seconds: 1));
+        // Лист M3 открывается пружиной — ей нужны кадры, а не один скачок.
+        if (k == AppThemeKind.material) await settle(tester);
       });
     });
     // Страна одна во всех местах: «Все», «Свои», карточка главного экрана —
@@ -349,9 +358,17 @@ void main() {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       tester.view.physicalSize = phone * 2;
       tester.view.devicePixelRatio = 2;
-      String flagOf(String name) => tester
-          .widget<CountryFlag>(find.descendant(of: find.ancestor(of: find.text(name).last, matching: find.byType(Row)).first, matching: find.byType(CountryFlag)))
-          .code;
+      String flagOf(String name) {
+        final text = find.text(name).last;
+        if (k == AppThemeKind.material) {
+          // В M3 флаг — M3Flag в том же пункте списка (M3ListItem).
+          final item = find.ancestor(of: text, matching: find.byType(M3ListItem)).first;
+          return tester.widget<M3Flag>(find.descendant(of: item, matching: find.byType(M3Flag))).code;
+        }
+        return tester
+            .widget<CountryFlag>(find.descendant(of: find.ancestor(of: text, matching: find.byType(Row)).first, matching: find.byType(CountryFlag)))
+            .code;
+      }
       await tester.pumpWidget(app(k, VpnConnected(node: home, connectedAt: DateTime.now()), const HomeScreen(), picks: ownPicks));
       await settle(tester);
       expect(flagOf('home-vps'), 'nl', reason: 'карточка главного экрана');
@@ -367,7 +384,7 @@ void main() {
     });
     // «Свои» серверы (#68): вкладка «Свои»; у home-vps страна выбрана вручную.
     testWidgets('${k.name} phone-own', (tester) async {
-      await shot(tester, '${k.name}-phone-own', app(k, vpnOf('off'), const HomeScreen(), picks: ownPicks), phone, then: () async {
+      await shot(tester, '${tag(k)}-phone-own', app(k, vpnOf('off'), const HomeScreen(), picks: ownPicks), phone, then: () async {
         showOnyxNodeSheet(tester.element(find.byType(HomeScreen)));
         await settle(tester);
         await tester.tap(find.textContaining(RegExp('Свои|СВОИ'), findRichText: true).first);
@@ -380,14 +397,14 @@ void main() {
       final own = nodes.firstWhere((n) => n.id == '9'); // Finland HY2
       await shot(
         tester,
-        '${k.name}-phone-own-home',
+        '${tag(k)}-phone-own-home',
         app(k, VpnConnected(node: own, connectedAt: DateTime.now(), rxBytes: 412000000, txBytes: 38000000), const HomeScreen()),
         phone,
       );
     });
     // Меню по долгому нажатию: пункт «Указать страну» (#68).
     testWidgets('${k.name} phone-menu', (tester) async {
-      await shot(tester, '${k.name}-phone-menu', app(k, vpnOf('off'), const HomeScreen()), phone, then: () async {
+      await shot(tester, '${tag(k)}-phone-menu', app(k, vpnOf('off'), const HomeScreen()), phone, then: () async {
         showOnyxNodeSheet(tester.element(find.byType(HomeScreen)));
         await settle(tester);
         await tester.longPress(find.text('home-vps').first);
@@ -395,7 +412,7 @@ void main() {
       });
     });
     testWidgets('${k.name} phone-country', (tester) async {
-      await shot(tester, '${k.name}-phone-country', app(k, vpnOf('off'), const HomeScreen()), phone, then: () async {
+      await shot(tester, '${tag(k)}-phone-country', app(k, vpnOf('off'), const HomeScreen()), phone, then: () async {
         // В листе — все страны: точечные флаги Signal рисуются из SVG заранее.
         await tester.runAsync(() => precacheDotFlags([for (final c in allCountries()) c.code]));
         showOnyxNodeSheet(tester.element(find.byType(HomeScreen)));
@@ -407,63 +424,71 @@ void main() {
       });
     });
     testWidgets('${k.name} phone empty', (tester) async {
-      await shot(tester, '${k.name}-phone-empty', app(k, vpnOf('off'), const HomeScreen(), s: const SubscriptionState()), phone);
+      await shot(tester, '${tag(k)}-phone-empty', app(k, vpnOf('off'), const HomeScreen(), s: const SubscriptionState()), phone);
+    });
+    // Первый запуск: ни серверов, ни источников — главный экран становится
+    // импортом (в «phone empty» источники есть, серверы ещё не пришли).
+    testWidgets('${k.name} phone import', (tester) async {
+      await shot(tester, '${tag(k)}-phone-import', app(k, vpnOf('off'), const HomeScreen(), s: const SubscriptionState(), src: const []), phone);
     });
     for (final e in {'onboarding': const OnboardingScreen(), 'subs': const SubscriptionManagerScreen(), 'faq': const FaqScreen()}.entries) {
       testWidgets('${k.name} phone ${e.key}', (tester) async {
-        await shot(tester, '${k.name}-phone-${e.key}', app(k, vpnOf('off'), e.value), phone);
+        await shot(tester, '${tag(k)}-phone-${e.key}', app(k, vpnOf('off'), e.value), phone);
       });
     }
     testWidgets('${k.name} phone sources', (tester) async {
-      await shot(tester, '${k.name}-phone-sources', app(k, vpnOf('off'), const SubscriptionManagerScreen()), phone);
+      await shot(tester, '${tag(k)}-phone-sources', app(k, vpnOf('off'), const SubscriptionManagerScreen()), phone);
     });
     testWidgets('${k.name} phone groups', (tester) async {
-      await shot(tester, '${k.name}-phone-groups', app(k, vpnOf('off'), const GroupsScreen()), phone);
+      await shot(tester, '${tag(k)}-phone-groups', app(k, vpnOf('off'), const GroupsScreen()), phone);
     });
     testWidgets('${k.name} phone add', (tester) async {
-      await shot(tester, '${k.name}-phone-add', app(k, vpnOf('off'), const Scaffold(body: SafeArea(child: AddSourcePanel(mode: AddSourceMode.links, inline: true, initial: 'vless://8f1c@203.0.113.7:443?security=reality#Мой VPS\nhysteria2://k3y@203.0.113.7:8443#VPS HY2')))), phone);
+      await shot(tester, '${tag(k)}-phone-add', app(k, vpnOf('off'), const Scaffold(body: SafeArea(child: AddSourcePanel(mode: AddSourceMode.links, inline: true, initial: 'vless://8f1c@203.0.113.7:443?security=reality#Мой VPS\nhysteria2://k3y@203.0.113.7:8443#VPS HY2')))), phone);
     });
     testWidgets('${k.name} phone splash', (tester) async {
-      await shot(tester, '${k.name}-phone-splash', app(k, vpnOf('off'), BrandSplash(kind: k)), phone);
+      await shot(tester, '${tag(k)}-phone-splash', app(k, vpnOf('off'), BrandSplash(kind: k)), phone);
     });
     testWidgets('${k.name} phone about', (tester) async {
-      await shot(tester, '${k.name}-phone-about', app(k, vpnOf('off'), const AboutScreen()), phone);
+      await shot(tester, '${tag(k)}-phone-about', app(k, vpnOf('off'), const AboutScreen()), phone);
     });
     testWidgets('${k.name} phone setup', (tester) async {
-      await shot(tester, '${k.name}-phone-setup', app(k, vpnOf('off'), SetupScreen(onComplete: () {})), phone);
+      await shot(tester, '${tag(k)}-phone-setup', app(k, vpnOf('off'), SetupScreen(onComplete: () {})), phone);
     });
     testWidgets('${k.name} phone settings', (tester) async {
-      await shot(tester, '${k.name}-phone-settings', app(k, vpnOf('off'), const SettingsScreen()), phone);
+      await shot(tester, '${tag(k)}-phone-settings', app(k, vpnOf('off'), const SettingsScreen()), phone);
     });
     testWidgets('${k.name} phone settings protection', (tester) async {
-      await shot(tester, '${k.name}-phone-settings-protection', app(k, vpnOf('on'), const SettingsScreen()), phone, then: () async {
-        await tester.drag(find.byType(ListView).first, const Offset(0, -330));
+      await shot(tester, '${tag(k)}-phone-settings-protection', app(k, vpnOf('on'), const SettingsScreen()), phone, then: () async {
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -330));
         await tester.pump(const Duration(milliseconds: 500));
       });
     });
     for (final s in ['off', 'on']) {
       testWidgets('${k.name} desktop $s', (tester) async {
-        await shot(tester, '${k.name}-desktop-$s', app(k, vpnOf(s), const HomeScreen()), desk, android: false);
+        await shot(tester, '${tag(k)}-desktop-$s', app(k, vpnOf(s), const HomeScreen()), desk, android: false);
       });
     }
     testWidgets('${k.name} desktop servers', (tester) async {
-      await shot(tester, '${k.name}-desktop-servers', app(k, vpnOf('on'), const HomeScreen()), desk, android: false, then: () async {
-        await tester.tap(find.byTooltip('Серверы'));
+      await shot(tester, '${tag(k)}-desktop-servers', app(k, vpnOf('on'), const HomeScreen()), desk, android: false, then: () async {
+        // Onyx и Signal — значок «Серверы», M3 — кнопка «Серверы» в группе над панелью.
+        await tester.tap(k == AppThemeKind.material ? find.text('Серверы').first : find.byTooltip('Серверы'));
         await tester.pump(const Duration(milliseconds: 500));
       });
     });
     testWidgets('${k.name} phone settings region', (tester) async {
-      await shot(tester, '${k.name}-phone-settings-region', app(k, vpnOf('on'), const SettingsScreen()), phone, then: () async {
-        await tester.drag(find.byType(ListView).first, const Offset(0, -330));
+      await shot(tester, '${tag(k)}-phone-settings-region', app(k, vpnOf('on'), const SettingsScreen()), phone, then: () async {
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -330));
         await tester.pump(const Duration(milliseconds: 500));
         await tester.tap(find.text('Регион маршрутизации'));
         await tester.pump(const Duration(milliseconds: 600));
+        // Лист M3 открывается пружиной — ей нужны кадры.
+        if (k == AppThemeKind.material) await settle(tester);
       });
     });
     // Настройки в окне Windows: раздел «Запуск» с автозапуском (#58).
     testWidgets('${k.name} desktop-settings', (tester) async {
-      await shot(tester, '${k.name}-desktop-settings', app(k, vpnOf('on'), const SettingsScreen()), desk, android: false, then: () async {
-        await tester.drag(find.byType(ListView).first, const Offset(0, -640));
+      await shot(tester, '${tag(k)}-desktop-settings', app(k, vpnOf('on'), const SettingsScreen()), desk, android: false, then: () async {
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -640));
         await tester.pump(const Duration(milliseconds: 500));
       });
     });
@@ -471,14 +496,14 @@ void main() {
     // connectPhaseProvider.
     for (final (name, ph) in autopilotPhases) {
       testWidgets('${k.name} phone autopilot $name', (tester) async {
-        await shot(tester, '${k.name}-phone-autopilot-$name', app(k, const VpnDisconnected(), const HomeScreen(), phase: ph), phone);
+        await shot(tester, '${tag(k)}-phone-autopilot-$name', app(k, const VpnDisconnected(), const HomeScreen(), phase: ph), phone);
       });
       testWidgets('${k.name} desktop autopilot $name', (tester) async {
-        await shot(tester, '${k.name}-desktop-autopilot-$name', app(k, const VpnDisconnected(), const HomeScreen(), phase: ph), desk, android: false);
+        await shot(tester, '${tag(k)}-desktop-autopilot-$name', app(k, const VpnDisconnected(), const HomeScreen(), phase: ph), desk, android: false);
       });
     }
     testWidgets('${k.name} flyout failed', (tester) async {
-      await shot(tester, '${k.name}-flyout-failed', app(k, const VpnDisconnected(), Scaffold(body: flyoutScene(0)), phase: autopilotPhases.last.$2),
+      await shot(tester, '${tag(k)}-flyout-failed', app(k, const VpnDisconnected(), Scaffold(body: flyoutScene(0)), phase: autopilotPhases.last.$2),
           const Size(760, 620), android: false);
     });
   }

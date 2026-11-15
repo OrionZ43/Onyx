@@ -285,6 +285,7 @@ abstract final class AppTheme {
       useMaterial3: true,
       colorScheme: s,
       fontFamily: 'Roboto',
+      fontFamilyFallback: AppTypography.fallback,
       textTheme: text,
       extensions: [t],
       scaffoldBackgroundColor: s.surface,

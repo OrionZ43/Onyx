@@ -426,6 +426,9 @@ class _UrlInputState extends State<_UrlInput> {
                         ),
                         decoration: InputDecoration(
                           border: InputBorder.none,
+                          // Рамка — у контейнера вокруг; заливка поля из темы
+                          // M3 (filled) легла бы серым прямоугольником внутри.
+                          filled: false,
                           hintText: 'Ссылка на подписку или vless://, hysteria2://…',
                           hintStyle: TextStyle(
                             color: AppColors.nebula1,

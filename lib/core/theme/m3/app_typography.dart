@@ -6,11 +6,16 @@ import 'package:flutter/material.dart';
 ///
 /// https://m3.material.io/styles/typography/type-scale-tokens
 ///
-/// Шрифт — системный Roboto: на Android он есть всегда, поэтому ничего не
-/// скачивается и не кладётся в ассеты.
+/// Шрифт — Roboto из ассетов (латиница и кириллица, как у МИТСО на Android;
+/// в Windows своего Roboto нет). Знаки, которых в этом наборе нет («→» в
+/// «Переключились: A → B» и т. п.), берутся из Inter — он тоже в ассетах, —
+/// а не из системного шрифта, который на каждой платформе свой.
 ///
 /// Цвет текста в стилях не задаётся — его подставляет тема из `onSurface`.
 abstract final class AppTypography {
+  /// Запасной шрифт для знаков, которых нет в Roboto из ассетов.
+  static const List<String> fallback = ['Inter'];
+
   static TextTheme textTheme() {
     TextStyle style(
       double size,
@@ -20,6 +25,7 @@ abstract final class AppTypography {
     ) {
       return TextStyle(
         fontFamily: 'Roboto',
+        fontFamilyFallback: fallback,
         fontSize: size,
         height: height / size,
         letterSpacing: tracking,
