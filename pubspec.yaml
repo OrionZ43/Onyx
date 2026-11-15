@@ -4,7 +4,9 @@ publish_to: 'none'
 version: 0.1.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  # 3.12: перенесённые компоненты M3 (lib/presentation/widgets/m3) используют
+  # приватные именованные параметры и null-aware элементы; CI уже на Flutter 3.44.
+  sdk: '>=3.12.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -36,6 +38,8 @@ dependencies:
   flutter_animate: ^4.5.0
   flutter_svg: ^2.3.0
   material_new_shapes: ^1.0.0
+  # Material Symbols — иконки темы Material 3 Expressive (как в «Расписании МИТСО»).
+  material_symbols_icons: ^4.2960.0
   dynamic_color: ^1.8.1
 
   # Links

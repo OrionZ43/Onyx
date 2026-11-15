@@ -13,6 +13,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/onyx_tokens.dart';
+import '../m3/m3_subscriptions_screen.dart';
 import '../../core/glass_widget.dart';
 import '../providers/subscription_provider.dart';
 
@@ -63,6 +65,7 @@ class _SubscriptionManagerScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (OnyxTokens.of(context).isMaterial) return const M3SubscriptionsScreen();
     final sub = ref.watch(subscriptionProvider);
 
     return Scaffold(

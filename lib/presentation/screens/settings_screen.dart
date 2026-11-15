@@ -11,6 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/onyx_tokens.dart';
 import '../../core/theme/theme_kind.dart';
 import '../../infrastructure/platform_features.dart';
+import '../m3/m3_settings_screen.dart';
 import '../providers/settings_provider.dart';
 import '../providers/theme_provider.dart';
 import '../util/platform_kind.dart';
@@ -31,6 +32,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = OnyxTokens.of(context);
+    if (t.isMaterial) return const M3SettingsScreen();
     final settings = ref.watch(settingsProvider);
     final n = ref.read(settingsProvider.notifier);
     final kind = ref.watch(themeKindProvider);

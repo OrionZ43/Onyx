@@ -4,7 +4,7 @@ import '../../../core/theme/onyx_tokens.dart';
 import '../../../core/theme/theme_kind.dart';
 import '../../../domain/entities/vpn_state.dart';
 import 'hero_state.dart';
-import 'm3_cookie_button.dart';
+import 'm3_shape_button.dart';
 import 'onyx_lens_button.dart';
 import 'signal_ring_button.dart';
 
@@ -28,7 +28,7 @@ class HeroButton extends StatelessWidget {
           size: size,
           connectedAt: vpn is VpnConnected ? (vpn as VpnConnected).connectedAt : null,
         ),
-      AppThemeKind.material => M3CookieButton(phase: phase, onTap: onTap, size: size),
+      AppThemeKind.material => M3ShapeButton(phase: phase, onTap: onTap, size: size),
     };
   }
 }
