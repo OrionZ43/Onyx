@@ -287,7 +287,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     state = state.copyWith(
       nodes: [
         for (final n in state.nodes)
-          n.id == nodeId ? n.copyWith(isAlive: false, isTrulyWorking: false) : n,
+          // Прошлый пинг мёртвой ноды — не её задержка (#87).
+          n.id == nodeId ? n.copyWith(isAlive: false, isTrulyWorking: false, clearLatency: true) : n,
       ],
       quarantined: _activeQuarantine(),
     );
@@ -369,13 +370,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       } else {
         probed = tcp;
         _probedIds.addAll(probed.map((n) => n.id));
-        _apply(probed, (cur, upd) => cur.copyWith(
-              isAlive: upd.isAlive,
-              latencyMs: upd.latencyMs,
-              // При повторной проверке сбрасываем «работает», пока Deep Probe не
-              // подтвердит заново — иначе мёртвая нода висела бы зелёной.
-              isTrulyWorking: upd.isAlive ? cur.isTrulyWorking : false,
-            ));
+        // Не ответил — пинг стирается, «работает» ждёт Deep Probe (#87).
+        _apply(probed, DeepProbe.mergeTcp);
       }
     }
     state = state.copyWith(status: SubStatus.ready, probedCount: probed.length);
@@ -454,18 +450,10 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
         if (!mounted) return;
         // Deep Probe подтвердил реальную работу — снимаем карантин.
         if (u.isTrulyWorking) _liftQuarantine(u.id);
-        _apply([u], (cur, upd) => cur.copyWith(
-              // Подтверждённая Deep Probe нода жива, даже если TCP-пинга не
-              // было (под TUN или QUIC).
-              // Под TUN живость пришла из TCP-пинга изнутри пробы.
-              isAlive: assumeAlive ? upd.isAlive : (cur.isAlive || upd.isTrulyWorking),
-              isTrulyWorking: upd.isTrulyWorking,
-              aiReachable: upd.aiReachable,
-              udpSupported: upd.udpSupported,
-              latencyMs: upd.latencyMs,
-              // Страна выхода узнаётся один раз (#68): пустой ответ не стирает старую.
-              exitCountry: upd.exitCountry ?? cur.exitCountry,
-            ));
+        // Под TUN живость — из TCP-пинга изнутри пробы; у QUIC — только из
+        // самой проверки (TCP-пинга у них нет): провал = мёртвая, без старого
+        // пинга (#87). Подтверждённая проверкой нода жива.
+        _apply([u], (cur, upd) => DeepProbe.mergeDeep(cur, upd, underTun: assumeAlive));
       },
       onProgress: (done, total) {
         if (mounted) {

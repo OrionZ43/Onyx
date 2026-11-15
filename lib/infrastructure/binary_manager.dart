@@ -50,7 +50,7 @@ class BinaryManager {
 
   /// Зеркала для github.com (префикс + исходный URL). Используются, только
   /// если прямая загрузка не удалась; целостность гарантирует SHA-256.
-  static const _githubMirrors = [
+  static const githubMirrors = [
     'https://ghfast.top/',
     'https://gh-proxy.com/',
   ];
@@ -205,7 +205,7 @@ class BinaryManager {
     final candidates = [
       url,
       if (url.startsWith('https://github.com/'))
-        for (final m in _githubMirrors) '$m$url',
+        for (final m in githubMirrors) '$m$url',
     ];
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 15),

@@ -132,15 +132,18 @@ class Node {
   /// время HTTPS-запроса через сервер; его делим на [httpsRttFactor]. По ней
   /// сравниваем ноды, проверяем потолки #60 и показываем «пинг» в UI —
   /// иначе HY2 выглядел вчетверо медленнее REALITY на том же сервере.
+  ///
+  /// У мёртвой ноды ([isAlive] == false) — null (#87): её прошлый замер —
+  /// не текущая задержка, в списке его не показываем и не сравниваем.
   int? get rttMs {
     final ms = latencyMs;
-    if (ms == null) return null;
+    if (ms == null || !isAlive) return null;
     return isQuic ? (ms / httpsRttFactor).round() : ms;
   }
 
   /// [rttMs] пересчитан из времени HTTPS (QUIC), а не замерен одним
   /// рукопожатием — в UI можно показать «≈».
-  bool get rttIsEstimate => isQuic && latencyMs != null;
+  bool get rttIsEstimate => isQuic && rttMs != null;
 
   /// Ключ «того же сервера» для автопереключения транспорта: ноды с одним
   /// host, но разными протоколами (REALITY + Hysteria2 от нашего скрипта).
@@ -214,6 +217,8 @@ class Node {
     bool? muxEnabled,
     String? muxProtocol,
     int? muxMaxStreams,
+    // null в [latencyMs] значит «оставить как было»; стереть — только так (#87).
+    bool clearLatency = false,
   }) {
     return Node(
       sourceIds: sourceIds ?? this.sourceIds,
@@ -244,7 +249,7 @@ class Node {
       network: network,
       realityPbk: realityPbk,
       realitySid: realitySid,
-      latencyMs: latencyMs ?? this.latencyMs,
+      latencyMs: clearLatency ? null : (latencyMs ?? this.latencyMs),
       udpSupported: udpSupported ?? this.udpSupported,
       isAlive: isAlive ?? this.isAlive,
       isTrulyWorking: isTrulyWorking ?? this.isTrulyWorking,
