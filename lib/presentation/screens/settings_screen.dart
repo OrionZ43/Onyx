@@ -214,7 +214,7 @@ class _ThemePicker extends StatelessWidget {
     return LayoutBuilder(builder: (context, box) {
       final narrow = box.maxWidth < 420;
       final cards = [
-        for (final k in AppThemeKind.values)
+        for (final k in AppThemeKind.selectable)
           _ThemeCard(kind: k, selected: k == value, onTap: () => onChanged(k)),
       ];
       return Row(
