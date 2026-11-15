@@ -21,6 +21,7 @@ import '../../domain/entities/node.dart';
 import '../../domain/entities/vpn_state.dart';
 import '../providers/country_provider.dart';
 import '../providers/groups_provider.dart';
+import '../m3/m3_server_list.dart';
 import '../providers/node_provider.dart';
 import '../providers/own_nodes_provider.dart';
 import '../providers/sources_provider.dart';
@@ -43,6 +44,7 @@ import 'subscription_import.dart';
 /// Открывает шторку серверов.
 Future<void> showOnyxNodeSheet(BuildContext context) {
   final t = OnyxTokens.of(context);
+  if (t.isMaterial) return showM3ServerSheet(context);
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,

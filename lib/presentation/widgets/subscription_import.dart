@@ -5,6 +5,7 @@ import 'package:material_new_shapes/material_new_shapes.dart';
 
 import '../../core/theme/onyx_tokens.dart';
 import '../providers/sources_provider.dart';
+import '../m3/m3_subscription_import.dart';
 import '../providers/subscription_provider.dart';
 import 'country_flag.dart' show PolygonClipper;
 import 'add_source_sheet.dart' show looksLikeSubscriptionUrl;
@@ -68,6 +69,7 @@ class _SubscriptionImportState extends ConsumerState<SubscriptionImport> {
   @override
   Widget build(BuildContext context) {
     final t = OnyxTokens.of(context);
+    if (t.isMaterial) return const M3SubscriptionImport();
     final sub = ref.watch(subscriptionProvider);
     final s = Theme.of(context).colorScheme;
     final loading = sub.status == SubStatus.fetching;

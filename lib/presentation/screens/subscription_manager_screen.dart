@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/onyx_tokens.dart';
+import '../m3/m3_subscriptions_screen.dart';
 import '../providers/sources_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../widgets/add_source_sheet.dart';
@@ -28,6 +29,7 @@ class SubscriptionManagerScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (OnyxTokens.of(context).isMaterial) return const M3SubscriptionsScreen();
     final t = OnyxTokens.of(context);
     final sources = ref.watch(sourcesProvider);
     final nodes = ref.watch(subscriptionProvider.select((s) => s.nodes));

@@ -30,6 +30,7 @@ import '../../domain/entities/vpn_state.dart';
 import '../providers/activity_provider.dart';
 import '../providers/connect_phase.dart';
 import '../providers/groups_provider.dart';
+import '../m3/m3_home_screen.dart';
 import '../providers/node_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/sources_provider.dart';
@@ -118,6 +119,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Material 3 Expressive — свои экраны из компонентов M3 (lib/presentation/m3).
+    if (OnyxTokens.of(context).isMaterial) return const M3HomeScreen();
     ref.listen<VpnState>(vpnControllerProvider, _onVpnChanged);
     ref.listen<ConnectPhase>(connectPhaseProvider, _onPhaseChanged);
     final t = OnyxTokens.of(context);

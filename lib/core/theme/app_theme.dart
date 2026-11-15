@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_colors.dart';
+import 'm3/app_shapes.dart';
+import 'm3/app_state_layer.dart';
+import 'm3/app_typography.dart';
 import 'onyx_tokens.dart';
 import 'theme_kind.dart';
 
@@ -9,8 +12,9 @@ import 'theme_kind.dart';
 ///
 /// * Onyx — тёплый чёрный, акцент шампань `#D2B98F`, Inter / Inter Tight.
 /// * Signal — абсолютный чёрный (OLED), акцент «REC» `#FF3B2F`, Onest / JetBrains Mono.
-/// * Material — Material 3 Expressive: схема из обоев (Android 12+) или из сида,
-///   шкала форм и типошкала M3, Roboto.
+/// * Material — Material 3 Expressive: схема из обоев (Android 12+) или
+///   эталонная схема M3, типошкала M3 с emphasized-стилями, Material Symbols и
+///   компоненты, перенесённые из «Расписания МИТСО» (`docs/m3/`).
 abstract final class AppTheme {
   // ── Onyx ──────────────────────────────────────────────────────────────────
   static const OnyxTokens onyxTokens = OnyxTokens(
@@ -63,9 +67,14 @@ abstract final class AppTheme {
   /// Красная REC-точка Signal: «в эфире», выбранный сервер.
   static const Color signalRec = Color(0xFFFF3B2F);
 
-  /// Сид статичной схемы Material, когда цвета обоев недоступны
-  /// (Windows, Android < 12): эталон M3 `#6750A4`.
+  /// Сид эталонной схемы M3 (`#6750A4`) — для справки: сама схема берётся
+  /// встроенной ([materialScheme]), а не выводится из сида.
   static const Color materialSeed = Color(0xFF6750A4);
+
+  /// Эталонная тёмная схема M3 (`ColorDarkTokens`): во Flutter это встроенная
+  /// схема `ThemeData`, а `fromSeed(#6750A4)` дал бы другие роли.
+  static final ColorScheme _baselineDark =
+      ThemeData(brightness: Brightness.dark, useMaterial3: true).colorScheme;
 
   static OnyxTokens materialTokens(ColorScheme s) => OnyxTokens(
         kind: AppThemeKind.material,
@@ -90,12 +99,10 @@ abstract final class AppTheme {
         monoFont: 'Roboto',
       );
 
+  /// Схема темы Material: цвета обоев (Android 12+, `DynamicColorBuilder`),
+  /// иначе эталон M3 (Windows, Android до 12, тесты).
   static ColorScheme materialScheme(ColorScheme? dynamicDark) =>
-      dynamicDark ??
-      ColorScheme.fromSeed(
-        seedColor: materialSeed,
-        brightness: Brightness.dark,
-      );
+      dynamicDark ?? _baselineDark;
 
   /// Тема по виду. [dynamicDark] — тёмная схема обоев (Android 12+), только для Material.
   static ThemeData build(AppThemeKind kind, {ColorScheme? dynamicDark}) {
@@ -266,34 +273,14 @@ abstract final class AppTheme {
     );
   }
 
-  /// Material 3 Expressive: стандартная тема M3 со схемой [s], типошкалой M3
-  /// (https://m3.material.io/styles/typography/type-scale-tokens) и шкалой форм.
+  /// Material 3 Expressive — как `buildTheme` в «Расписании МИТСО»:
+  /// типошкала M3 (`AppTypography`, Roboto), Material Symbols, ripple и
+  /// state layer по `StateTokens`, компоненты Flutter — по токенам M3.
   static ThemeData _material(ColorScheme s, OnyxTokens t) {
-    TextStyle st(double size, double height, double tracking, FontWeight w) =>
-        TextStyle(
-          fontFamily: 'Roboto',
-          fontSize: size,
-          height: height / size,
-          letterSpacing: tracking,
-          fontWeight: w,
-        );
-    final text = TextTheme(
-      displayLarge: st(57, 64, -0.25, FontWeight.w400),
-      displayMedium: st(45, 52, 0, FontWeight.w400),
-      displaySmall: st(36, 44, 0, FontWeight.w400),
-      headlineLarge: st(32, 40, 0, FontWeight.w400),
-      headlineMedium: st(28, 36, 0, FontWeight.w400),
-      headlineSmall: st(24, 32, 0, FontWeight.w400),
-      titleLarge: st(22, 28, 0, FontWeight.w400),
-      titleMedium: st(16, 24, 0.15, FontWeight.w500),
-      titleSmall: st(14, 20, 0.1, FontWeight.w500),
-      bodyLarge: st(16, 24, 0.5, FontWeight.w400),
-      bodyMedium: st(14, 20, 0.25, FontWeight.w400),
-      bodySmall: st(12, 16, 0.4, FontWeight.w400),
-      labelLarge: st(14, 20, 0.1, FontWeight.w500),
-      labelMedium: st(12, 16, 0.5, FontWeight.w500),
-      labelSmall: st(11, 16, 0.5, FontWeight.w500),
-    ).apply(bodyColor: s.onSurface, displayColor: s.onSurface);
+    final TextTheme text = AppTypography.textTheme().apply(
+      bodyColor: s.onSurface,
+      displayColor: s.onSurface,
+    );
     return ThemeData(
       useMaterial3: true,
       colorScheme: s,
@@ -301,37 +288,87 @@ abstract final class AppTheme {
       textTheme: text,
       extensions: [t],
       scaffoldBackgroundColor: s.surface,
+      canvasColor: s.surface,
+
+      // Material Symbols: https://m3.material.io/styles/icons — вес 400,
+      // оптический размер по размеру иконки, grade −25 для светлых иконок на
+      // тёмном фоне.
+      iconTheme: IconThemeData(
+        size: 24,
+        opticalSize: 24,
+        weight: 400,
+        grade: -25,
+        fill: 0,
+        color: s.onSurfaceVariant,
+      ),
+
+      // State layer цветом содержимого: pressed/focus 10 %, hover 8 %
+      // (`StateTokens.kt`). Ripple — как `ripple()` в Compose, без InkSparkle.
+      splashFactory: InkRipple.splashFactory,
+      splashColor: s.onSurface.withValues(alpha: AppStateLayer.pressedOpacity),
+      highlightColor: s.onSurface.withValues(alpha: AppStateLayer.pressedOpacity),
+      hoverColor: s.onSurface.withValues(alpha: AppStateLayer.hoverOpacity),
+      focusColor: s.onSurface.withValues(alpha: AppStateLayer.focusOpacity),
+
+      // App bar: `AppBarTokens` — контейнер surface, при прокрутке под ним —
+      // surfaceContainer, без тени; заголовок titleLarge, отступ действий 4dp.
       appBarTheme: AppBarTheme(
-        backgroundColor: s.surface,
+        backgroundColor: WidgetStateColor.resolveWith(
+          (states) => states.contains(WidgetState.scrolledUnder)
+              ? s.surfaceContainer
+              : s.surface,
+        ),
+        surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         titleTextStyle: text.titleLarge,
+        actionsPadding: const EdgeInsetsDirectional.only(end: 4),
         systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(
           statusBarColor: Colors.transparent,
           systemNavigationBarColor: s.surface,
         ),
       ),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        color: s.surfaceContainer,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      ),
-      snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
-      bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: s.surfaceContainerLow,
-        showDragHandle: false,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+
+      // Карточки: умолчания Flutter M3 совпадают с токенами (filled —
+      // surfaceContainerHighest, 12dp).
+      cardTheme: const CardThemeData(margin: EdgeInsets.zero),
+
+      // Plain tooltip: `PlainTooltipTokens` — inverseSurface / inverseOnSurface,
+      // bodySmall, углы 4dp, поля 8×4, ширина до 200dp.
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: s.inverseSurface,
+          borderRadius: AppShapes.all(AppShapes.extraSmall),
         ),
+        textStyle: text.bodySmall!.copyWith(color: s.onInverseSurface),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 24, maxWidth: 200),
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: s.surfaceContainerHigh,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(28),
-          borderSide: BorderSide.none,
-        ),
+
+      // Пункт списка: `ListTokens` — поля 16, сверху и снизу 10, между слотами 12.
+      listTileTheme: ListTileThemeData(
+        contentPadding: const EdgeInsetsDirectional.symmetric(horizontal: 16),
+        minVerticalPadding: 10,
+        horizontalTitleGap: 12,
+        minLeadingWidth: 24,
+        titleTextStyle: text.bodyLarge,
+        subtitleTextStyle: text.bodyMedium!.copyWith(color: s.onSurfaceVariant),
+        iconColor: s.onSurfaceVariant,
       ),
+
+      dividerTheme: DividerThemeData(color: s.outlineVariant, thickness: 1, space: 1),
+
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: s.inverseSurface,
+        contentTextStyle: text.bodyMedium!.copyWith(color: s.onInverseSurface),
+        shape: AppShapes.rounded(AppShapes.extraSmall),
+        insetPadding: const EdgeInsets.all(12),
+      ),
+
+      // Заполненное поле M3 (`FilledTextFieldTokens`): surfaceContainerHighest,
+      // верхние углы 4dp, индикатор снизу — умолчания Flutter при filled.
+      inputDecorationTheme: const InputDecorationTheme(filled: true),
+
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),

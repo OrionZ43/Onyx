@@ -56,3 +56,6 @@ sing-box-1.10.1-android-arm64/
 android/app/src/main/jniLibs/arm64-v8a/libsingbox.so
 # Ядро для Windows-бандла (tools/core/fetch-core.*)
 /dist/core/
+
+# Выгрузка гайдлайнов m3.material.io (tools/m3_guidelines.py) — чужая документация.
+.m3-guidelines/

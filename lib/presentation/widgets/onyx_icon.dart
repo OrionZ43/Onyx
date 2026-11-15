@@ -1,43 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../../core/theme/onyx_tokens.dart';
 
 /// Набор иконок приложения. Каждая тема рисует их своим набором:
 /// Onyx — Phosphor Light (`assets/icons/onyx`), Signal — Pixelarticons
-/// (`assets/icons/signal`), Material — встроенные Material Icons (rounded).
+/// (`assets/icons/signal`), Material — Material Symbols (система иконок M3,
+/// https://m3.material.io/styles/icons), те же глифы.
 /// Лицензии — `assets/icons/LICENSES.md`.
 enum OnyxGlyph {
-  power('power', Icons.power_settings_new_rounded),
-  settings('settings', Icons.settings_outlined),
-  globe('globe', Icons.language_rounded),
-  chevronRight('chev', Icons.chevron_right_rounded),
-  chevronDown('chevd', Icons.expand_more_rounded),
-  back('back', Icons.arrow_back_rounded),
-  search('search', Icons.search_rounded),
-  plus('plus', Icons.add_rounded),
-  down('down', Icons.arrow_downward_rounded),
-  up('up', Icons.arrow_upward_rounded),
-  clock('clock', Icons.schedule_rounded),
-  shield('shield', Icons.verified_user_outlined),
-  zap('zap', Icons.bolt_rounded),
-  check('check', Icons.check_rounded),
-  more('more', Icons.more_vert_rounded),
-  refresh('refresh', Icons.refresh_rounded),
-  close('close', Icons.close_rounded),
-  sliders('sliders', Icons.tune_rounded),
-  paste('paste', Icons.content_paste_rounded),
-  link('link', Icons.link_rounded),
-  qr('qr', Icons.qr_code_scanner_rounded),
-  error('error', Icons.error_outline_rounded),
-  ai('ai', Icons.auto_awesome_outlined),
-  voice('voice', Icons.mic_none_rounded),
-  terminal('terminal', Icons.terminal_rounded),
-  help('help', Icons.help_outline_rounded),
-  star('star', Icons.star_outline_rounded),
-  trash('trash', Icons.delete_outline_rounded),
-  copy('copy', Icons.content_copy_rounded),
-  info('info', Icons.info_outline_rounded),
+  power('power', Symbols.power_settings_new),
+  settings('settings', Symbols.settings),
+  globe('globe', Symbols.language),
+  chevronRight('chev', Symbols.chevron_right),
+  chevronDown('chevd', Symbols.expand_more),
+  back('back', Symbols.arrow_back),
+  search('search', Symbols.search),
+  plus('plus', Symbols.add),
+  down('down', Symbols.arrow_downward),
+  up('up', Symbols.arrow_upward),
+  clock('clock', Symbols.schedule),
+  shield('shield', Symbols.verified_user),
+  zap('zap', Symbols.bolt),
+  check('check', Symbols.check),
+  more('more', Symbols.more_vert),
+  refresh('refresh', Symbols.refresh),
+  close('close', Symbols.close),
+  sliders('sliders', Symbols.tune),
+  paste('paste', Symbols.content_paste),
+  link('link', Symbols.link),
+  qr('qr', Symbols.qr_code_scanner),
+  error('error', Symbols.error),
+  ai('ai', Symbols.auto_awesome),
+  voice('voice', Symbols.mic),
+  terminal('terminal', Symbols.terminal),
+  help('help', Symbols.help),
+  star('star', Symbols.star),
+  trash('trash', Symbols.delete),
+  copy('copy', Symbols.content_copy),
+  info('info', Symbols.info),
 
   /// Кнопки окна — рисуются линиями во всех темах (как в Windows 11).
   minimize('', null),
