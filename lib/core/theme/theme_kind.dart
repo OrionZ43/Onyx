@@ -16,8 +16,19 @@ enum AppThemeKind {
   final String label;
   final String description;
 
+  /// Тема одобрена и есть в «Оформлении». Material 3 пока НЕТ: пользователь
+  /// не принял её макеты (m3, m3c) — «M3 в коде только после одобрения»;
+  /// код темы остаётся для доработки по канону (docs/redesign/M3-BRIEF.md).
+  /// Вернуть — одна строка здесь.
+  bool get released => this != AppThemeKind.material;
+
+  /// Темы для выбора в «Оформлении».
+  static List<AppThemeKind> get selectable => [for (final k in values) if (k.released) k];
+
+  /// Сохранённая тема. Неизвестная или не выпущенная (Material, выбранный в
+  /// тестовых сборках) — Onyx.
   static AppThemeKind byName(String? name) => AppThemeKind.values.firstWhere(
-        (k) => k.name == name,
+        (k) => k.name == name && k.released,
         orElse: () => AppThemeKind.onyx,
       );
 }

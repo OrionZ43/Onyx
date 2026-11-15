@@ -67,6 +67,14 @@ class FakeVpn extends StateNotifier<VpnState> implements VpnController {
   dynamic noSuchMethod(Invocation i) => Future<void>.value();
 }
 
+/// Тема снимка без чтения настроек: настоящий ThemeKindNotifier подхватывал
+/// пустые настройки (Onyx), и в Настройках темы Signal была отмечена Onyx.
+class FakeThemeKind extends StateNotifier<AppThemeKind> implements ThemeKindNotifier {
+  FakeThemeKind(super.state);
+  @override
+  dynamic noSuchMethod(Invocation i) => Future<void>.value();
+}
+
 /// Автозапуск (#58) без реестра: тесты идут на Windows-хосте.
 class FakeAutostart extends StateNotifier<bool?> implements AutostartNotifier {
   FakeAutostart(super.state);
@@ -205,7 +213,7 @@ Widget app(AppThemeKind kind, VpnState vpn, Widget home, {SubscriptionState? s, 
         autostartProvider.overrideWith((ref) => FakeAutostart(true)),
         activityProvider.overrideWith((ref) => ActivityLog(activity)),
         speedProvider.overrideWith((ref) => SpeedHistory(speedSamples)),
-        themeKindProvider.overrideWith((ref) => ThemeKindNotifier(kind)),
+        themeKindProvider.overrideWith((ref) => FakeThemeKind(kind)),
         vpnControllerProvider.overrideWith((ref) => FakeVpn(vpn)),
         subscriptionProvider.overrideWith((ref) => FakeSub(s ?? sub)),
         updateControllerProvider.overrideWith(FakeUpdate.new),
