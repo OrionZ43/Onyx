@@ -11,6 +11,7 @@
 // ходу); долгое нажатие — меню: страна, группы.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
@@ -79,17 +80,26 @@ class _M3ServerListState extends ConsumerState<M3ServerList> {
     super.dispose();
   }
 
-  void _select(Node node) {
+  /// [after] — сначала дождаться этого (закрытия поиска над листом), потом
+  /// закрыть лист: иначе maybePop попадёт в маршрут поиска, и лист останется.
+  void _select(Node node, {Future<Object?>? after}) {
     HapticFeedback.selectionClick();
     // Выбор и переподключение на ходу — общая логика (util/vpn_actions.dart).
     chooseNode(ref, node);
-    if (widget.inSheet && mounted) Navigator.of(context).maybePop();
+    if (!widget.inSheet) return;
+    void close() {
+      if (mounted) Navigator.of(context).maybePop();
+    }
+
+    after == null ? close() : after.then((_) => close());
   }
 
+  /// Как в Onyx (node_list_sheet): только режим выбора, соединение не
+  /// трогаем — лучший сервер возьмётся при следующем подключении.
   void _setAuto(bool auto) {
     final Node? best = ref.read(autoNodeProvider);
     if (auto) {
-      chooseNode(ref, null);
+      ref.read(nodeSelectionProvider.notifier).clear();
     } else if (best != null) {
       ref.read(nodeSelectionProvider.notifier).select(best);
     }
@@ -141,7 +151,9 @@ class _M3ServerListState extends ConsumerState<M3ServerList> {
       ],
       cur ?? '*',
     );
-    if (v != null) await chooseAutoGroup(ref, v == '*' ? null : v);
+    // Как в Onyx: меняется только группа, ручной выбор и соединение — нет.
+    if (v == null || !mounted) return;
+    await ref.read(autoGroupProvider.notifier).setAutoGroup(v == '*' ? null : v);
   }
 
   Future<void> _pickCountry(Map<String, String> countries) async {
@@ -152,15 +164,18 @@ class _M3ServerListState extends ConsumerState<M3ServerList> {
       [
         ('*', 'Все страны', null),
         for (final MapEntry<String, String> e in list) (e.key, e.value, M3Flag(code: e.key, size: 32)),
+        // Страна не определилась — «Другие», как в Onyx.
+        if (countries.containsKey('')) ('', Country.unknown.name, const M3Flag(code: '', size: 32)),
       ],
       _country ?? '*',
     );
-    if (v != null) setState(() => _country = v == '*' ? null : v);
+    if (v == null || !mounted) return;
+    setState(() => _country = v == '*' ? null : v);
   }
 
   Future<void> _newGroup({String? withNode}) async {
     final String? name = await askGroupName(context);
-    if (name == null || name.trim().isEmpty) return;
+    if (name == null || name.trim().isEmpty || !mounted) return;
     final GroupsController ctl = ref.read(groupsProvider.notifier);
     final NodeGroup g = await ctl.create(name.trim());
     if (withNode != null) {
@@ -220,7 +235,7 @@ class _M3ServerListState extends ConsumerState<M3ServerList> {
         detected: cr.detected(node),
         detectedHow: cr.detectedHow(node),
       );
-      if (code != null) await ref.read(countryOverridesProvider.notifier).set(node.serverKey, code);
+      if (code != null && mounted) await ref.read(countryOverridesProvider.notifier).set(node.serverKey, code);
       return;
     }
     if (v == '+') return _newGroup(withNode: node.id);
@@ -330,9 +345,13 @@ class _M3ServerListState extends ConsumerState<M3ServerList> {
             nodes: sorted(sub.nodes.where((n) => q.isEmpty || n.name.toLowerCase().contains(q) || cr.of(n).name.toLowerCase().contains(q))),
             current: current,
             onSelect: (n) {
+              // Поиск — свой маршрут поверх листа: сначала он сворачивается,
+              // лист закрываем, когда маршрут поиска снят.
+              final Future<Object?>? searchClosed = ModalRoute.of(context)?.popped;
               M3SearchScope.of(context).close();
-              _select(n);
+              _select(n, after: searchClosed);
             },
+            onMenu: _menu,
           );
         },
       ),
@@ -414,6 +433,7 @@ class _M3ServerListState extends ConsumerState<M3ServerList> {
             ]),
             onTap: () => _setAuto(picked != null),
             semanticsLabel: 'Автовыбор из «${groupLabel(autoGroup, userGroups)}», ${picked == null ? 'включено' : 'выключено'}',
+            semanticsActions: {const CustomSemanticsAction(label: 'Группа для автовыбора'): _pickAutoGroup},
           ),
         ]),
         if (tab == NodeGroup.favoritesId && base.isEmpty)
@@ -552,17 +572,21 @@ class _ServerItem extends StatelessWidget {
         if (quarantined) 'временно пропускается',
         if (selected) 'выбран',
       ].join(', '),
+      semanticsActions: {CustomSemanticsAction(label: favorite ? 'Убрать из избранного' : 'В избранное'): onFavorite},
     );
   }
 }
 
 /// Результаты открытого поиска — плоский список без групп.
 class _SearchResults extends ConsumerWidget {
-  const _SearchResults({required this.nodes, required this.current, required this.onSelect});
+  const _SearchResults({required this.nodes, required this.current, required this.onSelect, required this.onMenu});
 
   final List<Node> nodes;
   final Node? current;
   final ValueChanged<Node> onSelect;
+
+  /// Долгое нажатие — то же меню сервера, что в списке (страна, группы).
+  final ValueChanged<Node> onMenu;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -576,6 +600,7 @@ class _SearchResults extends ConsumerWidget {
     final CountryResolver cr = ref.watch(countryResolverProvider);
     final Set<String> favs = ref.watch(favoritesProvider);
     final Set<String> own = ref.watch(ownNodeIdsProvider);
+    final Set<String> quarantined = ref.watch(subscriptionProvider.select((s) => s.quarantined));
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space200),
       children: [
@@ -587,9 +612,9 @@ class _SearchResults extends ConsumerWidget {
               selected: n.id == current?.id,
               favorite: favs.contains(n.id),
               showOwn: own.contains(n.id),
-              quarantined: false,
+              quarantined: quarantined.contains(n.id),
               onTap: () => onSelect(n),
-              onLongPress: () {},
+              onLongPress: () => onMenu(n),
               onFavorite: () => ref.read(favoritesProvider.notifier).toggle(n.id),
             ),
         ]),

@@ -482,6 +482,7 @@ void showM3Message(BuildContext context, String message, {String? actionLabel, V
   }
   ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
     content: Text(message),
+    duration: actionLabel == null ? M3SnackbarHostState.durationFor(message) : const Duration(seconds: 10),
     action: actionLabel == null ? null : SnackBarAction(label: actionLabel, onPressed: onAction ?? () {}),
   ));
 }

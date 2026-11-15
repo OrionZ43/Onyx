@@ -7,13 +7,14 @@ import 'package:material_new_shapes/material_new_shapes.dart';
 
 import '../../core/theme/onyx_tokens.dart';
 import '../../core/theme/theme_kind.dart';
+import '../m3/m3_parts.dart' show M3Flag;
 import '../util/country.dart';
 
 /// Флаг страны в стиле темы, без emoji:
 /// * Onyx — круглый флаг (circle-flags, MIT) с хайрлайном и бликом;
 /// * Signal — точечная матрица: флаг (flag-icons, MIT) растеризуется в сетку,
 ///   яркость квантуется в 4 уровня белого;
-/// * Material — флаг в форме MaterialShapes; форма закреплена за страной.
+/// * Material — [M3Flag]: квадратный флаг в форме MaterialShapes `Cookie4Sided`.
 ///
 /// Неизвестная страна — нейтральный кружок/сетка/форма с глобусом.
 class CountryFlag extends StatelessWidget {
@@ -199,53 +200,18 @@ class _DotFlagPainter extends CustomPainter {
 }
 
 // ── Material ────────────────────────────────────────────────────────────────
+/// Тот же флаг, что на экранах M3 ([M3Flag]): квадратный флаг целиком в одной
+/// форме `Cookie4Sided`, без увеличения. Общие экраны (лист добавления,
+/// мини-панель, выбор страны) выглядят как экраны M3. Раньше форма
+/// выбиралась по коду страны, а флаг увеличивался в 1,3 раза — у Китая
+/// главная звезда уходила за край (#105).
 class _ShapeFlag extends StatelessWidget {
   const _ShapeFlag({required this.code, required this.size});
   final String code;
   final double size;
 
-  /// Фигуры-маски для флагов. Фигура — просто маска («shape is versatile,
-  /// not semantic»), выбирается стабильно по коду страны.
-  static final List<RoundedPolygon> _shapes = [
-    MaterialShapes.cookie4Sided,
-    MaterialShapes.clover4Leaf,
-    MaterialShapes.pentagon,
-    MaterialShapes.sunny,
-    MaterialShapes.cookie9Sided,
-    MaterialShapes.flower,
-    MaterialShapes.softBurst,
-    MaterialShapes.puffy,
-    MaterialShapes.cookie12Sided,
-    MaterialShapes.clover8Leaf,
-    MaterialShapes.cookie6Sided,
-    MaterialShapes.gem,
-  ];
-
-  static RoundedPolygon shapeFor(String code) {
-    if (code.isEmpty) return MaterialShapes.circle;
-    final h = code.codeUnitAt(0) * 31 + code.codeUnitAt(code.length - 1);
-    return _shapes[h % _shapes.length];
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final s = Theme.of(context).colorScheme;
-    return SizedBox.square(
-      dimension: size,
-      child: ClipPath(
-        clipper: PolygonClipper(shapeFor(code)),
-        child: code.isEmpty
-            ? ColoredBox(
-                color: s.secondaryContainer,
-                child: Icon(Icons.public_rounded, size: size * 0.5, color: s.onSecondaryContainer),
-              )
-            : Transform.scale(
-                scale: 1.3,
-                child: SvgPicture.asset('assets/flags/square/$code.svg', fit: BoxFit.cover),
-              ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => M3Flag(code: code, size: size);
 }
 
 /// Обрезка по нормализованной фигуре MaterialShapes (0..1 → размер виджета).

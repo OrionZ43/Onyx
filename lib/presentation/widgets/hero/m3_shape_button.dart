@@ -22,7 +22,10 @@ import 'hero_state.dart';
 ///   начинался с формы покоя; морф каждые 650 мс пружиной 0.6/200, 90° за
 ///   морф и оборот за 4666 мс. В центре — крестик: нажатие отменяет;
 /// * on — [onShape] (`Clover8Leaf`) в `primary`;
-/// * error — [errorShape] (`Burst`) в `errorContainer`, иконка повтора.
+/// * error — [errorShape] (`SoftBurst`) в `errorContainer`, иконка повтора.
+///
+/// Все формы — из `MaterialShapes` пакета material_new_shapes (порт
+/// androidx `MaterialShapes.kt`, параметры совпадают), своих фигур нет.
 ///
 /// Смена состояния — морф из текущей формы в новую пружиной `defaultSpatial`
 /// с доворотом на 90° (как шаг индикатора); цвет — пружиной `defaultEffects`
@@ -54,11 +57,14 @@ class M3ShapeButton extends StatefulWidget {
   /// Форма покоя; с неё же начинается цикл подключения.
   static final RoundedPolygon restShape = MaterialShapes.cookie9Sided;
 
-  /// «Подключено»: мягкая полная форма — контраст с колючей [errorShape].
+  /// «Подключено»: полная форма из восьми лепестков. Выемки между листами —
+  /// часть канона (внутренние вершины `clover8` без скругления).
   static final RoundedPolygon onShape = MaterialShapes.clover8Leaf;
 
-  /// «Ошибка»: острые лучи — приём «tension» M3 Expressive.
-  static final RoundedPolygon errorShape = MaterialShapes.burst;
+  /// «Ошибка»: лучи со скруглёнными вершинами (`SoftBurst`, как в МИТСО).
+  /// `Burst` канона почти острый (скругление 0.006) — по решению Дениса не
+  /// берём.
+  static final RoundedPolygon errorShape = MaterialShapes.softBurst;
 
   /// Цикл подключения — `IndeterminateIndicatorPolygons` (softBurst,
   /// cookie9Sided, pentagon, pill, sunny, cookie4Sided, oval), начатый с

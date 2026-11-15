@@ -51,8 +51,17 @@ class M3SnackbarHostState extends State<M3SnackbarHost> {
   _SnackbarData? _current;
   Timer? _timer;
 
-  /// Показать сообщение. Без действия — 4 с (`SnackbarDuration.Short`),
-  /// с действием — пока пользователь не нажмёт или не закроет
+  /// `SnackbarDuration.Long`.
+  static const Duration longDuration = Duration(milliseconds: 10000);
+
+  /// Сколько держать сообщение без действия: коротко — 4 с (`Short`),
+  /// длинное (итог обновления с причинами) — дольше, до 10 с (`Long`):
+  /// ~20 знаков в секунду плюс время заметить, как у тоста Onyx.
+  static Duration durationFor(String message) =>
+      Duration(milliseconds: (2000 + message.length * 50).clamp(shortDuration.inMilliseconds, longDuration.inMilliseconds));
+
+  /// Показать сообщение. Без действия — [durationFor] (от `Short` до
+  /// `Long`), с действием — пока пользователь не нажмёт или не закроет
   /// (`showSnackbar`: Indefinite при `actionLabel`).
   void show(String message, {String? actionLabel, VoidCallback? onAction}) {
     final _SnackbarData data = _SnackbarData(message, actionLabel, onAction);
@@ -62,7 +71,7 @@ class M3SnackbarHostState extends State<M3SnackbarHost> {
       _items.add(data);
     });
     if (actionLabel == null) {
-      _timer = Timer(shortDuration, () => _dismiss(data));
+      _timer = Timer(durationFor(message), () => _dismiss(data));
     }
   }
 
@@ -245,7 +254,6 @@ class _M3Snackbar extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       child: Text(
                         data.message,
-                        maxLines: 2,
                         style: context.text.bodyMedium!.copyWith(
                           color: colors.onInverseSurface,
                         ),

@@ -15,11 +15,9 @@ void showOnyxToast(BuildContext context, String text, {OnyxGlyph glyph = OnyxGly
   // ~20 знаков в секунду плюс время заметить.
   final duration = Duration(milliseconds: (2000 + text.length * 50).clamp(4000, 10000));
   if (t.isMaterial) {
-    messenger.showSnackBar(SnackBar(duration: duration, content: Row(children: [
-      Icon(glyph.material, size: 18, color: Theme.of(context).colorScheme.onInverseSurface),
-      const SizedBox(width: 12),
-      Expanded(child: Text(text)),
-    ])));
+    // Снекбар M3 — текст без иконки (Snackbar → Guidelines: «don't use
+    // icons»); вид — snackBarTheme темы (floating, inverseSurface, 4dp).
+    messenger.showSnackBar(SnackBar(duration: duration, content: Text(text)));
     return;
   }
   messenger.showSnackBar(

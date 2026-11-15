@@ -13,7 +13,7 @@
 //
 // Логика общая с темами Onyx и Signal: тап — toggleConnection (автопилот
 // «Оникс» в режиме «Автовыбор»), этапы — AutopilotView, оговорки
-// (ConnectNotice) — снекбаром M3.
+// (ConnectNotice) — общим тостом showOnyxToast (снекбар M3).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -51,6 +51,7 @@ import '../widgets/m3/m3_flexible_app_bar.dart';
 import '../widgets/m3/m3_snackbar.dart';
 import '../widgets/m3/section_header.dart';
 import '../widgets/m3/segmented_list.dart';
+import '../widgets/onyx_toast.dart';
 import 'm3_parts.dart';
 import 'm3_server_list.dart';
 import 'm3_subscription_import.dart';
@@ -92,9 +93,11 @@ class _M3HomeScreenState extends ConsumerState<M3HomeScreen> {
   }
 
   /// Оговорки автопилота («подключено, но без UDP», «Переключились: A → B»,
-  /// «соединение восстановлено…») — снекбаром M3, без флагов в именах.
+  /// «соединение восстановлено…») — тот же тост, что у Onyx и Signal
+  /// (showOnyxToast: снекбар M3 через ScaffoldMessenger): виден и поверх
+  /// Настроек, держится по длине текста, без флагов в именах.
   void _onPhaseChanged(ConnectPhase? prev, ConnectPhase next) {
-    if (next is ConnectNotice) _snackbars.currentState?.show(uiText(next.message));
+    if (next is ConnectNotice && mounted) showOnyxToast(context, uiText(next.message));
   }
 
   Future<void> _refreshAll() async {

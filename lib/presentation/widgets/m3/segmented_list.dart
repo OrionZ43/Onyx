@@ -156,6 +156,7 @@ class M3ListItem extends StatefulWidget {
     this.enabled = true,
     this.containerColor,
     this.semanticsLabel,
+    this.semanticsActions,
   });
 
   /// Основной текст (`content`): `ItemLabelTextFont` = `bodyLarge`,
@@ -202,6 +203,12 @@ class M3ListItem extends StatefulWidget {
   /// Своя метка для TalkBack вместо текста слотов (Compose объединяет
   /// семантику пункта через `semantics(mergeDescendants = true)`).
   final String? semanticsLabel;
+
+  /// Действия кнопок в [trailing] для TalkBack и Экранного диктора: пункт
+  /// объединяет семантику (`MergeSemantics`), и кнопка внутри него отдельным
+  /// узлом не видна — её действие уходит в меню действий пункта, как
+  /// `customActions` у пунктов списков Compose.
+  final Map<CustomSemanticsAction, VoidCallback>? semanticsActions;
 
   /// `ListTokens.ItemLeadingSpace` / `ItemTrailingSpace` (space200).
   static const double horizontalPadding = 16;
@@ -612,6 +619,7 @@ class _M3ListItemState extends State<M3ListItem> with TickerProviderStateMixin {
         onLongPress: label != null && interactive && widget.enabled
             ? widget.onLongPress
             : null,
+        customSemanticsActions: widget.semanticsActions,
         excludeSemantics: label != null,
         child: item,
       ),

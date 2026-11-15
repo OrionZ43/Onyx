@@ -9,6 +9,7 @@
 // setEnabled / exportJson / importJson; loadPreset).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
@@ -56,19 +57,43 @@ String _ago(Duration d) {
 }
 
 /// Название в диалоге M3: переименование источника.
-Future<String?> _askName(BuildContext context, String current) {
-  final TextEditingController ctl = TextEditingController(text: current);
-  return showDialog<String>(
-    context: context,
-    builder: (c) => AlertDialog(
-      title: const Text('Название'),
-      content: TextField(controller: ctl, autofocus: true, decoration: const InputDecoration(labelText: 'Название источника')),
-      actions: [
-        M3Button(onPressed: () => Navigator.pop(c), color: M3ButtonColor.text, child: const Text('Отмена')),
-        M3Button(onPressed: () => Navigator.pop(c, ctl.text), color: M3ButtonColor.text, child: const Text('Сохранить')),
-      ],
-    ),
-  );
+Future<String?> _askName(BuildContext context, String current) =>
+    showDialog<String>(context: context, builder: (_) => _NameDialog(current: current));
+
+/// Диалог сам владеет полем: контроллер живёт, пока диалог на экране, в том
+/// числе во время анимации закрытия.
+class _NameDialog extends StatefulWidget {
+  const _NameDialog({required this.current});
+  final String current;
+
+  @override
+  State<_NameDialog> createState() => _NameDialogState();
+}
+
+class _NameDialogState extends State<_NameDialog> {
+  late final TextEditingController _ctl = TextEditingController(text: widget.current);
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Название'),
+        content: TextField(
+          controller: _ctl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Название источника'),
+          // Enter — «Сохранить», как в диалоге Onyx.
+          onSubmitted: (v) => Navigator.pop(context, v),
+        ),
+        actions: [
+          M3Button(onPressed: () => Navigator.pop(context), color: M3ButtonColor.text, child: const Text('Отмена')),
+          M3Button(onPressed: () => Navigator.pop(context, _ctl.text), color: M3ButtonColor.text, child: const Text('Сохранить')),
+        ],
+      );
 }
 
 class _M3SubscriptionsScreenState extends ConsumerState<M3SubscriptionsScreen> {
@@ -155,6 +180,8 @@ class _M3SubscriptionsScreenState extends ConsumerState<M3SubscriptionsScreen> {
       ),
       body: M3SnackbarHost(
         key: _snackbars,
+        // Над extended FAB «Добавить» (56dp + поле 16dp + зазор).
+        bottomPadding: 80,
         child: M3AppBarSettle(
           child: CustomScrollView(slivers: [
             SliverToBoxAdapter(
@@ -173,7 +200,7 @@ class _M3SubscriptionsScreenState extends ConsumerState<M3SubscriptionsScreen> {
                       else
                         SegmentedList(children: [for (final SubscriptionSource s in sources) _SourceItem(source: s, onMessage: _show)]),
                       const SectionHeader('Встроенные'),
-                      SegmentedList(children: [for (final SubscriptionPreset p in SubscriptionPresets.all) _PresetItem(preset: p)]),
+                      SegmentedList(children: [for (final SubscriptionPreset p in SubscriptionPresets.all) M3PresetItem(preset: p)]),
                       if (needChina) ...[
                         const SizedBox(height: AppSpacing.space100),
                         Card.filled(
@@ -235,6 +262,13 @@ class _SourceItem extends ConsumerWidget {
           SegmentedList(children: [
             M3ListItem(leading: const Icon(Symbols.refresh), headline: const Text('Обновить'), onTap: () => Navigator.pop(context, 'refresh')),
             M3ListItem(leading: const Icon(Symbols.edit), headline: const Text('Переименовать'), onTap: () => Navigator.pop(context, 'rename')),
+            // Тот же переключатель, что в строке, — пунктом: доступен и со скринридером.
+            M3ListItem(
+              leading: Icon(source.enabled ? Symbols.toggle_off : Symbols.toggle_on),
+              headline: Text(source.enabled ? 'Выключить' : 'Включить'),
+              supporting: Text(source.enabled ? 'Серверы источника пропадут из списка, пока не включите' : 'Серверы источника вернутся в список'),
+              onTap: () => Navigator.pop(context, 'toggle'),
+            ),
             M3ListItem(
               leading: const Icon(Symbols.schedule),
               headline: const Text('Автообновление'),
@@ -256,6 +290,8 @@ class _SourceItem extends ConsumerWidget {
     switch (v) {
       case 'refresh':
         ctl.refresh(source.id);
+      case 'toggle':
+        ctl.setEnabled(source.id, !source.enabled);
       case 'rename':
         final String? name = await _askName(context, source.name);
         if (name != null && name.trim().isNotEmpty) ctl.rename(source.id, name.trim());
@@ -315,14 +351,17 @@ class _SourceItem extends ConsumerWidget {
           : ExcludeSemantics(child: M3Switch(value: source.enabled, onChanged: (v) => ctl.setEnabled(source.id, v))),
       onTap: () => _actions(context, ref),
       semanticsLabel: '${source.name}, $status, ${source.enabled ? 'включён' : 'выключен'}',
+      semanticsActions: busy ? null : {
+        CustomSemanticsAction(label: source.enabled ? 'Выключить' : 'Включить'): () => ctl.setEnabled(source.id, !source.enabled),
+      },
     );
   }
 }
 
 /// Встроенная подписка: флаг (Китай) или глобус, название, честная подпись;
 /// «Добавить» или отметка, если уже добавлена (loadPreset — общий).
-class _PresetItem extends ConsumerWidget {
-  const _PresetItem({required this.preset});
+class M3PresetItem extends ConsumerWidget {
+  const M3PresetItem({super.key, required this.preset});
   final SubscriptionPreset preset;
 
   @override

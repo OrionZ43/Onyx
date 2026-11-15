@@ -1,7 +1,8 @@
 // Пустое состояние «нет серверов» темы Material 3 Expressive: композиция форм
 // M3 (EmptyState из «Расписания МИТСО»), заполненное поле M3 для ссылки и
-// кнопка «Вставить из буфера». Ссылка из буфера распознаётся сама
-// (https://…, vless://…), как в SubscriptionImport.
+// кнопка «Вставить из буфера», встроенная подписка. Принимает то же, что
+// SubscriptionImport тем Onyx и Signal: ссылку подписки, ссылки серверов,
+// base64-блок, конфиг Clash/sing-box.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,7 +17,9 @@ import '../widgets/add_source_sheet.dart' show looksLikeSubscriptionUrl;
 import '../widgets/m3/empty_state.dart';
 import '../widgets/m3/m3_buttons.dart';
 import '../widgets/m3/m3_loading_indicator.dart';
+import '../widgets/m3/segmented_list.dart';
 import 'm3_parts.dart';
+import 'm3_subscriptions_screen.dart' show M3PresetItem;
 
 class M3SubscriptionImport extends ConsumerStatefulWidget {
   const M3SubscriptionImport({super.key});
@@ -35,10 +38,10 @@ class _M3SubscriptionImportState extends ConsumerState<M3SubscriptionImport> {
     super.dispose();
   }
 
-  static bool _looksLikeLink(String s) {
-    final String v = s.trim();
-    return v.startsWith('http://') || v.startsWith('https://') || v.contains('://');
-  }
+  // Как в SubscriptionImport тем Onyx и Signal: подходит URL подписки, сами
+  // ссылки серверов (vless://, hysteria2://…), base64-блок и конфиг
+  // Clash/sing-box — разбирает addLinks.
+  static bool _looksLikeLink(String s) => s.trim().length >= 12;
 
   Future<void> _paste() async {
     final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
@@ -117,6 +120,15 @@ class _M3SubscriptionImportState extends ConsumerState<M3SubscriptionImport> {
                   child: const Text('Вставить из буфера'),
                 ),
         ),
+        // Встроенная подписка, как PresetTile у Onyx и Signal: без своей
+        // ссылки можно начать с бесплатных серверов.
+        const SizedBox(height: AppSpacing.space300),
+        const SegmentedList(children: [M3PresetItem(preset: SubscriptionPresets.chinaFree)]),
+        // Почему не загрузилось (все источники с ошибкой) — как у Onyx.
+        if (sub.error != null && sub.status == SubStatus.error) ...[
+          const SizedBox(height: AppSpacing.space200),
+          Text(sub.error!, textAlign: TextAlign.center, style: context.text.bodyMedium!.copyWith(color: s.error)),
+        ],
       ],
     );
 

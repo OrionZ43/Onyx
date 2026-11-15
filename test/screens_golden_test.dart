@@ -209,7 +209,12 @@ Future<void> loadFonts() async {
 // ── Сборка ──────────────────────────────────────────────────────────────────
 
 Widget app(AppThemeKind kind, VpnState vpn, Widget home,
-        {SubscriptionState? s, List<SubscriptionSource>? src, ConnectPhase phase = ConnectPhase.idle, Map<String, String> picks = const {}}) =>
+        {SubscriptionState? s,
+        List<SubscriptionSource>? src,
+        ConnectPhase phase = ConnectPhase.idle,
+        Map<String, String> picks = const {},
+        FakeVpn? vpnCtl,
+        FakeSources? sourcesCtl}) =>
     ProviderScope(
       overrides: [
         connectPhaseProvider.overrideWith((ref) => phase),
@@ -218,10 +223,10 @@ Widget app(AppThemeKind kind, VpnState vpn, Widget home,
         activityProvider.overrideWith((ref) => ActivityLog(activity)),
         speedProvider.overrideWith((ref) => SpeedHistory(speedSamples)),
         themeKindProvider.overrideWith((ref) => FakeThemeKind(kind)),
-        vpnControllerProvider.overrideWith((ref) => FakeVpn(vpn)),
+        vpnControllerProvider.overrideWith((ref) => vpnCtl ?? FakeVpn(vpn)),
         subscriptionProvider.overrideWith((ref) => FakeSub(s ?? sub)),
         updateControllerProvider.overrideWith(FakeUpdate.new),
-        sourcesProvider.overrideWith((ref) => FakeSources(src ?? sources)),
+        sourcesProvider.overrideWith((ref) => sourcesCtl ?? FakeSources(src ?? sources)),
         groupsProvider.overrideWith((ref) => FakeGroups(groups)),
         favoritesProvider.overrideWith((ref) => FakeFavorites({'1', '4'})),
         autoGroupProvider.overrideWith((ref) => FakeAutoGroup(null)),
