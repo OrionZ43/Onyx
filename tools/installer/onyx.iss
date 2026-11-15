@@ -84,7 +84,9 @@ VersionInfoProductVersion={#AppVersion}
 
 ; per-user, без UAC на весь установщик
 PrivilegesRequired=lowest
-DefaultDirName={localappdata}\Onyx
+; Тестовая установка — по умолчанию в свою папку Onyx-test: без /DIR она
+; иначе встала бы поверх настоящей Onyx (#104). PrepareToInstall это проверяет.
+DefaultDirName={localappdata}\Onyx{code:TestDirSuffix}
 UsePreviousAppDir=yes
 ; AppId с константой (тестовый режим) требует явного UsePreviousLanguage=no:
 ; язык и так берётся из языка Windows (ShowLanguageDialog=auto)
@@ -221,6 +223,8 @@ Type: filesandordirs; Name: "{app}\data"
 ; Наследие v0.2.0: неиспользуемая служба, резервные копии старого апдейтера
 Type: files; Name: "{app}\OnyxService.exe"
 Type: filesandordirs; Name: "{app}\.bak"
+; Старый апдейтер (payload.zip) — обновляет теперь сам установщик (#54)
+Type: files; Name: "{app}\OnyxUpdater.exe"
 Type: files; Name: "{%PUBLIC}\onyx_install_log.txt"; Check: not IsTestMode
 ; Ярлык на рабочем столе от v0.2.0 создавался всегда; если галочку сняли — убираем
 Type: files; Name: "{userdesktop}\Onyx.lnk"; Tasks: not desktopicon; Check: not IsTestMode
@@ -242,6 +246,9 @@ Root: HKCU; Subkey: "{code:RegKeyPath}"; ValueType: string; ValueName: "Version"
 [Run]
 ; onyx.exe работает без прав (#55) — UAC при запуске нет
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchOnyx}"; Flags: postinstall nowait skipifsilent shellexec; Check: not IsTestMode
+; Обновление из приложения (#54): тихий режим с /ONYXUPDATE=1 — Onyx закрылся
+; сам, после установки запускаем его снова (без галочки, без skipifsilent)
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: IsUpdateRun
 
 [UninstallDelete]
 ; Файлы, которые мог дописать встроенный апдейтер (их нет в журнале установки)
@@ -327,6 +334,31 @@ end;
 function TestNameSuffix(Param: String): String;
 begin
   if IsTestMode then Result := ' (test)' else Result := '';
+end;
+
+function TestDirSuffix(Param: String): String;
+begin
+  if IsTestMode then Result := '-test' else Result := '';
+end;
+
+// Тихое обновление из приложения (#54): OnyxSetup.exe /VERYSILENT /ONYXUPDATE=1.
+// Из тестовой установки приложение добавляет /ONYXTEST=1 /DIR=<её папка> — и
+// обновление, и перезапуск остаются в тестовой папке (#104).
+function IsUpdateRun: Boolean;
+begin
+  Result := ExpandConstant('{param:ONYXUPDATE|0}') = '1';
+end;
+
+// Папка основной (не тестовой) установки по её ключу HKCU; '' — не найдена.
+function MainInstallDir: String;
+var
+  S: String;
+begin
+  S := '';
+  if RegQueryStringValue(HKCU, 'Software\Z43 Studios\Onyx', 'InstallDir', S) and (S <> '') then
+    Result := RemoveBackslashUnlessRoot(S)
+  else
+    Result := '';
 end;
 
 function AppDir: String;
@@ -568,7 +600,31 @@ var
 begin
   if IsTestMode then
   begin
-    Log('ONYXTEST: Onyx не закрываем');
+    // Только тихое обновление тестовой установки: закрываем onyx.exe из её
+    // папки (она не совпадает с основной — проверено в PrepareToInstall).
+    // Ядро, пробы и основную Onyx не трогаем.
+    if IsUpdateRun then
+    begin
+      try
+        Procs := WmiQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process WHERE Name = ''onyx.exe''');
+        for I := 0 to Procs.Count - 1 do
+        begin
+          P := Procs.ItemIndex(I);
+          Path := VarStr(P.ExecutablePath);
+          if (Path <> '') and UnderDir(Path, AppDir) then
+          begin
+            Pid := P.ProcessId;
+            Log(Format('ONYXTEST: закрываем тестовый onyx.exe PID %d', [Pid]));
+            Exec(ExpandConstant('{sys}\taskkill.exe'), Format('/F /PID %d', [Pid]), '', SW_HIDE, ewWaitUntilTerminated, Code);
+          end;
+        end;
+      except
+        Log('WMI недоступен: ' + GetExceptionMessage);
+      end;
+      Sleep(800);
+    end
+    else
+      Log('ONYXTEST: Onyx не закрываем');
     exit;
   end;
   ForceDirectories(DataDir + '\singbox');
@@ -897,6 +953,15 @@ var
   Running, Blocks, Legacy, NeedCore, Ok: Boolean;
 begin
   Result := '';
+  // Тестовая установка не ставится в папку основной Onyx (#104): иначе
+  // /ONYXTEST=1 без /DIR перезаписал бы рабочую установку.
+  if IsTestMode and ((CompareText(AppDir, LegacyDir) = 0) or
+     ((MainInstallDir <> '') and (CompareText(AppDir, MainInstallDir) = 0))) then
+  begin
+    Result := 'ONYXTEST: тестовая установка не ставится в папку основной Onyx (' + AppDir + '). Укажите другую: /DIR=…';
+    Log(Result);
+    exit;
+  end;
   // Сначала без прав: новый Onyx (asInvoker), ядро и пробы закрываются так.
   StopOnyxQuietly;
   Running := OnyxRunning;
