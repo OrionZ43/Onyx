@@ -24,14 +24,14 @@ Future<void> png(String path, int size, void Function(Canvas c, Size s) draw) as
 }
 
 /// Знак V1 в квадрате [s] с отступом [pad] (доля стороны).
-void fox(Canvas c, Size s, {double scale = .78, double dy = 0, bool flat = false, Color ink = champ, bool shadow = false}) {
+void fox(Canvas c, Size s, {double scale = .78, double dy = 0, bool flat = false, Color ink = champ}) {
   final k = s.width * scale, o = (s.width - k) / 2;
   c.save();
   c.translate(o, o + s.width * dy);
   if (flat) {
     OnyxFoxPainter(style: FoxStyle.silhouette, ink: ink).paint(c, Size.square(k));
   } else {
-    FoxVolumePainter(shadow: shadow).paint(c, Size.square(k));
+    FoxVolumePainter().paint(c, Size.square(k));
   }
   c.restore();
 }
@@ -69,8 +69,8 @@ void main() {
     // Adaptive: foreground 432 px (108 dp @4x), знак в безопасной зоне 66 dp ≈ 61 %.
     await png('icons_out/android_fg.png', 432, (c, s) => fox(c, s, scale: .62, dy: .02));
     await png('icons_out/android_mono.png', 432, (c, s) => fox(c, s, scale: .54, dy: .02, flat: true, ink: Colors.white));
-    // Сплэш (drawable-nodpi): объёмная лиса с мягкой тенью на прозрачном.
-    await png('icons_out/splash_fox.png', 384, (c, s) => fox(c, s, scale: .9, shadow: true));
+    // Сплэш (drawable-nodpi): объёмная лиса на прозрачном, без тени (#146).
+    await png('icons_out/splash_fox.png', 384, (c, s) => fox(c, s, scale: .9));
   });
 
   test('tray', () async {
@@ -92,7 +92,7 @@ void main() {
   });
 
   test('brand', () async {
-    await png('icons_out/onyx_fox_1024.png', 1024, (c, s) => fox(c, s, scale: .9, shadow: true));
+    await png('icons_out/onyx_fox_1024.png', 1024, (c, s) => fox(c, s, scale: .9));
     await png('icons_out/onyx_fox_dots_512.png', 512, (c, s) {
       final k = s.width * .84, o = (s.width - k) / 2;
       c.translate(o, o);

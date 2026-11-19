@@ -112,11 +112,11 @@ void side(Canvas c, Size s) {
       colors: [champ.withValues(alpha: .95), champMuted.withValues(alpha: .55), champ.withValues(alpha: .95)],
     ).createShader(ring));
 
-  // Лиса V1 «Кабошон» с мягкой тенью.
+  // Лиса V1 «Кабошон» (без тени — она давала точку под носом, #146).
   final k = w * .66;
   c.save();
   c.translate(center.dx - k / 2, center.dy - k / 2 + w * .015);
-  FoxVolumePainter(shadow: true).paint(c, Size.square(k));
+  FoxVolumePainter().paint(c, Size.square(k));
   c.restore();
 
   // Внизу: тонкая черта и ONYX шампанью.
@@ -135,7 +135,7 @@ void small(Canvas c, Size s, {required bool flat}) {
   if (flat) {
     OnyxFoxPainter(style: FoxStyle.silhouette, ink: champ).paint(c, Size.square(k));
   } else {
-    FoxVolumePainter(shadow: false).paint(c, Size.square(k));
+    FoxVolumePainter().paint(c, Size.square(k));
   }
 }
 

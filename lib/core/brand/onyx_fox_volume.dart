@@ -7,12 +7,16 @@ import 'package:flutter/material.dart';
 /// грани — мягкий градиент, освещённые рёбра бликуют шампанью, внутренние
 /// стороны ушей тёплые, нос — «бриллиант». Та же геометрия, что в
 /// docs/redesign/src/logo-fox-hood.html (вершины: x, y в 0..100, z — высота).
+///
+/// «Тени на земле» под знаком нет (#146): её овал 60×10 с RadialGradient
+/// рисовался кружком по короткой стороне — чёрной точкой под носом на
+/// заставке, экране «О программе», сплэше Android, в мастере установки и PNG
+/// знака.
 class FoxVolumePainter extends CustomPainter {
-  FoxVolumePainter({this.dark = true, this.accent = const Color(0xFFD2B98F), this.shadow = true});
+  FoxVolumePainter({this.dark = true, this.accent = const Color(0xFFD2B98F)});
 
   final bool dark;
   final Color accent;
-  final bool shadow;
 
   static const Map<String, List<double>> v = {
     'L1': [19, 8, 16], 'LE': [29, 23, 11], 'L2': [40, 33, 6], 'T': [50, 36, 13], 'R2': [60, 33, 6], 'RE': [71, 23, 11], 'R1': [81, 8, 16],
@@ -37,18 +41,13 @@ class FoxVolumePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Поле знака — 108×112 условных единиц (запас под тень), как в макете.
+    // Поле знака — 108×112 условных единиц с полями, как в макете: размер и
+    // положение лисы во всех иконках остаются прежними.
     final k = size.width / 108;
     canvas.save();
     canvas.translate(4 * k, 4 * k);
     Offset o(String n) => Offset(v[n]![0] * k, v[n]![1] * k);
     final small = size.width < 48;
-
-    if (shadow && !small) {
-      final r = Rect.fromCenter(center: Offset(50 * k, 101 * k), width: 60 * k, height: 10 * k);
-      canvas.drawOval(r, Paint()
-        ..shader = RadialGradient(colors: [Colors.black.withValues(alpha: dark ? .75 : .28), Colors.transparent]).createShader(r));
-    }
 
     final lo = dark ? const Color(0xFF050506) : const Color(0xFF111114);
     final hi = dark ? const Color(0xFF5A564D) : const Color(0xFF77726A);
@@ -106,5 +105,5 @@ class FoxVolumePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(FoxVolumePainter o) => o.dark != dark || o.accent != accent || o.shadow != shadow;
+  bool shouldRepaint(FoxVolumePainter o) => o.dark != dark || o.accent != accent;
 }
