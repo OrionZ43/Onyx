@@ -3,7 +3,6 @@
 // импорт принимает то же, что SubscriptionImport, выбор в поиске закрывает
 // лист, кнопки строк доступны скринридеру.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
