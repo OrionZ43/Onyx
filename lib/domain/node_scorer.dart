@@ -1,3 +1,4 @@
+import 'routing_region.dart';
 import 'entities/node.dart';
 
 /// Умная система весов (Scoring System) для приоритизации нод перед Deep Probe.
@@ -32,6 +33,29 @@ import 'entities/node.dart';
 class NodeScorer {
   // Приватный конструктор: класс используется только через статические методы.
   const NodeScorer._();
+
+  /// Регион пользователя: от него зависит, какие локации считаются
+  /// «ближними». Выставляется из настроек (RoutingRegion) при старте и
+  /// при смене региона.
+  static RoutingRegion region = RoutingRegion.russia;
+
+  /// В режиме Discord ноды с подтверждённым UDP получают бонус: без UDP
+  /// голос, камера и стримы Discord не работают.
+  static bool preferUdp = false;
+  static const int _udpBonus = 3000;
+
+  /// Hysteria2/TUIC — QUIC: в Китае устойчивее к потерям, чем TCP-туннель,
+  /// но UDP могут душить. Бонус меньше REALITY.
+  static const int _quicBonus = 4000;
+
+  // ── Ближние локации для Китая ───────────────────────────────────────
+  static const Set<String> _cnFlags = {'🇭🇰', '🇯🇵', '🇸🇬', '🇰🇷', '🇹🇼'};
+  static const List<String> _cnKeywords = [
+    'hong kong', 'hongkong', '香港', 'japan', 'tokyo', 'osaka', '日本',
+    'singapore', '新加坡', 'korea', 'seoul', '韩国', 'taiwan', '台湾',
+    'los angeles', 'san jose', 'cn2', 'gia', 'iplc', 'iepl',
+  ];
+  static const Set<String> _cnIsoCodes = {'hk', 'jp', 'sg', 'kr', 'tw'};
 
   // ── Веса бонусов ──────────────────────────────────────────────────────────
 
@@ -102,12 +126,16 @@ class NodeScorer {
     // Мёртвые ноды получают максимальный штрафной счёт.
     if (!node.isAlive) return _deadScore;
 
-    int s = node.latencyMs ?? 9999;
+    // Задержка в одной шкале для всех протоколов (#73): у QUIC — пересчёт из
+    // времени HTTPS ([Node.rttMs]), иначе HY2 проигрывал REALITY вчетверо.
+    int s = node.rttMs ?? 9999;
 
     // Бонус за протокол REALITY (наивысший приоритет).
     if (node.security == 'reality') {
       s -= _realityBonus;
     }
+    if (node.isQuic) s -= _quicBonus;
+    if (preferUdp && node.udpSupported) s -= _udpBonus;
 
     // Бонус за оптимальную географию.
     if (_isOptimalGeo(node.name)) {
@@ -140,9 +168,11 @@ class NodeScorer {
     if (!node.isAlive) return 'DEAD → score=$_deadScore';
 
     final parts = <String>[];
-    final ms = node.latencyMs ?? 9999;
+    final ms = node.rttMs ?? 9999;
 
     if (node.security == 'reality') parts.add('REALITY +${_realityBonus}pts');
+    if (node.isQuic) parts.add('QUIC +${_quicBonus}pts');
+    if (preferUdp && node.udpSupported) parts.add('UDP +${_udpBonus}pts');
     if (_isOptimalGeo(node.name)) parts.add('GEO +${_geoBonus}pts');
 
     final bonusStr = parts.isEmpty ? 'no bonus' : parts.join(' | ');
@@ -157,6 +187,14 @@ class NodeScorer {
   /// Проверяет, содержит ли имя ноды признак оптимальной локации:
   /// флаг-эмодзи, ключевое слово или ISO-код страны.
   static bool _isOptimalGeo(String name) {
+    if (region == RoutingRegion.china) {
+      for (final flag in _cnFlags) {
+        if (name.contains(flag)) return true;
+      }
+      final l = name.toLowerCase();
+      if (_cnKeywords.any(l.contains)) return true;
+      return l.split(RegExp(r'[^a-z]+')).any(_cnIsoCodes.contains);
+    }
     // 1. Проверка эмодзи-флагов (самый надёжный и быстрый способ).
     for (final flag in _optimalFlags) {
       if (name.contains(flag)) return true;

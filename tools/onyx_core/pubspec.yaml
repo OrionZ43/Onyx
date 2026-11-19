@@ -1,0 +1,7 @@
+name: onyx_core
+description: Запускатель ядра sing-box с правами администратора для Onyx (Windows, #55).
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'

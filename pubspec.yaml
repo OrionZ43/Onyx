@@ -1,10 +1,12 @@
 name: onyx
 description: One-tap VPN client powered by sing-box
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.3.0+3
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  # 3.12: перенесённые компоненты M3 (lib/presentation/widgets/m3) используют
+  # приватные именованные параметры и null-aware элементы; CI уже на Flutter 3.44.
+  sdk: '>=3.12.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -33,8 +35,12 @@ dependencies:
   go_router: ^14.2.7
 
   # UI
-  google_fonts: ^6.2.1
   flutter_animate: ^4.5.0
+  flutter_svg: ^2.3.0
+  material_new_shapes: ^1.0.0
+  # Material Symbols — иконки темы Material 3 Expressive (как в «Расписании МИТСО»).
+  material_symbols_icons: ^4.2960.0
+  dynamic_color: ^1.8.1
 
   # Links
   url_launcher: ^6.3.0
@@ -53,10 +59,76 @@ dependencies:
   # Path utilities
   path: ^1.9.0
 
+  # Clash/mihomo YAML-подписки (SubscriptionParser)
+  yaml: ^3.1.2
+
   # Windows-only platform features (must NOT be removed — used in main.dart)
   window_manager: ^0.3.8
   tray_manager: ^0.2.2
   local_notifier: ^0.1.5
+  # Рабочие области мониторов — где ставить мини-панель трея (#46).
+  # Уже стоит транзитивно через window_manager, версия та же.
+  screen_retriever: ^0.1.9
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/rules/
+    - assets/tray/
+    - assets/icons/onyx/
+    - assets/icons/signal/
+    - assets/flags/circle/
+    - assets/flags/square/
+
+  # Шрифты встроены (SIL OFL 1.1, лицензии — assets/fonts/OFL-*.txt), статические начертания.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-300.ttf
+          weight: 300
+        - asset: assets/fonts/Inter-400.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-500.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-600.ttf
+          weight: 600
+    - family: InterTight
+      fonts:
+        - asset: assets/fonts/InterTight-300.ttf
+          weight: 300
+        - asset: assets/fonts/InterTight-400.ttf
+          weight: 400
+        - asset: assets/fonts/InterTight-500.ttf
+          weight: 500
+        - asset: assets/fonts/InterTight-600.ttf
+          weight: 600
+    - family: Onest
+      fonts:
+        - asset: assets/fonts/Onest-400.ttf
+          weight: 400
+        - asset: assets/fonts/Onest-500.ttf
+          weight: 500
+        - asset: assets/fonts/Onest-600.ttf
+          weight: 600
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-400.ttf
+          weight: 400
+        - asset: assets/fonts/JetBrainsMono-500.ttf
+          weight: 500
+        - asset: assets/fonts/JetBrainsMono-600.ttf
+          weight: 600
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-400.ttf
+          weight: 400
+        - asset: assets/fonts/Roboto-500.ttf
+          weight: 500
+        - asset: assets/fonts/Roboto-700.ttf
+          weight: 700

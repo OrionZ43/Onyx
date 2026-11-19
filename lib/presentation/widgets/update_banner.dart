@@ -35,19 +35,19 @@ class UpdateBanner extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.system_update, color: Colors.white),
+            Icon(Icons.system_update, color: AppColors.onPlasma),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'Доступно обновление: ${updateInfo.version}',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppColors.onPlasma,
                   fontWeight: FontWeight.bold,
-                  fontFamily: 'DM Sans',
+                  fontFamily: AppFonts.body,
                 ),
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+            Icon(Icons.arrow_forward_ios, color: AppColors.onPlasma, size: 16),
           ],
         ),
       ),

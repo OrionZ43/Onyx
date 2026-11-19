@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/log_service.dart';
 import '../../infrastructure/update_service.dart';
 
 final updateServiceProvider = Provider((ref) => UpdateService());
@@ -21,7 +23,7 @@ class UpdateController extends AsyncNotifier<UpdateInfo?> {
       final updateService = ref.read(updateServiceProvider);
       return await updateService.checkForUpdate();
     } catch (e) {
-      print('Failed to check for updates: $e');
+      log.w('Проверка обновлений не удалась: $e', tag: 'UPDATE');
       return null;
     }
   }

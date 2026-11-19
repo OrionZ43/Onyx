@@ -1,6 +1,52 @@
-/// Represents a single VLESS server node parsed from a subscription URL.
+/// Протоколы, которые понимает Onyx.
+///
+/// `vless` — исторический и по умолчанию (старые сохранённые ноды без поля
+/// protocol читаются как vless). Остальные добавлены для Китая: Hysteria2 и
+/// TUIC (QUIC/UDP), Shadowsocks, Trojan, AnyTLS.
+abstract final class NodeProtocol {
+  static const vless = 'vless';
+  static const hysteria2 = 'hysteria2';
+  static const tuic = 'tuic';
+  static const shadowsocks = 'shadowsocks';
+  static const trojan = 'trojan';
+  static const anytls = 'anytls';
+
+  static const all = {vless, hysteria2, tuic, shadowsocks, trojan, anytls};
+
+  /// Короткая метка для UI-бейджа.
+  static String label(String p) => switch (p) {
+        vless => 'VLESS',
+        hysteria2 => 'HY2',
+        tuic => 'TUIC',
+        shadowsocks => 'SS',
+        trojan => 'TROJAN',
+        anytls => 'ANYTLS',
+        _ => p.toUpperCase(),
+      };
+}
+
+/// Один сервер (нода) из подписки или ссылки.
+///
+/// Исторически класс описывал только VLESS; поля VLESS сохранены как были,
+/// для остальных протоколов добавлены необязательные поля ниже (password,
+/// obfs, serverPorts и т.д.). Неиспользуемые для протокола поля пустые.
 class Node {
   const Node({
+    this.protocol = NodeProtocol.vless,
+    this.sourceIds = const [],
+    this.password = '',
+    this.method = '',
+    this.obfs = '',
+    this.obfsPassword = '',
+    this.serverPorts = '',
+    this.hopInterval = '',
+    this.alpn = const [],
+    this.insecure = false,
+    this.congestion = '',
+    this.upMbps = 0,
+    this.downMbps = 0,
+    this.plugin = '',
+    this.pluginOpts = '',
     required this.id,
     required this.name,
     required this.host,
@@ -19,10 +65,89 @@ class Node {
     this.isAlive = false,
     this.isTrulyWorking = false, // ← прошёл реальную HTTP-проверку
     this.aiReachable = false, // ← прошёл проверку доступа к ИИ-сервисам
+    this.exitCountry,
+    this.isOwn = false,
     this.muxEnabled = false,
     this.muxProtocol = 'smux',
     this.muxMaxStreams = 32,
   });
+
+  /// Один из [NodeProtocol]. По умолчанию vless.
+  final String protocol;
+
+  /// Источники (SubscriptionSource.id), в которых встречается нода. Дубли
+  /// из разных источников склеиваются по [id], а их источники копятся здесь.
+  final List<String> sourceIds;
+
+  /// Первый (основной) источник ноды или пустая строка.
+  String get sourceId => sourceIds.isEmpty ? '' : sourceIds.first;
+
+  /// Пароль: hysteria2 / tuic / shadowsocks / trojan / anytls.
+  final String password;
+
+  /// Метод шифрования shadowsocks (например 2022-blake3-aes-128-gcm).
+  final String method;
+
+  /// Обфускация hysteria2 (сейчас только 'salamander') и её пароль.
+  final String obfs;
+  final String obfsPassword;
+
+  /// Port hopping hysteria2: диапазоны через запятую, формат "20000-50000"
+  /// или "443,20000-50000". Пусто = только [port].
+  final String serverPorts;
+
+  /// Интервал смены порта при hopping, например "30s". Пусто = по умолчанию.
+  final String hopInterval;
+
+  /// ALPN для TLS (hysteria2/tuic — обычно h3).
+  final List<String> alpn;
+
+  /// Не проверять сертификат (самоподписанный на своём сервере).
+  final bool insecure;
+
+  /// Контроль перегрузки TUIC (bbr/cubic/new_reno).
+  final String congestion;
+
+  /// Пропускная способность для Hysteria2 Brutal. 0 = не задана (BBR).
+  final int upMbps;
+  final int downMbps;
+
+  /// Плагин shadowsocks (obfs-local / v2ray-plugin) и его опции.
+  final String plugin;
+  final String pluginOpts;
+
+  /// true для протоколов поверх QUIC/UDP — у них нет TCP-порта, поэтому
+  /// TCP-пинг к ним бессмысленен.
+  bool get isQuic =>
+      protocol == NodeProtocol.hysteria2 || protocol == NodeProtocol.tuic;
+
+  /// Во сколько раз время HTTPS-запроса через QUIC-сервер больше одного RTT
+  /// (#73). В это время входят рукопожатие QUIC, авторизация, запрос к
+  /// сайту, TLS и сам HTTP. У друга из Китая 12.11 на тех же серверах HY2
+  /// давал 923 и 1051 мс при TCP-пинге REALITY 218 и 273 мс — в 3,9–4,2 раза.
+  static const httpsRttFactor = 4;
+
+  /// Задержка в одних единицах для всех протоколов — примерно один RTT
+  /// (#73). У TCP-нод [latencyMs] — TCP-пинг (одно рукопожатие), у QUIC-нод —
+  /// время HTTPS-запроса через сервер; его делим на [httpsRttFactor]. По ней
+  /// сравниваем ноды, проверяем потолки #60 и показываем «пинг» в UI —
+  /// иначе HY2 выглядел вчетверо медленнее REALITY на том же сервере.
+  ///
+  /// У мёртвой ноды ([isAlive] == false) — null (#87): её прошлый замер —
+  /// не текущая задержка, в списке его не показываем и не сравниваем.
+  int? get rttMs {
+    final ms = latencyMs;
+    if (ms == null || !isAlive) return null;
+    return isQuic ? (ms / httpsRttFactor).round() : ms;
+  }
+
+  /// [rttMs] пересчитан из времени HTTPS (QUIC), а не замерен одним
+  /// рукопожатием — в UI можно показать «≈».
+  bool get rttIsEstimate => isQuic && rttMs != null;
+
+  /// Ключ «того же сервера» для автопереключения транспорта: ноды с одним
+  /// host, но разными протоколами (REALITY + Hysteria2 от нашего скрипта).
+  String get serverKey => host.toLowerCase();
 
   final String id;
   final String name;
@@ -59,24 +184,58 @@ class Node {
   /// используют свои списки и иногда отдают блок как обычную 200-страницу).
   final bool aiReachable;
 
+  /// Страна выхода — откуда сервер выходит в интернет по факту (#68): код
+  /// ISO 3166-1 в нижнем регистре («fi», «lv»). Проставляет Deep Probe
+  /// запросом Cloudflare trace (loc=) ЧЕРЕЗ сам сервер — Cloudflare видит IP
+  /// сервера, как при любом сёрфинге, адрес сервера сторонним GeoIP-сервисам
+  /// не уходит. null — ещё не узнали. Для UI: выбор пользователя → страна из
+  /// имени → [exitCountry].
+  final String? exitCountry;
+
+  /// «Свой» сервер (#68): нода из источника, добавленного ссылками
+  /// (SourceKind.links), а не из подписки. Вычисляется при склейке
+  /// источников ([NodePool.merge]), в кэш не пишется. Автовыбор и
+  /// автопереключение при прочих равных берут свои раньше чужих.
+  final bool isOwn;
+
   // Mux (применяется санитайзером)
   final bool muxEnabled;
   final String muxProtocol;
   final int muxMaxStreams;
 
   Node copyWith({
+    List<String>? sourceIds,
     int? latencyMs,
     bool? udpSupported,
     bool? isAlive,
     bool? isTrulyWorking,
     bool? aiReachable,
+    String? exitCountry,
+    bool? isOwn,
     String? fingerprint,
     String? flow,
     bool? muxEnabled,
     String? muxProtocol,
     int? muxMaxStreams,
+    // null в [latencyMs] значит «оставить как было»; стереть — только так (#87).
+    bool clearLatency = false,
   }) {
     return Node(
+      sourceIds: sourceIds ?? this.sourceIds,
+      protocol: protocol,
+      password: password,
+      method: method,
+      obfs: obfs,
+      obfsPassword: obfsPassword,
+      serverPorts: serverPorts,
+      hopInterval: hopInterval,
+      alpn: alpn,
+      insecure: insecure,
+      congestion: congestion,
+      upMbps: upMbps,
+      downMbps: downMbps,
+      plugin: plugin,
+      pluginOpts: pluginOpts,
       id: id,
       name: name,
       host: host,
@@ -90,11 +249,13 @@ class Node {
       network: network,
       realityPbk: realityPbk,
       realitySid: realitySid,
-      latencyMs: latencyMs ?? this.latencyMs,
+      latencyMs: clearLatency ? null : (latencyMs ?? this.latencyMs),
       udpSupported: udpSupported ?? this.udpSupported,
       isAlive: isAlive ?? this.isAlive,
       isTrulyWorking: isTrulyWorking ?? this.isTrulyWorking,
       aiReachable: aiReachable ?? this.aiReachable,
+      exitCountry: exitCountry ?? this.exitCountry,
+      isOwn: isOwn ?? this.isOwn,
       muxEnabled: muxEnabled ?? this.muxEnabled,
       muxProtocol: muxProtocol ?? this.muxProtocol,
       muxMaxStreams: muxMaxStreams ?? this.muxMaxStreams,
@@ -113,15 +274,41 @@ class Node {
   ///   2. isTrulyWorking == false → poor (TCP жив, но HTTP-проверка не
   ///      прошла — эта нода реально не работает, вне зависимости от пинга)
   ///   3. иначе — обычная градация по latency
+  /// Честный статус UDP: «нет UDP» только если сервер РАБОТАЕТ (Deep Probe
+  /// прошёл), а STUN-ответов нет. Мёртвый сервер — [UdpStatus.unreachable].
+  UdpStatus get udpStatus {
+    if (udpSupported) return UdpStatus.ok;
+    if (isTrulyWorking) return UdpStatus.blocked;
+    final probed = latencyMs != null || isAlive;
+    if (!probed) return UdpStatus.unknown;
+    return UdpStatus.unreachable;
+  }
+
   NodeQuality get quality {
-    if (!isAlive || latencyMs == null) return NodeQuality.dead;
+    final rtt = rttMs; // одна шкала для TCP и QUIC (#73)
+    if (!isAlive || rtt == null) return NodeQuality.dead;
     if (!isTrulyWorking) return NodeQuality.poor;
-    if (latencyMs! < 150) return NodeQuality.excellent;
-    if (latencyMs! < 400) return NodeQuality.good;
+    if (rtt < 150) return NodeQuality.excellent;
+    if (rtt < 400) return NodeQuality.good;
     return NodeQuality.poor;
   }
 
   Map<String, dynamic> toJson() => {
+    'protocol': protocol,
+    if (sourceIds.isNotEmpty) 'sourceIds': sourceIds,
+    if (password.isNotEmpty) 'password': password,
+    if (method.isNotEmpty) 'method': method,
+    if (obfs.isNotEmpty) 'obfs': obfs,
+    if (obfsPassword.isNotEmpty) 'obfsPassword': obfsPassword,
+    if (serverPorts.isNotEmpty) 'serverPorts': serverPorts,
+    if (hopInterval.isNotEmpty) 'hopInterval': hopInterval,
+    if (alpn.isNotEmpty) 'alpn': alpn,
+    if (insecure) 'insecure': insecure,
+    if (congestion.isNotEmpty) 'congestion': congestion,
+    if (upMbps > 0) 'upMbps': upMbps,
+    if (downMbps > 0) 'downMbps': downMbps,
+    if (plugin.isNotEmpty) 'plugin': plugin,
+    if (pluginOpts.isNotEmpty) 'pluginOpts': pluginOpts,
     'id': id,
     'name': name,
     'host': host,
@@ -140,12 +327,28 @@ class Node {
     'isAlive': isAlive,
     'isTrulyWorking': isTrulyWorking,
     'aiReachable': aiReachable,
+    if (exitCountry != null) 'exitCountry': exitCountry,
     'muxEnabled': muxEnabled,
     'muxProtocol': muxProtocol,
     'muxMaxStreams': muxMaxStreams,
   };
 
   factory Node.fromJson(Map<String, dynamic> json) => Node(
+    sourceIds: (json['sourceIds'] as List?)?.whereType<String>().toList() ?? const [],
+    protocol: json['protocol'] as String? ?? NodeProtocol.vless,
+    password: json['password'] as String? ?? '',
+    method: json['method'] as String? ?? '',
+    obfs: json['obfs'] as String? ?? '',
+    obfsPassword: json['obfsPassword'] as String? ?? '',
+    serverPorts: json['serverPorts'] as String? ?? '',
+    hopInterval: json['hopInterval'] as String? ?? '',
+    alpn: (json['alpn'] as List?)?.whereType<String>().toList() ?? const [],
+    insecure: json['insecure'] as bool? ?? false,
+    congestion: json['congestion'] as String? ?? '',
+    upMbps: json['upMbps'] as int? ?? 0,
+    downMbps: json['downMbps'] as int? ?? 0,
+    plugin: json['plugin'] as String? ?? '',
+    pluginOpts: json['pluginOpts'] as String? ?? '',
     id: json['id'] as String? ?? '',
     name: json['name'] as String? ?? '',
     host: json['host'] as String? ?? '',
@@ -164,6 +367,7 @@ class Node {
     isAlive: json['isAlive'] as bool? ?? false,
     isTrulyWorking: json['isTrulyWorking'] as bool? ?? false,
     aiReachable: json['aiReachable'] as bool? ?? false,
+    exitCountry: json['exitCountry'] as String?,
     muxEnabled: json['muxEnabled'] as bool? ?? false,
     muxProtocol: json['muxProtocol'] as String? ?? 'smux',
     muxMaxStreams: json['muxMaxStreams'] as int? ?? 32,
@@ -210,8 +414,23 @@ class Node {
   }
 
   @override
-  String toString() => 'Node($name, $host:$port, ${latencyMs}ms, sni=$sni, '
+  String toString() => 'Node(${NodeProtocol.label(protocol)} $name, $host:$port, ${latencyMs}ms, sni=$sni, '
       'working=$isTrulyWorking)';
 }
 
 enum NodeQuality { excellent, good, poor, dead }
+
+/// Состояние UDP (голос Discord) для бейджа в UI.
+enum UdpStatus {
+  /// Ещё не проверяли.
+  unknown,
+
+  /// Сервер недоступен — UDP не проверялся (не «нет UDP»!).
+  unreachable,
+
+  /// Сервер работает, но UDP через него не проходит.
+  blocked,
+
+  /// UDP проходит.
+  ok,
+}

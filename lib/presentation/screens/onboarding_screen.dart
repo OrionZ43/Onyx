@@ -18,6 +18,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/glass_widget.dart';
 import '../../core/cosmic_background.dart';
+import '../../domain/subscription_presets.dart';
 import '../providers/subscription_provider.dart';
 import 'home_screen.dart';
 import 'faq_screen.dart';
@@ -50,7 +51,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     _bgCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),
-    )..repeat();
+    ); // фон статичный — не крутим
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2200),
@@ -58,7 +59,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     _shineCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3500),
-    )..repeat();
+    );
   }
 
   @override
@@ -167,6 +168,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                           _urlCtrl.text = _example;
                           setState(() => _error = null);
                         },
+                        onChinaPreset: () {
+                          _urlCtrl.text = SubscriptionPresets.chinaFree.url;
+                          setState(() => _error = null);
+                        },
                       ).animate().fadeIn(duration: 700.ms, delay: 250.ms),
 
                       const SizedBox(height: 12),
@@ -234,10 +239,10 @@ class _OnyxLogo extends StatelessWidget {
               shaderCallback: (b) => AppColors.gradientPlasma.createShader(
                 Rect.fromLTWH(0, 0, b.width, b.height),
               ),
-              child: const Text(
+              child: Text(
                 'ONYX',
                 style: TextStyle(
-                  fontFamily: 'Syne',
+                  fontFamily: AppFonts.display,
                   fontSize: 48,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 10,
@@ -258,9 +263,9 @@ class _OnyxLogo extends StatelessWidget {
               child: Text(
                 'by Orion_Z43',
                 style: TextStyle(
-                  fontFamily: 'DM Sans',
+                  fontFamily: AppFonts.body,
                   fontSize: 12,
-                  color: AppColors.nebula2,
+                  color: AppColors.nebula1,
                   decoration: TextDecoration.underline,
                   decorationColor: AppColors.nebula2.withValues(alpha: 0.4),
                 ),
@@ -287,10 +292,10 @@ class _Headline extends StatelessWidget {
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: const Text(
+          child: Text(
             'Один тап —',
             style: TextStyle(
-              fontFamily: 'Syne',
+              fontFamily: AppFonts.display,
               fontSize: 42,
               fontWeight: FontWeight.w800,
               color: AppColors.nebula0,
@@ -306,10 +311,10 @@ class _Headline extends StatelessWidget {
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: const Text(
+            child: Text(
               'полная защита.',
               style: TextStyle(
-                fontFamily: 'Syne',
+                fontFamily: AppFonts.display,
                 fontSize: 42,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
@@ -319,11 +324,11 @@ class _Headline extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Вставьте ссылку на подписку — приложение\n'
           'выберет лучший сервер автоматически.',
           style: TextStyle(
-            fontFamily: 'DM Sans',
+            fontFamily: AppFonts.body,
             fontSize: 15,
             color: AppColors.nebula1,
             height: 1.55,
@@ -342,11 +347,12 @@ class _UrlInput extends StatefulWidget {
     required this.focusNode,
     required this.onPaste,
     required this.onExample,
+    required this.onChinaPreset,
     this.error,
   });
   final TextEditingController controller;
   final FocusNode focusNode;
-  final VoidCallback onPaste, onExample;
+  final VoidCallback onPaste, onExample, onChinaPreset;
   final String? error;
 
   @override
@@ -392,7 +398,7 @@ class _UrlInputState extends State<_UrlInput> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: BackdropFilter(
+            child: NoBackdrop(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: Container(
                 decoration: BoxDecoration(
@@ -413,16 +419,19 @@ class _UrlInputState extends State<_UrlInput> {
                       child: TextField(
                         controller: widget.controller,
                         focusNode: widget.focusNode,
-                        style: const TextStyle(
-                          fontFamily: 'DM Sans',
+                        style: TextStyle(
+                          fontFamily: AppFonts.body,
                           color: AppColors.nebula0,
                           fontSize: 13,
                         ),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: InputBorder.none,
-                          hintText: 'https://example.com/subscription',
+                          // Рамка — у контейнера вокруг; заливка поля из темы
+                          // M3 (filled) легла бы серым прямоугольником внутри.
+                          filled: false,
+                          hintText: 'Ссылка на подписку или vless://, hysteria2://…',
                           hintStyle: TextStyle(
-                            color: AppColors.nebula2,
+                            color: AppColors.nebula1,
                             fontSize: 13,
                           ),
                           contentPadding: EdgeInsets.symmetric(vertical: 16),
@@ -432,7 +441,7 @@ class _UrlInputState extends State<_UrlInput> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.content_paste_rounded,
                         color: AppColors.nebula2,
                         size: 18,
@@ -451,7 +460,7 @@ class _UrlInputState extends State<_UrlInput> {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.error_outline_rounded,
                 color: AppColors.nova,
                 size: 14,
@@ -460,9 +469,9 @@ class _UrlInputState extends State<_UrlInput> {
               Expanded(
                 child: Text(
                   widget.error!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.nova,
-                    fontFamily: 'DM Sans',
+                    fontFamily: AppFonts.body,
                     fontSize: 12,
                   ),
                 ),
@@ -475,7 +484,7 @@ class _UrlInputState extends State<_UrlInput> {
           onTap: widget.onExample,
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.auto_awesome_rounded,
                 color: AppColors.plasma,
                 size: 12,
@@ -484,11 +493,41 @@ class _UrlInputState extends State<_UrlInput> {
               Text(
                 'Вставить тестовую подписку',
                 style: TextStyle(
-                  fontFamily: 'DM Sans',
+                  fontFamily: AppFonts.body,
                   fontSize: 12,
                   color: AppColors.plasma.withValues(alpha: 0.8),
                   decoration: TextDecoration.underline,
                   decorationColor: AppColors.plasma.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Встроенная подписка для Китая (#34): честно — бесплатные и нестабильные.
+        GestureDetector(
+          onTap: widget.onChinaPreset,
+          child: Row(
+            children: [
+              Icon(Icons.public_rounded, color: AppColors.plasma, size: 12),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(
+                      text: 'Бесплатные серверы для Китая',
+                      style: TextStyle(
+                        decoration: TextDecoration.underline,
+                        decorationColor: AppColors.plasma.withValues(alpha: 0.4),
+                        color: AppColors.plasma.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' · ${SubscriptionPresets.chinaFree.subtitle}',
+                      style: TextStyle(color: AppColors.nebula1),
+                    ),
+                  ]),
+                  style: TextStyle(fontFamily: AppFonts.body, fontSize: 12),
                 ),
               ),
             ],
@@ -499,9 +538,9 @@ class _UrlInputState extends State<_UrlInput> {
           child: Text(
             '🤍 Спасибо zieng2 за тестовые серверы',
             style: TextStyle(
-              fontFamily: 'DM Sans',
+              fontFamily: AppFonts.body,
               fontSize: 11,
-              color: AppColors.nebula2.withValues(alpha: 0.7),
+              color: AppColors.nebula1,
             ),
           ),
         ),
@@ -561,8 +600,8 @@ class _ProgressBlock extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
-                    fontFamily: 'DM Sans',
+                  style: TextStyle(
+                    fontFamily: AppFonts.body,
                     fontSize: 12,
                     color: AppColors.nebula1,
                   ),
@@ -607,63 +646,35 @@ class _ConnectButton extends StatelessWidget {
       child: AnimatedBuilder(
         animation: shineCtrl,
         builder: (_, __) {
-          final shine = shineCtrl.value;
           return Container(
             height: 58,
             decoration: BoxDecoration(
               gradient: onTap != null
                   ? AppColors.gradientPlasma
-                  : const LinearGradient(
+                  : LinearGradient(
                       colors: [AppColors.void3, AppColors.void3],
                     ),
               borderRadius: BorderRadius.circular(18),
-              boxShadow: onTap != null
-                  ? [
-                      BoxShadow(
-                        color: AppColors.plasma.withValues(alpha: 0.4),
-                        blurRadius: 24,
-                        spreadRadius: -2,
-                      ),
-                    ]
-                  : null,
             ),
             child: Stack(
               children: [
-                if (onTap != null)
-                  Positioned(
-                    left: (shine * 2 - 0.5) * 300 - 60,
-                    top: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 60,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            Color(0x1FFFFFFF),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
                 Center(
                   child: loading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: AppColors.onPlasma,
                           ),
                         )
-                      : const Text(
+                      : Text(
                           'Подключиться',
                           style: TextStyle(
-                            fontFamily: 'Syne',
+                            fontFamily: AppFonts.display,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: AppColors.onPlasma,
                           ),
                         ),
                 ),

@@ -1,15 +1,19 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'theme/app_colors.dart';
 
-/// Универсальный виджет жидкого стекла.
-/// Использует BackdropFilter для frosted glass эффекта.
+import 'theme/onyx_tokens.dart';
+
+/// Карточка-поверхность темы.
+///
+/// Раньше — «жидкое стекло» с BackdropFilter (blur 12–24), что клало GPU на
+/// среднем железе и визуально ничего не давало на тёмном фоне. Теперь — плотная
+/// поверхность с хайрлайном (Onyx) или без обводки (Signal / Material).
+/// API прежний, чтобы старые экраны не менять.
 class GlassCard extends StatelessWidget {
   const GlassCard({
     super.key,
     required this.child,
-    this.borderRadius = 24.0,
-    this.blur = 20.0,
+    this.borderRadius,
+    this.blur = 0,
     this.opacity = 1.0,
     this.padding,
     this.border = true,
@@ -18,7 +22,7 @@ class GlassCard extends StatelessWidget {
   });
 
   final Widget child;
-  final double borderRadius;
+  final double? borderRadius;
   final double blur;
   final double opacity;
   final EdgeInsetsGeometry? padding;
@@ -28,39 +32,24 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(borderRadius);
-    final gc = glowColor;
-
-    return Container(
-      margin: margin,
-      decoration: BoxDecoration(
+    final t = OnyxTokens.of(context);
+    final radius = BorderRadius.circular(borderRadius ?? t.radiusCard);
+    // Material, а не цветной Container: ink-эффекты (ListTile, ExpansionTile)
+    // рисуются на ближайшем Material и иначе были бы скрыты фоном.
+    final card = Material(
+      color: t.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: radius,
-        boxShadow: gc != null
-            ? [BoxShadow(color: gc, blurRadius: 32, spreadRadius: -4)]
-            : null,
+        side: border && t.isOnyx ? BorderSide(color: t.line) : BorderSide.none,
       ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: Container(
-            padding: padding,
-            decoration: BoxDecoration(
-              gradient: AppColors.gradientGlass(opacity: opacity),
-              borderRadius: radius,
-              border: border
-                  ? Border.all(color: AppColors.glassBorder, width: 1.0)
-                  : null,
-            ),
-            child: child,
-          ),
-        ),
-      ),
+      clipBehavior: Clip.antiAlias,
+      child: padding == null ? child : Padding(padding: padding!, child: child),
     );
+    return margin == null ? card : Padding(padding: margin!, child: card);
   }
 }
 
-/// Тонкая стеклянная плашка — для статусов, бейджей
+/// Плашка-капсула для статусов и бейджей.
 class GlassPill extends StatelessWidget {
   const GlassPill({
     super.key,
@@ -75,50 +64,53 @@ class GlassPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(100),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: color?.withValues(alpha: 0.15) ?? AppColors.glass,
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(
-              color: color?.withValues(alpha: 0.3) ?? AppColors.glassBorder,
-              width: 0.8,
-            ),
-          ),
-          child: child,
+    final t = OnyxTokens.of(context);
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: color?.withValues(alpha: 0.12) ?? t.surfaceHigh,
+        borderRadius: BorderRadius.circular(100),
+        border: t.isOnyx
+            ? Border.all(color: color?.withValues(alpha: 0.3) ?? t.line)
+            : null,
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Круглая иконка-кнопка.
+class GlassIconBtn extends StatelessWidget {
+  const GlassIconBtn({super.key, required this.icon, required this.onTap, this.tooltip});
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = OnyxTokens.of(context);
+    return IconButton(
+      onPressed: onTap,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 18, color: t.textMuted),
+      style: IconButton.styleFrom(
+        fixedSize: const Size(40, 40),
+        backgroundColor: t.isSignal ? t.surfaceHigh : Colors.transparent,
+        shape: CircleBorder(
+          side: t.isOnyx ? BorderSide(color: t.line) : BorderSide.none,
         ),
       ),
     );
   }
 }
 
-class GlassIconBtn extends StatelessWidget {
-  const GlassIconBtn({super.key, required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
+/// Замена `BackdropFilter` в старых шапках экранов: фон под ними теперь
+/// плотный, размывать нечего, а blur — самая дорогая операция GPU.
+class NoBackdrop extends StatelessWidget {
+  const NoBackdrop({super.key, this.filter, required this.child});
+  final Object? filter;
+  final Widget child;
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.glass,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.glassBorder, width: 1),
-              ),
-              child: Icon(icon, size: 18, color: AppColors.nebula1),
-            ),
-          ),
-        ),
-      );
+  Widget build(BuildContext context) => child;
 }

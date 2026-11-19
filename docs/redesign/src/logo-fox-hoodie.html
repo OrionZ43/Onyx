@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><link rel="stylesheet" href="fonts/fonts.css">
+<!-- #42: лиса V1 в худи — три решения капюшона. shot.sh logo-fox-hoodie.html x 1600 900 -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1600px;background:#08080A;color:#F3F1EC;font-family:'Inter';overflow:hidden}
+h1{font:600 22px 'Inter Tight';padding:28px 40px 4px}
+.sub{font:400 13px/1.5 'Inter';color:#8F8C86;padding:0 40px 18px;max-width:1480px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:0 40px}
+.c{border:1px solid #222226;border-radius:20px;overflow:hidden;background:#0C0C0E}
+.c h2{font:600 15px 'Inter Tight';padding:16px 18px 2px}
+.c p{font:400 12px/1.45 'Inter';color:#8F8C86;padding:0 18px 12px;height:58px}
+.big{display:grid;grid-template-columns:1fr 1fr}
+.big div{height:290px;display:flex;align-items:center;justify-content:center}
+.dark{background:radial-gradient(120% 90% at 50% 0%,#141416,#050506)}.light{background:#F3F1EC}
+.row{display:flex;gap:18px;align-items:center;justify-content:center}
+.small{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #222226}.small div{height:96px}
+.lbl{font:500 9.5px 'Inter Tight';letter-spacing:.2em;text-transform:uppercase;color:#57554F;padding:8px 18px 0}
+.foot{padding:16px 40px;font:400 12.5px/1.5 'Inter';color:#8F8C86}
+</style></head><body>
+<h1>Onyx — лиса V1 в худи: три решения капюшона</h1>
+<div class="sub">Капюшон строится по признакам толстовки, а не по контуру головы: мягкий купол ткани из трёх панелей со швами, плотный кант-колечко вокруг лица, V-вырез горловины, шнурки с люверсами и наконечниками шампань, плечи худи. Морда V1 — та же огранка оникса, но в тени капюшона: светятся глаза, нос и кончик морды.</div>
+<div class="grid" id="g"></div>
+<div class="foot">В 16 px капюшон читается как силуэт «бюста в худи», но морда схлопывается — поэтому в трее и Android monochrome остаётся одобренный плоский силуэт V1 без капюшона. Худи — для иконки приложения, «О программе» и сплэша.</div>
+<script>
+// ── Морда V1 (как в logo-fox-3d / onyx_fox_volume.dart) ──────────────────────
+const V = {L1:[19,8,16],LE:[29,23,11],L2:[40,33,6],T:[50,36,13],R2:[60,33,6],RE:[71,23,11],R1:[81,8,16],
+  RT:[86,45,3],RC:[73,68,6],N:[50,93,24],LC:[27,68,6],LT:[14,45,3],LB:[37,47,15],RB:[63,47,15],C:[50,58,25],M:[50,77,26],LJ:[36,80,10],RJ:[64,80,10]};
+const FACETS = [['L1','LE','LT'],['LE','L2','LT'],['L1','L2','LE'],['R1','RT','RE'],['RE','RT','R2'],['R1','RE','R2'],
+  ['L2','T','LB'],['T','RB','R2'],['LB','T','C'],['T','RB','C'],['LT','L2','LB'],['R2','RT','RB'],['LT','LB','LC'],['RB','RT','RC'],
+  ['LB','C','LC'],['RB','RC','C'],['LC','C','M'],['C','RC','M'],['LC','M','LJ'],['M','RC','RJ'],['LJ','M','N'],['M','RJ','N']];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]], cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=v=>{const l=Math.hypot(...v)||1;return v.map(x=>x/l)}; const LIGHT=norm([-0.55,-0.75,1.0]);
+const mix=(a,b,t)=>{const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));const A=p(a),B=p(b);return '#'+A.map((x,i)=>Math.round(x+(B[i]-x)*Math.max(0,Math.min(1,t))).toString(16).padStart(2,'0')).join('')};
+const P2 = q => q[0].toFixed(2)+','+q[1].toFixed(2);
+const rotY = (p, deg) => { const a = deg*Math.PI/180, x = p[0]-50; return [50 + x*Math.cos(a) + p[2]*Math.sin(a)*0.9, p[1], -x*Math.sin(a) + p[2]*Math.cos(a)]; };
+
+function face(id, tf, {shade = .6, skipEars = false, small = false, champ = '#D2B98F'}) {
+  const lo = '#050506', hi = '#5A564D';
+  let defs = '', body = '', edges = '';
+  FACETS.forEach((f, i) => {
+    if (skipEars && i < 6) return;
+    const p = f.map(k => tf(V[k]));
+    let n = norm(cross(sub(p[1],p[0]), sub(p[2],p[0]))); if (n[2]<0) n=n.map(x=>-x);
+    const lit = Math.max(0, n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2]);
+    const base = mix(lo, hi, Math.pow(lit,1.6)*shade);
+    const cx=(p[0][0]+p[1][0]+p[2][0])/3, cy=(p[0][1]+p[1][1]+p[2][1])/3, gid=`${id}f${i}`;
+    const c1 = (i===2||i===5) ? mix(base, champ, .25) : mix(base,'#ffffff',.06), c2 = mix(base,'#000000',.35);
+    defs += `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${cx-5}" y1="${cy-6}" x2="${cx+5}" y2="${cy+6}"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient>`;
+    const pts = p.map(P2).join(' ');
+    body += `<polygon points="${pts}" fill="url(#${gid})"/>`;
+    if (!small) edges += `<polygon points="${pts}" fill="none" stroke="${champ}" stroke-opacity="${(0.05+Math.pow(lit,3)*0.4).toFixed(2)}" stroke-width="0.3" stroke-linejoin="round"/>`;
+  });
+  // Глаза — тёмные прорези с бликом шампань; нос — «бриллиант».
+  const eye = pts => `<polygon points="${pts.map(p => P2(tf([p[0],p[1],20]))).join(' ')}" fill="#020202" stroke="${champ}" stroke-opacity="${small?0:.85}" stroke-width=".45"/>`;
+  const n = tf(V.N), s = Math.abs(tf([60,0,0])[0] - tf([50,0,0])[0]) / 10;
+  defs += `<linearGradient id="${id}nose" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F4E6C8"/><stop offset=".5" stop-color="${champ}"/><stop offset="1" stop-color="#6B5A3E"/></linearGradient>`;
+  const OUTL = skipEars ? ['LT','L2','T','R2','RT','RC','RJ','N','LJ','LC'] : ['L1','LE','L2','T','R2','RE','R1','RT','RC','RJ','N','LJ','LC','LT'];
+  if (!small) edges += `<polygon points="${OUTL.map(k=>P2(tf(V[k]))).join(' ')}" fill="none" stroke="${champ}" stroke-opacity=".42" stroke-width=".5" stroke-linejoin="round"/>`;
+  body += edges + eye([[33,53],[44,56],[35,59]]) + eye([[67,53],[56,56],[65,59]]) +
+    `<polygon points="${n[0]-5*s},${n[1]-8*s} ${n[0]+5*s},${n[1]-8*s} ${n[0]},${n[1]+.4}" fill="url(#${id}nose)"/>`;
+  return [defs, body];
+}
+
+// ── Ткань ───────────────────────────────────────────────────────────────────
+function fabricDefs(id, light) {
+  const lit = light ? '#3A3935' : '#2F2E2A';
+  return `
+  <linearGradient id="${id}hood" x1=".1" y1=".05" x2=".9" y2=".95"><stop offset="0" stop-color="${lit}"/><stop offset=".45" stop-color="#151517"/><stop offset="1" stop-color="#060607"/></linearGradient>
+  <linearGradient id="${id}panel" x1=".2" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="${mix(lit,'#ffffff',.06)}"/><stop offset=".6" stop-color="#18181A"/><stop offset="1" stop-color="#0B0B0C"/></linearGradient>
+  <linearGradient id="${id}torso" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#232220"/><stop offset=".5" stop-color="#0E0E10"/><stop offset="1" stop-color="#040405"/></linearGradient>
+  <radialGradient id="${id}open" cx="50%" cy="18%" r="85%"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#0C0C0D"/></radialGradient>
+  <linearGradient id="${id}shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".8"/><stop offset=".36" stop-color="#000" stop-opacity=".4"/><stop offset=".6" stop-color="#000" stop-opacity="0"/></linearGradient>
+  <linearGradient id="${id}rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3E3C36"/><stop offset=".5" stop-color="#1A1A1C"/><stop offset="1" stop-color="#0A0A0B"/></linearGradient>
+  <linearGradient id="${id}aglet" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6B5A3E"/><stop offset=".45" stop-color="#F4E6C8"/><stop offset="1" stop-color="#8E7B5B"/></linearGradient>
+  <linearGradient id="${id}rl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#D2B98F" stop-opacity=".55"/><stop offset=".3" stop-color="#ffffff" stop-opacity=".1"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+  <radialGradient id="${id}sh" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#000" stop-opacity="${light?.3:.8}"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`;
+}
+// Складка ткани: тёмная линия + тонкий блик рядом.
+const fold = (d, small, w = 1.4) => small ? '' : `<path d="${d}" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="${w}" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#fff" stroke-opacity=".06" stroke-width=".7" stroke-linecap="round" transform="translate(-.9 -.6)"/>`;
+// Шов со строчкой шампань.
+const seam = (d, small, champ) => small ? '' : `<path d="${d}" fill="none" stroke="#000" stroke-opacity=".6" stroke-width=".9"/><path d="${d}" fill="none" stroke="${champ}" stroke-opacity=".28" stroke-width=".35" stroke-dasharray="1.2 1.1" transform="translate(.9 0)"/>`;
+// Шнурок: шнур + блик + люверс + наконечник.
+function cord(id, eye, path, end, angle, small, champ) {
+  const [ex, ey] = eye, [tx, ty] = end;
+  return `<path d="${path}" fill="none" stroke="#2A2926" stroke-width="${small?3.2:2.3}" stroke-linecap="round"/>
+    ${small?'':`<path d="${path}" fill="none" stroke="${champ}" stroke-opacity=".32" stroke-width=".55" stroke-linecap="round" transform="translate(-.5 0)"/>`}
+    <circle cx="${ex}" cy="${ey}" r="${small?2.4:1.9}" fill="#050506" stroke="${champ}" stroke-width="${small?1.4:.9}"/>
+    <rect x="${tx-1.5}" y="${ty-1}" width="3" height="${small?8:6.5}" rx="1.4" fill="url(#${id}aglet)" transform="rotate(${angle} ${tx} ${ty})"/>`;
+}
+
+// ── H1 · Классика: купол из трёх панелей, уши внутри капюшона ────────────────
+function H1(size, light, id) {
+  const small = size < 60, champ = light ? '#C9AE80' : '#D2B98F';
+  const open = 'M60 104 C47 93 33 85 32.5 64 C32 41 44 27.5 60 27 C76 27.5 88 41 87.5 64 C87 85 73 93 60 104 Z';
+  const hood = 'M18 104 C10 90 8.5 70 12 52 C16 28 36 11.5 60 11 C84 11.5 104 28 108 52 C111.5 70 110 90 102 104 C88 108.5 72 110.5 60 112 C48 110.5 32 108.5 18 104 Z';
+  const panel = 'M52.5 27.6 C50 21 50.5 15 53 11.4 C57.5 10.9 62.5 10.9 67 11.4 C69.5 15 70 21 67.5 27.6 C62.5 26.7 57.5 26.7 52.5 27.6 Z';
+  const tf = p => [60 + (p[0]-50)*.53, 63 + (p[1]-50)*.53, p[2]*.53];
+  const [fd, fb] = face(id, tf, {shade: .9, small, champ});
+  return svg(size, id, light, fd, `
+    <ellipse cx="60" cy="121" rx="52" ry="4.5" fill="url(#${id}sh)"/>
+    <path d="M2 124 C4 108 10 100 22 98 L98 98 C110 100 116 108 118 124 Z" fill="url(#${id}torso)"/>
+    ${fold('M14 112 C17 106 20 103 24 101', small)}${fold('M106 112 C103 106 100 103 96 101', small)}
+    <path d="${hood}" fill="url(#${id}hood)"/>
+    ${small?'':`<path d="${hood}" fill="none" stroke="url(#${id}rl)" stroke-width="1.1"/>`}
+    <path d="${panel}" fill="url(#${id}panel)"/>
+    ${seam('M52.5 27.6 C50 21 50.5 15 53 11.4', small, champ)}${seam('M67.5 27.6 C70 21 69.5 15 67 11.4', small, champ)}
+    ${fold('M20 50 C22 40 27 32 34 26', small)}${fold('M100 50 C98 40 93 32 86 26', small, 1.6)}
+    ${fold('M17 78 C20 86 24 94 30 100', small)}${fold('M103 78 C100 86 96 94 90 100', small, 1.6)}
+    <path d="${open}" fill="url(#${id}open)"/>
+    <clipPath id="${id}clip"><path d="${open}"/></clipPath>
+    <g clip-path="url(#${id}clip)">${fb}<path d="${open}" fill="url(#${id}shade)"/></g>
+    <path d="${open}" fill="none" stroke="url(#${id}rim)" stroke-width="${small?6:4.6}"/>
+    <path d="${open}" fill="none" stroke="${champ}" stroke-opacity="${small?.9:.75}" stroke-width="${small?1.3:.75}" transform="translate(0 0) scale(1)" />
+    ${cord(id, [51,95], 'M51 95 C49.5 101 48.5 107 47.5 113', [47.5,113], 4, small, champ)}
+    ${cord(id, [69,95], 'M69 95 C70.8 100 72.2 104.5 73.2 110', [73.2,110], -7, small, champ)}`);
+}
+
+// ── H2 · Уши под тканью: купол с мягкими бугорками, морда из глубины ─────────
+function H2(size, light, id) {
+  const small = size < 60, champ = light ? '#C9AE80' : '#D2B98F';
+  const open = 'M60 105 C48 95 35 86 34.5 67 C34 48 45 35.5 60 35 C75 35.5 86 48 85.5 67 C85 86 72 95 60 105 Z';
+  const hood = 'M18 104 C10 90 8.5 72 11.5 54 C13.5 40 18.5 29 26 22 C28.5 15.5 32.5 8.5 36.5 4.2 C37.6 3.4 38.6 3.6 39.6 4.6 C43.5 8.5 47.5 13 51.5 16 C57 15.2 63 15.2 68.5 16 C72.5 13 76.5 8.5 80.4 4.6 C81.4 3.6 82.4 3.4 83.5 4.2 C87.5 8.5 91.5 15.5 94 22 C101.5 29 106.5 40 108.5 54 C111.5 72 110 90 102 104 C88 108.5 72 110.5 60 112 C48 110.5 32 108.5 18 104 Z';
+  const tf = p => [60 + (p[0]-50)*.5, 69 + (p[1]-50)*.5, p[2]*.5];
+  const [fd, fb] = face(id, tf, {shade: .88, skipEars: true, small, champ});
+  return svg(size, id, light, fd, `
+    <ellipse cx="60" cy="121" rx="52" ry="4.5" fill="url(#${id}sh)"/>
+    <path d="M2 124 C4 108 10 100 22 98 L98 98 C110 100 116 108 118 124 Z" fill="url(#${id}torso)"/>
+    ${fold('M14 112 C17 106 20 103 24 101', small)}${fold('M106 112 C103 106 100 103 96 101', small)}
+    <path d="${hood}" fill="url(#${id}hood)"/>
+    ${small?'':`<path d="${hood}" fill="none" stroke="url(#${id}rl)" stroke-width="1.1"/>`}
+    ${small?'':`<path d="M28 21 C30.5 15 34 9 37.5 5.2" fill="none" stroke="#fff" stroke-opacity=".09" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M92 21 C89.5 15 86 9 82.5 5.2" fill="none" stroke="#fff" stroke-opacity=".04" stroke-width="1.6" stroke-linecap="round"/>`}
+    ${fold('M39 7 C43 15 46 23 48 33', small, 1.2)}${fold('M81 7 C77 15 74 23 72 33', small, 1.4)}
+    ${seam('M60 35 C60 28 60 22 60 15.5', small, champ)}
+    ${fold('M19 54 C21 44 25 36 31 30', small)}${fold('M101 54 C99 44 95 36 89 30', small, 1.6)}
+    ${fold('M17 80 C20 88 24 95 30 100', small)}${fold('M103 80 C100 88 96 95 90 100', small, 1.6)}
+    <path d="${open}" fill="url(#${id}open)"/>
+    <clipPath id="${id}clip"><path d="${open}"/></clipPath>
+    <g clip-path="url(#${id}clip)">${fb}<path d="${open}" fill="url(#${id}shade)"/></g>
+    <path d="${open}" fill="none" stroke="url(#${id}rim)" stroke-width="${small?6:4.6}"/>
+    <path d="${open}" fill="none" stroke="${champ}" stroke-opacity="${small?.9:.75}" stroke-width="${small?1.3:.75}"/>
+    ${cord(id, [51.5,96.5], 'M51.5 96.5 C50 102 49 107.5 48 113', [48,113], 4, small, champ)}
+    ${cord(id, [68.5,96.5], 'M68.5 96.5 C70.2 101.5 71.5 106 72.5 111', [72.5,111], -7, small, champ)}`);
+}
+
+// ── H3 · Три четверти: виден задний «пик» капюшона и боковая панель ──────────
+function H3(size, light, id) {
+  const small = size < 60, champ = light ? '#C9AE80' : '#D2B98F';
+  const open = 'M51 104 C39 93 28.5 85 28 64 C27.5 42 38.5 28 53 27.5 C66.5 28 74.5 40.5 75 60 C75.5 80 64.5 92.5 51 104 Z';
+  const hood = 'M14 104 C7 90 6.5 70 10 52 C14 30 31 13.5 52 12 C68 11 84 12.5 97 19.5 C104.5 30 108 44 107.5 60 C107 78 104.5 92 98 104 C84 109.5 68 111.5 54 112 C40 111.5 26 109 14 104 Z';
+  const side = 'M75 60 C75.5 42 70 29 59 23 C70 18.5 84 15.5 97 19.5 C104.5 30 108 44 107.5 60 C107 78 104.5 92 98 104 C88 103 79 99 72 93 C74.5 83 75.3 72 75 60 Z';
+  const tf = p => { const r = rotY(p, 30); return [51.5 + (r[0]-50)*.5, 63 + (r[1]-50)*.5, r[2]*.5]; };
+  const [fd, fb] = face(id, tf, {shade: .9, small, champ});
+  return svg(size, id, light, fd + `<linearGradient id="${id}side" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1D1D1F"/><stop offset=".55" stop-color="#0D0D0E"/><stop offset="1" stop-color="#040405"/></linearGradient>`, `
+    <ellipse cx="58" cy="121" rx="54" ry="4.5" fill="url(#${id}sh)"/>
+    <path d="M0 124 C2 106 9 98 24 96 L86 94 C101 96 110 104 114 124 Z" fill="url(#${id}torso)"/>
+    ${fold('M10 112 C13 105 17 101 22 99', small)}${fold('M108 114 C105 106 101 101 95 98', small, 1.6)}
+    <path d="${hood}" fill="url(#${id}hood)"/>
+    ${small?'':`<path d="${hood}" fill="none" stroke="url(#${id}rl)" stroke-width="1.1"/>`}
+    <path d="${side}" fill="url(#${id}side)"/>
+    ${seam('M59 23 C70 18.5 84 15.5 97 19.5', small, champ)}
+    ${fold('M86 30 C94 42 97 56 96 72', small, 1.6)}${fold('M80 40 C85 54 86 68 84 84', small, 1.3)}
+    ${fold('M17 50 C19 40 24 32 31 26', small)}${fold('M14 78 C17 86 21 94 27 100', small)}
+    <path d="${open}" fill="url(#${id}open)"/>
+    <clipPath id="${id}clip"><path d="${open}"/></clipPath>
+    <g clip-path="url(#${id}clip)">${fb}<path d="${open}" fill="url(#${id}shade)"/></g>
+    <path d="${open}" fill="none" stroke="url(#${id}rim)" stroke-width="${small?6:4.6}"/>
+    <path d="${open}" fill="none" stroke="${champ}" stroke-opacity="${small?.9:.75}" stroke-width="${small?1.3:.75}"/>
+    ${cord(id, [43,95], 'M43 95 C41 101 39.5 107 38.5 113.5', [38.5,113.5], 6, small, champ)}
+    ${cord(id, [59,95], 'M59 95 C60.5 100 61.6 104.5 62.4 109', [62.4,109], -5, small, champ)}`);
+}
+
+function svg(size, id, light, defs, body) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 120 126"><defs>${fabricDefs(id, light)}${defs}</defs>${body}</svg>`;
+}
+
+let n = 0;
+const VARS = [
+  ['H1 · Классика', 'Анфас. Купол из трёх панелей со строчкой шампань по швам, кант-колечко вокруг лица, V-горловина и два шнурка. Уши лисы — внутри капюшона, морда целиком в тени.', H1],
+  ['H2 · Уши под тканью', 'Уши прячутся под капюшоном и приподнимают ткань двумя мягкими бугорками — сразу понятно, кто внутри. Шов по центру купола, морда глубже в тени.', H2],
+  ['H3 · Три четверти', 'Лёгкий поворот: видна боковая панель и задний «пик» капюшона, складки уходят назад, ближний шнурок крупнее. Самый «живой» и узнаваемый как одежда.', H3],
+];
+document.getElementById('g').innerHTML = VARS.map(([t, d, fn]) => `<div class="c"><h2>${t}</h2><p>${d}</p>
+  <div class="big"><div class="dark">${fn(260, false, 'a'+(n++))}</div><div class="light">${fn(260, true, 'a'+(n++))}</div></div>
+  <div class="lbl">48 / 32 / 16 px</div>
+  <div class="small"><div class="dark row">${[48,32,16].map(s=>fn(s,false,'a'+(n++))).join('')}</div><div class="light row">${[48,32,16].map(s=>fn(s,true,'a'+(n++))).join('')}</div></div></div>`).join('');
+</script></body></html>

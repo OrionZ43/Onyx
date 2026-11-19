@@ -2,11 +2,14 @@ export 'singbox_bridge.dart';
 import 'singbox_bridge.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
+import '../domain/udp_probe.dart';
 import '../core/log_service.dart';
 import '../domain/entities/node.dart';
 import '../domain/singbox_config_builder.dart';
 import 'binary_manager.dart';
 import 'singbox_api_client.dart';
+import 'win_child_guard.dart';
 
 
 /// Windows-реализация sing-box моста.
@@ -54,6 +57,14 @@ class SingboxBridgeWindows implements SingboxBridge {
   @override
   BridgeState get state => _state;
 
+  // Пробы — отдельные sing-box.exe: правило process_name → direct выводит их
+  // мимо TUN. Сам onyx.exe TUN ловит.
+  @override
+  bool get probesBypassTunnel => true;
+
+  @override
+  bool get appTrafficBypassesTunnel => _state != BridgeState.running;
+
   // ── Публичный API ──────────────────────────────────────────────────────
 
   /// Скачивает бинарники если нужно. Вызывать при старте приложения.
@@ -75,8 +86,8 @@ class SingboxBridgeWindows implements SingboxBridge {
   @override
   Future<BridgeResult> start(
       Node node, {
-        bool smartRouting = true,
-        bool aiDirectLane = true,
+        List<Node> fallbacks = const [],
+        RoutingOptions routing = const RoutingOptions(),
         List<String> excludedApps = const [],
       }) async {
     if (_state == BridgeState.running || _state == BridgeState.starting) {
@@ -87,20 +98,25 @@ class SingboxBridgeWindows implements SingboxBridge {
     log.i('Запускаем sing-box для ${node.name}', tag: 'BRIDGE');
 
     try {
-      // 1. Проверка бинарников
-      if (!_binMgr.isReady) {
-        throw Exception(
-          'Бинарники не готовы. Запустите ensureBinaries() сначала.',
-        );
-      }
+      // 1. Бинарники: раскладываем бандл установщика или обновляем версию
+      // (без сети, если установщик положил core\).
+      await _binMgr.ensureBinaries();
 
       // 2. Проверяем права администратора (результат кэшируется —
       // см. комментарий у _isAdminCached)
       final isAdmin = await _checkAdmin();
-      if (!isAdmin) {
-        log.w('Нет прав администратора — WinTUN требует прав!', tag: 'BRIDGE');
+      // #55: без прав туннель поднимает задача ядра, которую регистрирует
+      // установщик. Нет ни прав, ни задачи — честно говорим, что делать.
+      _viaCore = !isAdmin && await coreTaskAvailable();
+      if (isAdmin) {
+        log.i('Права администратора: OK — sing-box запускаем сами', tag: 'BRIDGE');
+      } else if (_viaCore) {
+        log.i('Без прав администратора — туннель поднимет задача ядра $coreTaskName', tag: 'BRIDGE');
       } else {
-        log.i('Права администратора: OK', tag: 'BRIDGE');
+        throw Exception(
+          'Для туннеля нужен компонент Onyx с правами администратора, а он не установлен. '
+          'Переустановите Onyx — Windows один раз спросит разрешение.',
+        );
       }
 
       // 3. Резолвим IP сервера ДО создания TUN-интерфейса.
@@ -108,27 +124,32 @@ class SingboxBridgeWindows implements SingboxBridge {
       // Зачем: правило `domain: [node.host]` в route не работает для
       // сырых IP-пакетов из WinTUN. Нужен ip_cidr, а для него нужен IP.
       // Резолвим сейчас — пока TUN не поднят и системный DNS доступен.
-      final resolvedServerIp = await _resolveServerIp(node.host);
+      // IP нужны для ВСЕХ серверов группы автопереключения.
+      final serverIps = <String>{};
+      for (final n in [node, ...fallbacks]) {
+        final ip = _isIpAddress(n.host) ? n.host : await _resolveServerIp(n.host);
+        if (ip != null) serverIps.add(ip);
+      }
 
-      // 4. Генерируем конфиг
+      // 4. Генерируем конфиг. Clash API защищён случайным секретом:
+      // без него любой локальный процесс мог управлять туннелем.
+      final secret = _newSecret();
+      _apiClient.secret = secret;
       final config = _builder.buildTunConfig(
         node,
+        fallbacks: fallbacks,
+        serverIps: serverIps.toList(),
         socksPort: 2080,
-        resolvedServerIp: resolvedServerIp,
-        smartRouting: smartRouting,
-        aiDirectLane: aiDirectLane,
+        routing: routing,
+        clashSecret: secret,
+        clashPort: _apiPort,
       );
-
-      // Мержим experimental вместо полной перезаписи, чтобы сохранить
-      // cache_file из _buildExperimental().
-      final experimental = Map<String, dynamic>.from(
-        config['experimental'] as Map? ?? {},
-      );
-      experimental['clash_api'] = {
-        'external_controller': '127.0.0.1:$_apiPort',
-        'secret': '',
-      };
-      config['experimental'] = experimental;
+      if (fallbacks.isNotEmpty) {
+        log.i(
+          'Автопереключение транспорта: ${[node, ...fallbacks].map((n) => n.protocol).join(" + ")}',
+          tag: 'BRIDGE',
+        );
+      }
 
       final configJson = _builder.buildJson(config);
 
@@ -151,52 +172,77 @@ class SingboxBridgeWindows implements SingboxBridge {
       // 5. Завершаем старый процесс если висит
       await _killExisting();
 
-      // 6. Запускаем sing-box.exe
-      log.i('Запускаем: ${_binMgr.singboxExe.path}', tag: 'BRIDGE');
-      _process = await Process.start(
-        _binMgr.singboxExe.path,
-        ['run', '--config', _binMgr.configFile.path],
-        workingDirectory: _binMgr.singboxExe.parent.path,
-        mode: ProcessStartMode.normal,
-      );
-
-      log.i('sing-box PID: ${_process!.pid}', tag: 'BRIDGE');
-
-      // 7. Пишем stdout/stderr в лог.
-      //
-      // sing-box пишет ВСЕ свои логи в stderr — это его штатное поведение,
-      // не признак ошибки. Парсим уровень из текста самого sing-box.
-      _process!.stdout
-          .transform(const SystemEncoding().decoder)
-          .listen(_parseSingboxOutput);
-
-      _process!.stderr.transform(const SystemEncoding().decoder).listen(
-        _parseSingboxOutput,
-      );
-
-      // Следим за завершением процесса
-      _process!.exitCode.then((code) {
-        log.w('sing-box завершился с кодом: $code', tag: 'BRIDGE');
-        if (_state == BridgeState.running) {
-          _errorCtrl.add('sing-box неожиданно завершился (код $code)');
-          _setState(BridgeState.error);
-          _stopStats();
-          _stopTrafficWatchdog();
+      // 6–8. Запуск sing-box.exe и ожидание API. Один повтор при ошибке TUN:
+      // при быстром переподключении Windows ещё не успевает удалить старый
+      // адаптер WinTUN → «create adapter: Cannot create a file when that file
+      // already exists». Через пару секунд адаптер исчезает и старт проходит.
+      var ready = false;
+      for (var attempt = 0; attempt < 2 && !ready; attempt++) {
+        _stderrTail.clear();
+        if (_viaCore) {
+          // #55: Onyx без прав — туннель поднимает задача ядра (onyx-core.exe
+          // из Program Files с наивысшими правами), без UAC.
+          ready = await _startViaCore();
+          if (ready) break;
+          await _stopCore();
+          final tunBusy = _stderrTail.toString().contains('configure tun interface');
+          if (attempt == 0 && tunBusy) {
+            log.w('WinTUN-адаптер ещё не освобождён — повторяем запуск через 3 с', tag: 'BRIDGE');
+            await Future.delayed(const Duration(seconds: 3));
+            continue;
+          }
+          throw Exception(_lastFatal() != null
+              ? 'sing-box завершился при запуске: ${_lastFatal()}'
+              : 'Ядро Onyx не ответило за 15 секунд. Журнал: $coreRunDir\\sing-box.log');
         }
-      });
-
-      // 8. Ждём готовности API
-      log.i('Ждём готовности API sing-box...', tag: 'BRIDGE');
-      final ready = await _apiClient.waitReady(
-        timeout: const Duration(seconds: 15),
-      );
-
-      if (!ready) {
-        await _killProcess();
-        throw Exception(
-          'sing-box не ответил за 15 секунд. '
-              'Возможно, не хватает прав администратора.',
+        log.i('Запускаем: ${_binMgr.singboxExe.path}', tag: 'BRIDGE');
+        final proc = await Process.start(
+          _binMgr.singboxExe.path,
+          ['run', '--config', _binMgr.configFile.path],
+          workingDirectory: _binMgr.singboxExe.parent.path,
+          mode: ProcessStartMode.normal,
         );
+        _process = proc;
+        log.i('sing-box PID: ${proc.pid}', tag: 'BRIDGE');
+        // Туннель не переживает onyx.exe даже при падении или «Снять задачу»:
+        // иначе WinTUN с маршрутами остаётся без хозяина (#57).
+        WinChildGuard.adopt(proc.pid);
+
+        // sing-box пишет ВСЕ свои логи в stderr — это штатно.
+        proc.stdout.transform(const SystemEncoding().decoder).listen(_parseSingboxOutput);
+        proc.stderr.transform(const SystemEncoding().decoder).listen(_parseSingboxOutput);
+
+        var exited = false;
+        final exitFuture = proc.exitCode.then((code) {
+          exited = true;
+          log.w('sing-box завершился с кодом: $code', tag: 'BRIDGE');
+          if (identical(_process, proc) && _state == BridgeState.running) {
+            _errorCtrl.add('sing-box неожиданно завершился (код $code)');
+            _setState(BridgeState.error);
+            _stopStats();
+            _stopTrafficWatchdog();
+          }
+          return false;
+        });
+
+        log.i('Ждём готовности API sing-box...', tag: 'BRIDGE');
+        // Не ждём все 15 с, если процесс уже упал.
+        ready = await Future.any([
+          _apiClient.waitReady(timeout: const Duration(seconds: 15)),
+          exitFuture,
+        ]);
+        if (ready) break;
+
+        await _killProcess();
+        final tunBusy = _stderrTail.toString().contains('configure tun interface');
+        if (attempt == 0 && tunBusy) {
+          log.w('WinTUN-адаптер ещё не освобождён — повторяем запуск через 3 с', tag: 'BRIDGE');
+          await Future.delayed(const Duration(seconds: 3));
+          continue;
+        }
+        throw Exception(exited
+            ? 'sing-box завершился при запуске: ${_lastFatal() ?? 'см. лог'}'
+            : 'sing-box не ответил за 15 секунд. Возможно, не хватает прав администратора.');
       }
 
       final version = await _apiClient.getVersion();
@@ -304,6 +350,21 @@ class SingboxBridgeWindows implements SingboxBridge {
   }
 
   /// Резолвит доменное имя сервера в IP-адрес ДО запуска TUN.
+  String _newSecret() {
+    final r = Random.secure();
+    return List.generate(24, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  @override
+  Future<UdpProbeResult> checkUdp() async {
+    if (_state != BridgeState.running) {
+      return const UdpProbeResult.failed('VPN не подключён');
+    }
+    // mixed-inbound sing-box (2080) умеет SOCKS5 UDP ASSOCIATE: датаграммы
+    // идут тем же outbound-ом `proxy`, что и трафик Discord.
+    return UdpProbe.viaSocks5(2080);
+  }
+
   Future<String?> _resolveServerIp(String host) async {
     if (_isIpAddress(host)) {
       log.d('Хост уже IP-адрес: $host', tag: 'BRIDGE');
@@ -348,7 +409,18 @@ class SingboxBridgeWindows implements SingboxBridge {
   }
 
   /// Парсит вывод sing-box и логирует с правильным уровнем.
+  /// Хвост вывода текущего запуска sing-box (для диагностики старта).
+  final StringBuffer _stderrTail = StringBuffer();
+
+  String? _lastFatal() {
+    for (final l in _stderrTail.toString().split('\n').reversed) {
+      if (l.contains('FATAL')) return l.replaceAll(RegExp(r'\x1b\[[0-9;]*m'), '').trim();
+    }
+    return null;
+  }
+
   void _parseSingboxOutput(String chunk) {
+    if (_stderrTail.length < 16384) _stderrTail.write(chunk);
     for (final rawLine in chunk.split('\n')) {
       final line = rawLine.trim();
       if (line.isEmpty) continue;
@@ -365,12 +437,30 @@ class SingboxBridgeWindows implements SingboxBridge {
 
   void _startStats() {
     _statsTimer?.cancel();
+    var failures = 0;
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       try {
         final (rx, tx) = await _apiClient.getTotalBytes();
+        failures = 0;
         _statsCtrl.add((rx, tx));
       } catch (e) {
         log.w('Ошибка получения статистики трафика: $e', tag: 'BRIDGE');
+        // Ядро через задачу (#55) — не наш дочерний процесс, его exitCode не
+        // слышим: молчание API 3 с подряд = ядро, вероятно, завершилось. Но
+        // на занятой машине API отвечает с задержкой (#69): пока процесс
+        // ядра жив, ждём до [coreSilenceLimit] и только потом объявляем сбой.
+        if (_viaCore && ++failures >= 3 && _state == BridgeState.running) {
+          if (failures < coreSilenceLimit && coreProcessAlive()) {
+            if (failures == 3) log.w('API ядра молчит 3 с, но процесс ядра жив — ждём', tag: 'BRIDGE');
+            return;
+          }
+          _readCoreLog();
+          log.w('Ядро не отвечает — туннель завершился', tag: 'BRIDGE');
+          _errorCtrl.add('sing-box неожиданно завершился${_lastFatal() != null ? ': ${_lastFatal()}' : ''}');
+          _setState(BridgeState.error);
+          _stopStats();
+          _stopTrafficWatchdog();
+        }
       }
     });
   }
@@ -422,7 +512,121 @@ class SingboxBridgeWindows implements SingboxBridge {
     return '${(b / (1024 * 1024)).toStringAsFixed(1)}MB';
   }
 
+  // ── Ядро через задачу планировщика (#55) ─────────────────────────────
+  //
+  // onyx.exe работает без прав. Туннель (WinTUN требует админа) поднимает
+  // onyx-core.exe из C:\Program Files\Onyx\core — задачу \Onyx\OnyxCore_<имя>
+  // с наивысшими правами регистрирует установщик (один UAC), а запускать и
+  // снимать её пользователь может сам, без запроса. onyx-core читает наш
+  // config.json как недоверенный (пересобирает по белому списку), пишет
+  // журнал в C:\Program Files\Onyx\run и гасит туннель по core.stop или
+  // когда onyx.exe (PID в core.pid) закрылся.
+
+  /// Туннель поднят через задачу ядра (а не нашим дочерним процессом).
+  bool _viaCore = false;
+
+  /// Сколько секунд молчания API ядра терпим, пока процесс ядра жив (#69).
+  static const coreSilenceLimit = 15;
+
+  /// Жив ли процесс ядра (onyx-core.exe). Снимок процессов видит имена и у
+  /// процессов с правами администратора. В тестах подменяется.
+  static bool Function() coreProcessAlive = () => WinChildGuard.anyRunning(const ['onyx-core.exe']);
+
+  /// Имя задачи ядра текущего пользователя (как в установщике).
+  static String get coreTaskName =>
+      '\\Onyx\\OnyxCore_${(Platform.environment['USERNAME'] ?? 'user').replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_')}';
+
+  /// Папка журнала ядра (только чтение — для текста ошибки).
+  static String get coreRunDir =>
+      '${Platform.environment['ProgramW6432'] ?? Platform.environment['ProgramFiles'] ?? r'C:\Program Files'}\\Onyx\\run';
+
+  /// Установлена ли задача ядра (установщик #55).
+  static Future<bool> coreTaskAvailable() async {
+    if (!Platform.isWindows) return false;
+    try {
+      final r = await Process.run('schtasks', ['/Query', '/TN', coreTaskName]);
+      return r.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  File get _corePidFile => File('${_binMgr.binDir.path}\\core.pid');
+  File get _coreStopFile => File('${_binMgr.binDir.path}\\core.stop');
+
+  Timer? _coreLogTimer;
+  int _coreLogOffset = 0;
+
+  /// Запуск через задачу ядра: PID-«заказчик», снять стоп-флаг и прошлый
+  /// экземпляр, запустить задачу, ждать Clash API. true — готово.
+  Future<bool> _startViaCore() async {
+    _corePidFile.writeAsStringSync('$pid');
+    if (_coreStopFile.existsSync()) _coreStopFile.deleteSync();
+    await Process.run('schtasks', ['/End', '/TN', coreTaskName]);
+    _coreLogOffset = 0;
+    log.i('Запускаем ядро: задача $coreTaskName', tag: 'BRIDGE');
+    final r = await Process.run('schtasks', ['/Run', '/TN', coreTaskName]);
+    if (r.exitCode != 0) {
+      _stderrTail.write('${r.stdout}${r.stderr}');
+      log.e('Задача ядра не запустилась: ${r.stdout}${r.stderr}', tag: 'BRIDGE');
+      return false;
+    }
+    _startCoreLogTail();
+    log.i('Ждём готовности API sing-box...', tag: 'BRIDGE');
+    final ready = await _apiClient.waitReady(timeout: const Duration(seconds: 15));
+    _readCoreLog(); // ошибки старта — в _stderrTail
+    return ready;
+  }
+
+  /// Остановка ядра: флаг core.stop (onyx-core гасит sing-box за ~0,3 с);
+  /// не помогло за 3 с — снимаем задачу планировщиком.
+  Future<void> _stopCore() async {
+    try {
+      _coreStopFile.writeAsStringSync('1');
+    } catch (_) {}
+    for (var i = 0; i < 12; i++) {
+      if (!await _apiClient.isReady()) break;
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+    if (await _apiClient.isReady()) {
+      log.w('Ядро не остановилось по флагу — снимаем задачу', tag: 'BRIDGE');
+      await Process.run('schtasks', ['/End', '/TN', coreTaskName]);
+    }
+    _coreLogTimer?.cancel();
+    _coreLogTimer = null;
+    _readCoreLog();
+  }
+
+  /// Журнал ядра → наш лог (диагностика, «Скопировать лог»).
+  void _startCoreLogTail() {
+    _coreLogTimer?.cancel();
+    _coreLogTimer = Timer.periodic(const Duration(seconds: 1), (_) => _readCoreLog());
+  }
+
+  void _readCoreLog() {
+    try {
+      final f = File('$coreRunDir\\sing-box.log');
+      if (!f.existsSync()) return;
+      final len = f.lengthSync();
+      if (len < _coreLogOffset) _coreLogOffset = 0; // новый запуск — файл заново
+      if (len == _coreLogOffset) return;
+      final raf = f.openSync();
+      try {
+        raf.setPositionSync(_coreLogOffset);
+        final bytes = raf.readSync(len - _coreLogOffset);
+        _coreLogOffset = len;
+        _parseSingboxOutput(const SystemEncoding().decoder.convert(bytes));
+      } finally {
+        raf.closeSync();
+      }
+    } catch (_) {}
+  }
+
   Future<void> _killProcess() async {
+    if (_viaCore) {
+      await _stopCore();
+      return;
+    }
     if (_process == null) return;
     try {
       _process!.kill(ProcessSignal.sigterm);
@@ -437,18 +641,18 @@ class SingboxBridgeWindows implements SingboxBridge {
     _process = null;
   }
 
+  /// Перед запуском: свой прошлый процесс и брошенные копии нашего
+  /// sing-box.exe (родитель уже не жив — например, после падения Onyx).
+  /// Раньше здесь был `taskkill /F /IM sing-box.exe`: он убивал ВСЕ sing-box
+  /// на машине — чужие клиенты, туннель соседней сборки Onyx и собственные
+  /// пробы Deep Probe посреди проверки (нода ложно становилась «мёртвой»).
   Future<void> _killExisting() async {
+    await _killProcess();
     try {
-      await Process.run(
-          'taskkill',
-          [
-            '/F',
-            '/IM',
-            'sing-box.exe',
-          ],
-          runInShell: true);
-      log.d('Завершены старые процессы sing-box', tag: 'BRIDGE');
-    } catch (_) {}
+      WinChildGuard.killOrphans(_binMgr.singboxExe.path);
+    } catch (e) {
+      log.w('Поиск брошенных sing-box не удался: $e', tag: 'BRIDGE');
+    }
   }
 
   /// Проверяет права администратора один раз за время жизни процесса

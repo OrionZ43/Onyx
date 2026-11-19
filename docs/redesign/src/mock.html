@@ -1,0 +1,622 @@
+<!doctype html>
+<!--
+  Мокапы редизайна Onyx VPN, этап 1 (концепции).
+  Один файл на все три направления: #d=a|b|c&s=off|on|list&v=phone|desk
+  Рендер в PNG: ./render.sh (headless Edge из WSL).
+-->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#000}
+#root{position:absolute;left:0;top:0}
+#root,.app{width:var(--W);height:var(--H)}
+body{-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1,"cv11" 1}
+.ic{display:inline-block;width:var(--is,20px);height:var(--is,20px);background:currentColor;
+  -webkit-mask:var(--src) center/contain no-repeat;mask:var(--src) center/contain no-repeat;flex:none}
+.row{display:flex;align-items:center}
+.col{display:flex;flex-direction:column}
+.grow{flex:1}
+.app{position:relative;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-family:var(--ff)}
+.mono{font-family:var(--fm)}
+.t2{color:var(--t2)}.t3{color:var(--t3)}
+
+/* ── телефон ── */
+.sbar{height:44px;padding:0 26px 0 30px;justify-content:space-between;font:600 15px var(--ff);color:var(--t1)}
+.sbar .r{gap:6px}
+.sbar i{display:inline-block;background:var(--t1);border-radius:1px}
+.phone .screen{position:absolute;inset:0;display:flex;flex-direction:column}
+.phone .top{height:52px;padding:0 20px;justify-content:space-between}
+.phone .main{flex:1;display:flex;flex-direction:column;align-items:center;padding:0 20px}
+.homebar{position:absolute;left:50%;bottom:8px;width:134px;height:5px;border-radius:3px;background:var(--t1);opacity:.9;transform:translateX(-50%)}
+
+/* ── окно Windows ── */
+.desk .titlebar,.det .titlebar{height:40px;padding-left:18px;justify-content:space-between;border-bottom:1px solid var(--line)}
+.winbtn{width:46px;height:40px;display:flex;align-items:center;justify-content:center;color:var(--t2)}
+.winbtn b{display:block}
+.desk .body{position:absolute;top:40px;left:0;right:0;bottom:0;display:flex}
+.desk .left{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+.desk .right{width:392px;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--side)}
+</style>
+<style id="theme"></style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const P = Object.fromEntries(location.hash.slice(1).split('&').map(kv => kv.split('=')));
+const D = P.d || 'a', S = P.s || 'off', V = P.v || 'phone';
+const ON = S === 'on', ING = S === 'ing', ERR = S === 'err', K = P.k || '1';
+
+/* ───────────────────────── данные ───────────────────────── */
+const SERVERS = [
+  {cc:'NL', country:'Нидерланды', city:'Амстердам', id:'AMS-03', ping:38, ai:true,  sel:true},
+  {cc:'NL', country:'Нидерланды', city:'Амстердам', id:'AMS-01', ping:44, ai:true},
+  {cc:'NL', country:'Нидерланды', city:'Роттердам', id:'RTM-02', ping:52, ai:false},
+  {cc:'FI', country:'Финляндия',  city:'Хельсинки', id:'HEL-02', ping:29, ai:true},
+  {cc:'DE', country:'Германия',   city:'Франкфурт', id:'FRA-01', ping:41, ai:true},
+  {cc:'DE', country:'Германия',   city:'Франкфурт', id:'FRA-04', ping:63, ai:false},
+  {cc:'SE', country:'Швеция',     city:'Стокгольм', id:'STO-01', ping:47, ai:false},
+  {cc:'PL', country:'Польша',     city:'Варшава',   id:'WAW-01', ping:55, ai:true},
+  {cc:'US', country:'США',        city:'Нью-Йорк',  id:'NYC-02', ping:118, ai:true},
+  {cc:'JP', country:'Япония',     city:'Токио',     id:'TYO-01', ping:212, ai:false},
+];
+const groups = [];
+for (const s of SERVERS) { let g = groups.find(g => g.cc === s.cc); if (!g) groups.push(g = {cc:s.cc, country:s.country, items:[]}); g.items.push(s); }
+
+/* ───────────────────────── помощники ───────────────────────── */
+const SET = {a:'phosphor', a2:'phosphor', a2s:'phosphor', b:'lucide', c:'pixel', c2:'pixel', m3:'m3', m3b:'m3'}[D];
+const ic = (n, size, extra='') => `<span class="ic ${extra}" style="--src:url(icons/${SET}/${n}.svg);--is:${size||20}px"></span>`;
+const h = (s) => s; // для читаемости шаблонов
+
+function statusBar() {
+  return `<div class="sbar row"><span>9:41</span><span class="row r">
+    <span class="row" style="gap:2px;align-items:flex-end">${[5,7,9,11].map(x=>`<i style="width:3px;height:${x}px"></i>`).join('')}</span>
+    <span style="font:600 13px var(--ff);margin-left:4px">5G</span>
+    <i style="width:24px;height:11px;border-radius:3px;margin-left:6px;opacity:.9"></i></span></div>`;
+}
+function winButtons() {
+  return `<div class="row">
+    <div class="winbtn"><b style="width:10px;height:1px;background:currentColor"></b></div>
+    <div class="winbtn"><b style="width:10px;height:10px;border:1px solid currentColor"></b></div>
+    <div class="winbtn">${ic('close',14)}</div></div>`;
+}
+
+/* dot-matrix 5×7 для направления C (рисуем сами — без лицензий) */
+const GL = {
+ '0':['01110','10001','10011','10101','11001','10001','01110'], '1':['00100','01100','00100','00100','00100','00100','01110'],
+ '2':['01110','10001','00001','00010','00100','01000','11111'], '3':['11111','00010','00100','00010','00001','10001','01110'],
+ '4':['00010','00110','01010','10010','11111','00010','00010'], '5':['11111','10000','11110','00001','00001','10001','01110'],
+ '6':['00110','01000','10000','11110','10001','10001','01110'], '7':['11111','00001','00010','00100','01000','01000','01000'],
+ '8':['01110','10001','10001','01110','10001','10001','01110'], '9':['01110','10001','10001','01111','00001','00010','01100'],
+ 'E':['11111','10000','10000','11110','10000','10000','11111'], 'R':['11110','10001','10001','11110','10100','10010','10001'], '+':['00000','00100','00100','11111','00100','00100','00000'],
+ ':':['0','0','1','0','1','0','0'], '-':['000','000','000','111','000','000','000'], ' ':['0','0','0','0','0','0','0'],
+};
+function dots(text, d=6, gap=2, on='#fff', off='#161616') {
+  let x = 0, out = '';
+  for (const ch of text) {
+    const g = GL[ch]; const w = g[0].length;
+    g.forEach((row, y) => [...row].forEach((b, i) => {
+      out += `<circle cx="${(x+i)*(d+gap)+d/2}" cy="${y*(d+gap)+d/2}" r="${d/2}" fill="${b==='1'?on:off}"/>`;
+    }));
+    x += w + 1;
+  }
+  const W = (x-1)*(d+gap)-gap, H = 7*(d+gap)-gap;
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out}</svg>`;
+}
+
+/* ═════════════════════════ A · ОБСИДИАН ═════════════════════════ */
+const A = {
+css: `
+.app{--bg:#050506;--s1:#0C0C0E;--s2:#131316;--s3:#1B1B1F;--line:#222226;--line2:#2E2E33;
+  --t1:#F3F1EC;--t2:#8F8C86;--t3:#57554F;--acc:#CDB38A;--acc2:#8C7A5C;--side:#08080A;
+  --ff:'Inter',sans-serif;--fd:'Inter Tight',sans-serif;--fm:'Inter Tight',sans-serif}
+.app::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 60% at 50% -10%, #17171A 0%, transparent 60%)}
+.word{font:600 13px var(--fd);letter-spacing:.42em;color:var(--t1)}
+.word em{font-style:normal;color:var(--acc)}
+.iconbtn{width:40px;height:40px;border-radius:20px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--t2)}
+.status{align-items:center;gap:6px;text-align:center}
+.status .k{font:500 11px var(--fd);letter-spacing:.24em;text-transform:uppercase;color:var(--t2)}
+.status .v{font:300 34px var(--fd);letter-spacing:-.02em}
+.status .k b{display:inline-block;width:6px;height:6px;border-radius:3px;background:var(--t3);margin-right:9px;vertical-align:1px}
+.on .status .k b{background:var(--acc);box-shadow:0 0 10px var(--acc)}
+.on .status .k{color:var(--acc)}
+/* дайл */
+.dial{position:relative;width:var(--D);height:var(--D)}
+.dial .bezel{position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from 210deg,#1A1A1D,#5A5853 12%,#1C1C1F 28%,#38372F 46%,#141416 60%,#4E4C47 78%,#1A1A1D);
+  -webkit-mask:radial-gradient(circle, transparent calc(50% - 14px), #000 calc(50% - 13px));}
+.dial .bezel::after{content:"";position:absolute;inset:0;border-radius:50%;background:#050506;opacity:.35}
+.dial svg.ticks{position:absolute;inset:0}
+.dial .disc{position:absolute;inset:calc(var(--D)*.16);border-radius:50%;
+  background:radial-gradient(circle at 50% 28%, #202024 0%, #0D0D0F 46%, #060607 80%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10), inset 0 -18px 30px rgba(0,0,0,.6), 0 24px 60px rgba(0,0,0,.7), 0 0 0 1px #1E1E22;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--t1)}
+.dial .disc::before{content:"";position:absolute;left:18%;right:18%;top:7%;height:34%;border-radius:50%;
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,0));}
+.dial .disc span.l{font:500 10.5px var(--fd);letter-spacing:.26em;text-transform:uppercase;color:var(--t2)}
+.on .dial .disc{box-shadow:inset 0 1px 0 rgba(255,255,255,.10), inset 0 -18px 30px rgba(0,0,0,.6), 0 24px 60px rgba(0,0,0,.7), 0 0 0 1px #3A3326, 0 0 80px rgba(205,179,138,.10)}
+.on .dial .disc{color:var(--acc)}
+.on .dial .disc span.l{color:var(--acc)}
+.dial .mark{position:absolute;left:50%;top:-2px;width:0;height:0;transform:translateX(-50%);
+  border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid var(--t3)}
+.on .dial .mark{border-top-color:var(--acc)}
+/* карточка сервера */
+.srv{width:100%;border-radius:20px;background:var(--s1);border:1px solid var(--line);padding:14px 16px;gap:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+.cc{width:34px;height:34px;border-radius:17px;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;
+  font:600 10.5px var(--fd);letter-spacing:.1em;color:var(--t1);background:linear-gradient(180deg,#18181B,#0E0E10);flex:none}
+.srv .n{font:500 15px var(--ff)}
+.srv .m{font:400 12.5px var(--ff);color:var(--t2);margin-top:2px}
+.ping{font:500 13px var(--fd);color:var(--t2)} .ping small{font-size:11px;color:var(--t3);margin-left:2px}
+.ai{font:600 9.5px var(--fd);letter-spacing:.14em;color:var(--acc);border:1px solid #3A3326;border-radius:6px;padding:2px 5px 2px 6px}
+/* усложнения (complications) — спрятанные функции */
+.comps{gap:8px;justify-content:center}
+.comp{gap:6px;font:500 10.5px var(--fd);letter-spacing:.16em;text-transform:uppercase;color:var(--t3);
+  border:1px solid var(--line);border-radius:14px;padding:6px 10px 6px 9px}
+.comp b{width:5px;height:5px;border-radius:3px;background:var(--t3)}
+.comp.lit{color:var(--t2)} .comp.lit b{background:var(--acc)}
+.stats{width:100%;justify-content:space-between;padding:0 6px}
+.stat .v{font:300 22px var(--fd);letter-spacing:-.01em}
+.stat .v small{font-size:12px;color:var(--t2);margin-left:3px}
+.stat .k{font:500 10px var(--fd);letter-spacing:.2em;text-transform:uppercase;color:var(--t3);margin-top:4px;gap:5px}
+/* список */
+.sheet{position:absolute;left:0;right:0;bottom:0;top:58px;background:var(--s1);border-radius:28px 28px 0 0;border-top:1px solid var(--line2);
+  box-shadow:0 -30px 80px rgba(0,0,0,.8);display:flex;flex-direction:column}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--line2);margin:10px auto 0}
+.sh-h{padding:16px 20px 12px;justify-content:space-between}
+.sh-h .t{font:400 26px var(--fd);letter-spacing:-.02em}
+.search{margin:0 20px;height:44px;border-radius:22px;background:var(--bg);border:1px solid var(--line);gap:10px;padding:0 16px;color:var(--t3);font:400 14px var(--ff)}
+.seg{margin:14px 20px 6px;gap:6px}
+.seg span{font:500 12px var(--ff);color:var(--t2);padding:7px 14px;border-radius:16px;border:1px solid var(--line)}
+.seg span.on{color:var(--bg);background:var(--t1);border-color:var(--t1)}
+.list{flex:1;overflow:hidden;padding:4px 0 0}
+.gh{padding:16px 20px 6px;font:500 10.5px var(--fd);letter-spacing:.22em;text-transform:uppercase;color:var(--t3);justify-content:space-between}
+.it{padding:11px 20px;gap:14px}
+.it .n{font:400 15px var(--ff)} .it .m{font:400 12px var(--ff);color:var(--t3);margin-top:1px}
+.it.sel{background:linear-gradient(90deg,rgba(205,179,138,.07),transparent 70%);box-shadow:inset 2px 0 0 var(--acc)}
+.it.sel .n{color:var(--acc)}
+.auto{margin:8px 20px 2px;padding:14px 16px;border-radius:18px;border:1px solid var(--line);background:var(--bg);gap:14px}
+.foot{border-top:1px solid var(--line);padding:14px 20px 28px;justify-content:space-between;font:400 12.5px var(--ff);color:var(--t2)}
+.foot .add{gap:8px;color:var(--t1);font-weight:500}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.66)}
+/* desktop */
+.desk .titlebar .word{font-size:11.5px}
+.panel{padding:22px 24px;border-bottom:1px solid var(--line)}
+.panel .h{font:500 10.5px var(--fd);letter-spacing:.22em;text-transform:uppercase;color:var(--t3);margin-bottom:14px;justify-content:space-between}
+.kv{justify-content:space-between;padding:9px 0;font:400 13.5px var(--ff);color:var(--t2);border-bottom:1px solid #141417}
+.kv:last-child{border-bottom:0}
+.kv b{font-weight:500;color:var(--t1)}
+.sw{width:30px;height:18px;border-radius:9px;background:var(--s3);border:1px solid var(--line2);position:relative}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:6px;background:var(--t3)}
+.sw.on{background:#2A2418;border-color:#4A3F2C}.sw.on::after{left:14px;background:var(--acc)}
+`,
+dial(D) {
+  const n = 60, R = D/2 - 20, ticks = [];
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2 - Math.PI/2, big = i % 5 === 0;
+    const r1 = R - (big ? 9 : 4), c = Math.cos(a), s = Math.sin(a);
+    let col = ON ? (big ? '#CDB38A' : '#8C7A5C') : (big ? '#4A4945' : '#26262A');
+    ticks.push(`<line x1="${D/2+c*r1}" y1="${D/2+s*r1}" x2="${D/2+c*R}" y2="${D/2+s*R}" stroke="${col}" stroke-width="${big?1.6:1}" stroke-linecap="round"/>`);
+  }
+  return `<div class="dial" style="--D:${D}px"><div class="bezel"></div>
+    <svg class="ticks" width="${D}" height="${D}">${ticks.join('')}</svg><div class="mark"></div>
+    <div class="disc">${ic('power', D*.12)}<span class="l">${ON?'Отключить':'Подключить'}</span></div></div>`;
+},
+status() {
+  return `<div class="col status"><div class="k"><b></b>${ON?'Защищено':'Не защищено'}</div>
+    <div class="v">${ON?'01:24:07':'Трафик открыт'}</div></div>`;
+},
+server(compact) {
+  return `<div class="srv row"><div class="cc">NL</div><div class="grow"><div class="n">Нидерланды</div>
+    <div class="m">Амстердам · AMS-03</div></div>
+    <span class="ai">AI</span><span class="ping">38<small>мс</small></span><span class="t3">${ic('chev',16)}</span></div>`;
+},
+comps() {
+  return `<div class="row comps"><span class="row comp lit"><b></b>Авто</span><span class="row comp lit"><b></b>AI-проба</span><span class="row comp ${ON?'lit':''}"><b></b>Kill switch</span></div>`;
+},
+stats() {
+  return `<div class="row stats">
+    <div class="col stat"><div class="v">1.82<small>ГБ</small></div><div class="row k">${ic('down',10)}Получено</div></div>
+    <div class="col stat" style="align-items:center"><div class="v">214<small>МБ</small></div><div class="row k">${ic('up',10)}Отправлено</div></div>
+    <div class="col stat" style="align-items:flex-end"><div class="v">185.•.•.12</div><div class="row k">IP туннеля</div></div></div>`;
+},
+item(s) {
+  return `<div class="it row ${s.sel?'sel':''}"><div class="cc" style="width:30px;height:30px;font-size:9.5px">${s.cc}</div>
+    <div class="grow"><div class="n">${s.city} <span class="t3" style="font-size:12px">${s.id}</span></div></div>
+    ${s.ai?'<span class="ai">AI</span>':''}<span class="ping" style="width:48px;text-align:right${s.ping>150?';color:#B98B5E':''}">${s.ping}<small>мс</small></span></div>`;
+},
+list(desk) {
+  return `<div class="sh-h row"><div class="t">Серверы</div><div class="row" style="gap:8px"><div class="iconbtn">${ic('refresh',16)}</div><div class="iconbtn">${ic('plus',16)}</div></div></div>
+   <div class="search row">${ic('search',16)}Страна, город или сервер</div>
+   <div class="row seg"><span class="on">Все · 10</span><span>AI · 6</span><span>Избранное</span></div>
+   <div class="list">
+     <div class="auto row"><div class="cc" style="color:var(--acc);border-color:#3A3326">${ic('zap',15)}</div>
+       <div class="grow"><div class="n" style="font:500 14.5px var(--ff)">Автовыбор</div><div class="m" style="font:400 12px var(--ff);color:var(--t2)">Лучший по задержке и AI-пробе, переключит сам</div></div>
+       <div class="sw on"></div></div>
+     ${groups.map(g => `<div class="gh row"><span>${g.country}</span><span>${g.items.length}</span></div>${g.items.map(A.item).join('')}`).join('')}
+   </div>
+   <div class="foot row"><span class="row add">${ic('plus',15)}Добавить подписку</span><span>Проверено 2 мин назад</span></div>`;
+},
+phone() {
+  if (S === 'list') return `<div class="screen">${statusBar()}<div class="top row"><span class="word">ONYX</span></div></div>
+    <div class="dim"></div><div class="sheet"><div class="grab"></div>${A.list()}</div><div class="homebar"></div>`;
+  return `<div class="screen">${statusBar()}
+    <div class="top row"><span class="word">ONYX</span><div class="iconbtn">${ic('settings',18)}</div></div>
+    <div class="main"><div style="height:34px"></div>${A.status()}<div style="flex:1"></div>${A.dial(270)}<div style="flex:1"></div>
+      ${ON?A.stats()+'<div style="height:22px"></div>':''}${A.server()}<div style="height:16px"></div>${A.comps()}<div style="height:34px"></div></div></div><div class="homebar"></div>`;
+},
+desk() {
+  const right = S === 'list'
+   ? `<div class="col" style="height:100%;background:var(--s1)">${A.list(true)}</div>`
+   : `<div class="panel"><div class="row h"><span>Сервер</span><span>${ic('chev',12)}</span></div>${A.server()}</div>
+      <div class="panel"><div class="row h"><span>Сессия</span><span>${ON?'01:24:07':'—'}</span></div>
+        <div class="kv row"><span>Получено</span><b>${ON?'1.82 ГБ':'—'}</b></div><div class="kv row"><span>Отправлено</span><b>${ON?'214 МБ':'—'}</b></div>
+        <div class="kv row"><span>IP</span><b>${ON?'185.•.•.12 · NL':'95.•.•.40 · RU'}</b></div></div>
+      <div class="panel" style="border:0"><div class="row h"><span>Защита</span></div>
+        <div class="kv row"><span>Автопереключение</span><div class="sw on"></div></div>
+        <div class="kv row"><span>Приоритет AI-сервисов</span><div class="sw on"></div></div>
+        <div class="kv row"><span>Раздельный туннель</span><b class="t2" style="font-weight:400">4 приложения ${ic('chev',12)}</b></div></div>`;
+  return `<div class="titlebar row"><span class="word">ONYX</span><div class="row">${A_titleIcons()}${winButtons()}</div></div>
+    <div class="body"><div class="left">${A.status()}<div style="height:44px"></div>${A.dial(300)}<div style="height:44px"></div>${A.comps()}</div>
+    <div class="right">${right}</div></div>`;
+},
+};
+function A_titleIcons(){ return `<div class="winbtn">${ic('settings',16)}</div>`; }
+
+
+/* ═════════════════════════ A2 · ОБСИДИАН без часов ═════════════════════════
+   Характер A (чёрный камень, шампань, Inter, Phosphor), но кнопка — современная:
+   k=1 — «линза»: круг с мягким объёмом, световой ободок, тонкое кольцо прогресса;
+   k=2 — «галька»: скруглённый квадрат (squircle) с тем же материалом.
+   Состояния: off | ing (подключение) | on | err | list. */
+const A2 = Object.assign({}, A, {
+css: A.css + `
+.app{--acc:#D2B98F;--acc2:#8E7B5B;--err:#C8655A}
+.status .v{font-weight:300}
+.ing .status .k{color:var(--acc2)} .ing .status .k b{background:var(--acc2)}
+.err .status .k{color:var(--err)} .err .status .k b{background:var(--err)}
+.status .sub{font:400 13px var(--ff);color:var(--t2);margin-top:2px}
+.hero{position:relative;width:var(--D);height:var(--D);display:flex;align-items:center;justify-content:center}
+.hero>svg{position:absolute;inset:0;overflow:visible}
+.lens{position:relative;width:var(--L);height:var(--L);border-radius:var(--rad);
+  background:radial-gradient(120% 100% at 50% 0%, #1D1D21 0%, #101012 45%, #070708 100%);
+  box-shadow:inset 0 -24px 40px rgba(0,0,0,.55),0 30px 70px rgba(0,0,0,.75),0 0 0 1px #17171A;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--t1)}
+.lens::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+  background:linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,.04) 38%,rgba(255,255,255,.02) 70%,rgba(255,255,255,.08));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.lens::after{content:"";position:absolute;left:22%;right:22%;top:5%;height:22%;border-radius:50%;
+  background:radial-gradient(50% 50% at 50% 50%,rgba(255,255,255,.06),transparent)}
+.lens .l{font:500 10.5px var(--fd);letter-spacing:.26em;text-transform:uppercase;color:var(--t2)}
+.on .lens{color:var(--acc);background:radial-gradient(120% 100% at 50% 0%, #1F1D19 0%, #110F0D 45%, #070706 100%);
+  box-shadow:inset 0 -24px 40px rgba(0,0,0,.55),inset 0 0 50px rgba(210,185,143,.07),0 30px 70px rgba(0,0,0,.75),0 0 0 1px #2A2419,0 0 90px rgba(210,185,143,.13)}
+.on .lens::before{background:linear-gradient(180deg,rgba(210,185,143,.75),rgba(210,185,143,.10) 40%,rgba(210,185,143,.04) 70%,rgba(210,185,143,.22))}
+.on .lens .l{color:var(--acc)}
+.ing .lens{transform:scale(.975);color:var(--acc2)}
+.ing .lens::before{background:linear-gradient(180deg,rgba(210,185,143,.40),rgba(255,255,255,.03) 40%,rgba(255,255,255,.02) 70%,rgba(255,255,255,.06))}
+.err .lens::before{background:linear-gradient(180deg,rgba(200,101,90,.55),rgba(255,255,255,.03) 40%,rgba(255,255,255,.02) 70%,rgba(255,255,255,.06))}
+.err .lens .l{color:var(--err)}
+.kbd{font:500 11px var(--fd);color:var(--t2);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;background:var(--s1)}
+.toast{gap:10px;font:400 12.5px var(--ff);color:var(--t2);padding:9px 14px;border-radius:14px;border:1px solid var(--line);background:var(--s1)}
+`,
+hero(D) {
+  const sq = K === '2', L = Math.round(D * (sq ? .72 : .74)), pad = (D - L) / 2;
+  const w = 1.6, gap = 13;
+  // кольцо/контур прогресса вокруг кнопки
+  const o = pad - gap, size = D - 2*o, rx = sq ? L*.30 + gap : size/2;
+  const shape = (attrs) => `<rect x="${o}" y="${o}" width="${size}" height="${size}" rx="${rx}" pathLength="100" ${attrs}/>`;
+  const track = shape(`fill="none" stroke="${ERR?'#2A1714':'#1A1A1D'}" stroke-width="${w}"`);
+  let arc = '';
+  const grad = `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E6D3AE"/><stop offset="1" stop-color="#9C8661"/></linearGradient></defs>`;
+  // старт прогресса — сверху по центру
+  const rot = `transform="rotate(-90 ${D/2} ${D/2})"`;
+  const per = 4*(size-2*rx) + 2*Math.PI*rx, c0 = (size/2 - rx) / per * 100;
+  const startFix = `stroke-dashoffset="${-c0}"`;
+  if (ON)  arc = shape(`fill="none" stroke="url(#g)" stroke-width="${w}" style="filter:drop-shadow(0 0 6px rgba(210,185,143,.45))"`);
+  if (ING) arc = shape(`fill="none" stroke="url(#g)" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="62 100" ${startFix} style="filter:drop-shadow(0 0 5px rgba(210,185,143,.35))"`);
+  if (ERR) arc = shape(`fill="none" stroke="#C8655A" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="8 92" stroke-dashoffset="${-c0+4}" style="filter:drop-shadow(0 0 4px rgba(200,101,90,.5))"`);
+  const label = ON ? 'Отключить' : ING ? 'Отмена' : ERR ? 'Повторить' : 'Подключить';
+  return `<div class="hero" style="--D:${D}px"><svg width="${D}" height="${D}">${grad}${track}${arc}</svg>
+    <div class="lens" style="--L:${L}px;--rad:${sq?'30%':'50%'}">${ic('power', L*.15)}<span class="l">${label}</span></div></div>`;
+},
+status() {
+  const [k, v, sub] = ON ? ['Защищено', '01:24:07', ''] : ING ? ['Подключение', 'Амстердам', 'Проверяем канал · AMS-03'] :
+    ERR ? ['Нет соединения', 'Сервер молчит', 'AMS-03 не ответил · пробуем HEL-02'] : ['Не защищено', 'Трафик открыт', ''];
+  return `<div class="col status"><div class="k"><b></b>${k}</div><div class="v">${v}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`;
+},
+comps() {
+  return `<div class="row comps"><span class="row comp lit"><b></b>Авто</span><span class="row comp lit"><b></b>AI-проба</span><span class="row comp ${ON?'lit':''}"><b></b>Kill switch</span></div>`;
+},
+phone() {
+  if (S === 'list') return A.phone();
+  return `<div class="screen">${statusBar()}
+    <div class="top row"><span class="word">ONYX</span><div class="iconbtn">${ic('settings',18)}</div></div>
+    <div class="main"><div style="height:34px"></div>${A2.status()}<div style="flex:1"></div>${A2.hero(K==='2'?266:280)}<div style="flex:1"></div>
+      ${ON?A.stats()+'<div style="height:22px"></div>':''}${A.server()}<div style="height:16px"></div>${A2.comps()}<div style="height:34px"></div></div></div><div class="homebar"></div>`;
+},
+desk() {
+  const right = `<div class="panel"><div class="row h"><span>Сервер</span><span class="kbd">S</span></div>${A.server()}</div>
+      <div class="panel"><div class="row h"><span>Сессия</span><span>${ON?'01:24:07':'—'}</span></div>
+        <div class="kv row"><span>Получено</span><b>${ON?'1.82 ГБ':'—'}</b></div><div class="kv row"><span>Отправлено</span><b>${ON?'214 МБ':'—'}</b></div>
+        <div class="kv row"><span>IP</span><b>${ON?'185.•.•.12 · NL':'95.•.•.40 · RU'}</b></div></div>
+      <div class="panel" style="border:0"><div class="row h"><span>Защита</span></div>
+        <div class="kv row"><span>Автопереключение</span><div class="sw on"></div></div>
+        <div class="kv row"><span>Приоритет AI-сервисов</span><div class="sw on"></div></div>
+        <div class="kv row"><span>Раздельный туннель</span><b class="t2" style="font-weight:400">4 приложения ${ic('chev',12)}</b></div></div>`;
+  return `<div class="titlebar row"><span class="word">ONYX</span><div class="row">
+      <span class="row" style="gap:8px;font:400 12px var(--ff);color:var(--t3);margin-right:10px">Команды <span class="kbd">Ctrl K</span></span>
+      <div class="winbtn">${ic('settings',16)}</div>${winButtons()}</div></div>
+    <div class="body"><div class="left">${A2.status()}<div style="height:40px"></div>${A2.hero(K==='2'?300:316)}<div style="height:40px"></div>${A2.comps()}
+      ${ON?`<div class="row toast" style="position:absolute;bottom:26px">${ic('zap',14)}Автопереключение: AMS-01 → AMS-03, задержка 112 → 38 мс</div>`:''}</div>
+    <div class="right">${right}</div></div>`;
+},
+});
+/* ═════════════════════════ B · ГРАФИТ ═════════════════════════ */
+const B = {
+css: `
+.app{--bg:#08090A;--s1:#0F1012;--s2:#151619;--s3:#1C1D21;--line:#1F2024;--line2:#2B2D32;
+  --t1:#F4F5F6;--t2:#8B9099;--t3:#555A63;--acc:#3DD68C;--accd:#123A27;--side:#0B0C0D;
+  --ff:'Geist',sans-serif;--fm:'Geist Mono',monospace}
+.app::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:24px 24px;opacity:.22;-webkit-mask:radial-gradient(70% 50% at 50% 42%,#000 0%,transparent 75%)}
+.word{font:600 15px var(--ff);letter-spacing:-.01em;gap:8px}
+.logo{width:18px;height:18px;border-radius:5px;background:linear-gradient(180deg,#3A3C42,#16171A);box-shadow:inset 0 1px 0 rgba(255,255,255,.15),0 0 0 1px #2B2D32;position:relative}
+.logo::after{content:"";position:absolute;inset:5px;border-radius:2px;border:1.5px solid var(--t1);transform:rotate(45deg) scale(.8)}
+.kbd{font:500 11px var(--fm);color:var(--t2);border:1px solid var(--line2);border-radius:6px;padding:2px 6px;background:var(--s1);box-shadow:0 1px 0 var(--line2)}
+.iconbtn{width:36px;height:36px;border-radius:10px;border:1px solid var(--line2);background:var(--s1);display:flex;align-items:center;justify-content:center;color:var(--t2)}
+.status{align-items:center;gap:8px}
+.status .v{font:600 30px var(--ff);letter-spacing:-.035em;gap:10px}
+.status .v b{width:8px;height:8px;border-radius:4px;background:var(--t3)}
+.on .status .v b{background:var(--acc);box-shadow:0 0 0 4px rgba(61,214,140,.14)}
+.status .k{font:400 12.5px var(--fm);color:var(--t2)}
+/* клавиша */
+.key{position:relative;width:var(--K);height:var(--K);border-radius:calc(var(--K)*.27);
+  background:linear-gradient(180deg,#1E1F23 0%,#121316 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -2px 0 rgba(0,0,0,.4),0 0 0 1px #2B2D32,0 18px 40px rgba(0,0,0,.6),0 2px 0 #050506;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--t1)}
+.key .l{font:500 12px var(--fm);color:var(--t2);letter-spacing:.02em}
+.keywrap{position:relative;padding:22px}
+.keywrap::before{content:"";position:absolute;inset:0;border-radius:calc(var(--K)*.27 + 22px);border:1px dashed #23252A}
+.on .key{background:linear-gradient(180deg,#14261D 0%,#0D1712 100%);
+  box-shadow:inset 0 1px 0 rgba(61,214,140,.25),inset 0 0 40px rgba(61,214,140,.10),0 0 0 1px rgba(61,214,140,.55),0 0 60px rgba(61,214,140,.18),0 18px 40px rgba(0,0,0,.6);color:var(--acc)}
+.on .key .l{color:#7FE3B3}
+.on .keywrap::before{border:1px solid rgba(61,214,140,.18)}
+.card{width:100%;border-radius:14px;background:var(--s1);border:1px solid var(--line2);box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+.srv{padding:12px 14px;gap:12px}
+.cc{width:28px;height:20px;border-radius:5px;background:var(--s3);border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;font:500 10.5px var(--fm);color:var(--t1);flex:none}
+.srv .n{font:500 14.5px var(--ff)} .srv .m{font:400 12px var(--fm);color:var(--t3);margin-top:3px}
+.ping{font:400 12.5px var(--fm);color:var(--t2)}
+.ai{font:500 10.5px var(--fm);color:var(--acc);background:rgba(61,214,140,.08);border:1px solid rgba(61,214,140,.22);border-radius:5px;padding:1px 5px}
+.meta{width:100%;font:400 11.5px var(--fm);color:var(--t3);justify-content:space-between;padding:0 4px}
+.meta span{gap:6px}.meta i{width:6px;height:6px;border-radius:2px;background:var(--acc);display:inline-block}
+.meta i.off{background:var(--t3)}
+.stats{display:grid;grid-template-columns:1fr 1fr 1fr}
+.stat{padding:12px 14px}.stat+.stat{border-left:1px solid var(--line2)}
+.stat .k{font:400 11px var(--fm);color:var(--t3);gap:5px}.stat .v{font:500 17px var(--ff);margin-top:4px;letter-spacing:-.02em}
+.stat .v small{font:400 11.5px var(--fm);color:var(--t2);margin-left:3px}
+/* список */
+.sheet{position:absolute;left:0;right:0;bottom:0;top:58px;background:var(--s1);border-radius:20px 20px 0 0;box-shadow:0 0 0 1px var(--line2),0 -30px 80px rgba(0,0,0,.8);display:flex;flex-direction:column}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+.sh-h{padding:18px 16px 12px;justify-content:space-between}.sh-h .t{font:600 18px var(--ff);letter-spacing:-.02em}
+.search{margin:0 16px;height:40px;border-radius:10px;background:var(--bg);border:1px solid var(--line2);gap:10px;padding:0 12px;color:var(--t3);font:400 13.5px var(--ff);justify-content:space-between}
+.seg{margin:12px 16px 4px;padding:3px;border-radius:9px;background:var(--bg);border:1px solid var(--line2);display:grid;grid-template-columns:1fr 1fr 1fr}
+.seg span{font:500 12.5px var(--ff);color:var(--t2);text-align:center;padding:6px 0;border-radius:6px}
+.seg span.on{background:var(--s3);color:var(--t1);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 0 0 1px var(--line2)}
+.list{flex:1;overflow:hidden;padding-top:6px}
+.gh{padding:14px 16px 6px;font:400 11px var(--fm);color:var(--t3);justify-content:space-between;text-transform:uppercase;letter-spacing:.04em}
+.it{padding:9px 16px;gap:12px;font:400 14px var(--ff)}
+.it .id{font:400 12px var(--fm);color:var(--t3)}
+.it.sel{background:var(--s2);box-shadow:inset 0 1px 0 var(--line2),inset 0 -1px 0 var(--line2)}
+.it.sel .chk{color:var(--acc)}
+.bars{gap:2px;align-items:flex-end;height:12px}.bars i{width:3px;border-radius:1px;background:var(--t3);display:block}
+.bars i.l{background:var(--t1)}
+.auto{margin:8px 16px 0;padding:11px 12px;gap:12px}
+.foot{border-top:1px solid var(--line2);padding:12px 16px 30px;justify-content:space-between;font:400 12px var(--fm);color:var(--t3)}
+.btn{gap:7px;font:500 13px var(--ff);color:var(--t1);border:1px solid var(--line2);background:var(--s2);border-radius:8px;padding:7px 11px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+/* desktop */
+.desk .titlebar{background:var(--bg)}
+.tb{gap:10px}
+.sec{padding:18px 20px;border-bottom:1px solid var(--line)}
+.sec .h{font:400 11px var(--fm);color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;justify-content:space-between}
+.tg{justify-content:space-between;padding:8px 0;font:400 13.5px var(--ff);color:var(--t1)}
+.tg .d{font:400 11.5px var(--fm);color:var(--t3);margin-top:2px}
+.sw{width:28px;height:16px;border-radius:8px;background:var(--s3);border:1px solid var(--line2);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:5px;background:var(--t2)}
+.sw.on{background:var(--acc);border-color:var(--acc)}.sw.on::after{left:14px;background:#06140D}
+.palette{position:absolute;left:50%;top:110px;transform:translateX(-50%);width:520px;border-radius:14px;background:rgba(21,22,25,.98);
+  box-shadow:0 0 0 1px var(--line2),0 40px 100px rgba(0,0,0,.8);overflow:hidden}
+`,
+key(K) {
+  return `<div class="keywrap" style="--K:${K}px"><div class="key">${ic('power', K*.2)}<span class="l">${ON?'отключить':'подключить'}</span></div></div>`;
+},
+status() {
+  return `<div class="col status"><div class="row v"><b></b>${ON?'Защищено':'Не защищено'}</div>
+    <div class="k">${ON?'VLESS · REALITY · 01:24:07':'IP 95.•.•.40 виден сайтам'}</div></div>`;
+},
+server() {
+  return `<div class="card srv row"><div class="cc">NL</div><div class="grow"><div class="n">Амстердам</div><div class="m">ams-03 · авто</div></div>
+    <span class="ai">AI</span><span class="ping">38 ms</span><span class="t3">${ic('chevd',16)}</span></div>`;
+},
+meta() {
+  return `<div class="row meta"><span class="row"><i></i>auto-switch</span><span class="row"><i class="${ON?'':'off'}"></i>kill switch</span><span class="row"><i></i>split · 4</span></div>`;
+},
+stats() {
+  return `<div class="card stats"><div class="stat"><div class="row k">${ic('down',11)}down</div><div class="v">1.82<small>GB</small></div></div>
+    <div class="stat"><div class="row k">${ic('up',11)}up</div><div class="v">214<small>MB</small></div></div>
+    <div class="stat"><div class="row k">${ic('clock',11)}time</div><div class="v">1:24<small>h</small></div></div></div>`;
+},
+bars(p) { const n = p < 50 ? 3 : p < 120 ? 2 : 1; return `<span class="row bars">${[5,8,12].map((x,i)=>`<i class="${i<n?'l':''}" style="height:${x}px"></i>`).join('')}</span>`; },
+item(s) {
+  return `<div class="it row ${s.sel?'sel':''}"><div class="cc">${s.cc}</div><span class="grow">${s.city} <span class="id">${s.id.toLowerCase()}</span></span>
+   ${s.ai?'<span class="ai">AI</span>':''}<span class="ping" style="width:46px;text-align:right">${s.ping}ms</span>${B.bars(s.ping)}
+   <span class="chk" style="width:16px">${s.sel?ic('check',15):''}</span></div>`;
+},
+list() {
+  return `<div class="sh-h row"><div class="t">Серверы</div><div class="row" style="gap:8px"><span class="btn row">${ic('refresh',14)}Проверить</span><span class="btn row">${ic('plus',14)}Подписка</span></div></div>
+   <div class="search row"><span class="row" style="gap:10px">${ic('search',15)}Поиск</span><span class="kbd">/</span></div>
+   <div class="seg"><span class="on">Все</span><span>AI-проба</span><span>Избранное</span></div>
+   <div class="list"><div class="card auto row" style="width:auto"><div class="cc" style="color:var(--acc)">${ic('zap',12)}</div>
+     <div class="grow"><div style="font:500 14px var(--ff)">Автовыбор</div><div style="font:400 11.5px var(--fm);color:var(--t3);margin-top:2px">лучший по пингу + AI · переключит при деградации</div></div><div class="sw on"></div></div>
+     ${groups.map(g => `<div class="gh row"><span>${g.country}</span><span>${g.items.length}</span></div>${g.items.map(B.item).join('')}`).join('')}</div>
+   <div class="foot row"><span>10 серверов · 6 AI</span><span>проверено 2 мин назад</span></div>`;
+},
+phone() {
+  const top = `<div class="top row"><span class="row word"><span class="logo"></span>Onyx</span><div class="row" style="gap:8px"><div class="iconbtn">${ic('sliders',16)}</div></div></div>`;
+  if (S === 'list') return `<div class="screen">${statusBar()}${top}</div><div class="dim"></div><div class="sheet">${B.list()}</div><div class="homebar"></div>`;
+  return `<div class="screen">${statusBar()}${top}
+   <div class="main"><div style="height:40px"></div>${B.status()}<div style="flex:1"></div>${B.key(176)}<div style="flex:1"></div>
+   ${ON?B.stats()+'<div style="height:10px"></div>':''}${B.server()}<div style="height:14px"></div>${B.meta()}<div style="height:34px"></div></div></div><div class="homebar"></div>`;
+},
+desk() {
+  const right = S === 'list' ? `<div class="col" style="height:100%;background:var(--s1)">${B.list()}</div>` :
+   `<div class="sec"><div class="row h"><span>сервер</span><span class="kbd">S</span></div>${B.server()}</div>
+    <div class="sec"><div class="row h"><span>сессия</span></div>${ON?B.stats():'<div style="font:400 12.5px var(--fm);color:var(--t3);padding:14px 0">нет активного соединения</div>'}</div>
+    <div class="sec" style="border:0"><div class="row h"><span>защита</span></div>
+      <div class="tg row"><div><div>Автопереключение</div><div class="d">при росте задержки или обрыве</div></div><div class="sw on"></div></div>
+      <div class="tg row"><div><div>AI Direct Lane</div><div class="d">ChatGPT, Claude, Gemini — через туннель</div></div><div class="sw on"></div></div>
+      <div class="tg row"><div><div>Раздельный туннель</div><div class="d">4 приложения напрямую</div></div><span class="t3">${ic('chev',14)}</span></div></div>`;
+  return `<div class="titlebar row"><span class="row word" style="font-size:13.5px"><span class="logo" style="width:16px;height:16px"></span>Onyx</span>
+    <div class="row"><span class="row tb" style="font:400 12px var(--ff);color:var(--t3);margin-right:14px">Команды <span class="kbd">Ctrl K</span></span>${winButtons()}</div></div>
+    <div class="body"><div class="left">${B.status()}<div style="height:40px"></div>${B.key(200)}<div style="height:40px"></div>
+     <div style="width:430px">${B.meta()}</div></div><div class="right">${right}</div></div>`;
+},
+};
+
+/* ═════════════════════════ C · СИГНАЛ ═════════════════════════ */
+const C = {
+css: `
+.app{--bg:#000;--s1:#0B0B0B;--s2:#141414;--line:#1C1C1C;--line2:#2A2A2A;--t1:#FFFFFF;--t2:#9B9B9B;--t3:#555;--acc:#FF3B2F;--side:#050505;
+  --ff:'Onest',sans-serif;--fm:'JetBrains Mono',monospace}
+.cap{font:500 11px var(--fm);letter-spacing:.12em;text-transform:uppercase;color:var(--t2)}
+.word{font:600 12px var(--fm);letter-spacing:.32em}
+.iconbtn{width:40px;height:40px;border-radius:20px;background:var(--s2);display:flex;align-items:center;justify-content:center;color:var(--t1)}
+.ring{position:relative;width:var(--R);height:var(--R)}
+.ring>svg{position:absolute;inset:0}
+.ring .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.rec{gap:8px}.rec b{width:8px;height:8px;border-radius:4px;background:var(--acc);box-shadow:0 0 12px var(--acc)}
+.card{width:100%;background:var(--s1);border-radius:24px}
+.srv{padding:16px 18px;gap:14px}
+.srv .n{font:500 17px var(--ff);letter-spacing:-.01em}.srv .m{margin-top:4px}
+.cc{font:600 13px var(--fm);color:var(--t1);width:30px;flex:none}
+.ai{font:600 10.5px var(--fm);color:#000;background:var(--t1);border-radius:4px;padding:1px 5px;letter-spacing:.06em}
+.ping{font:500 13px var(--fm);color:var(--t2)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+.tile{background:var(--s1);border-radius:20px;padding:14px 16px;gap:8px}
+.tile .v{font:500 22px var(--ff);letter-spacing:-.02em}.tile .v small{font:500 12px var(--fm);color:var(--t2);margin-left:4px}
+.glyphs{gap:6px;width:100%}
+.glyph{flex:1;background:var(--s1);border-radius:16px;padding:10px 12px;justify-content:space-between;align-items:center}
+.glyph i{width:6px;height:6px;border-radius:3px;background:var(--t3);display:block}
+.glyph.on i{background:var(--t1)}
+.sheet{position:absolute;left:0;right:0;bottom:0;top:58px;background:var(--bg);border-radius:32px 32px 0 0;border-top:1px solid var(--line2);display:flex;flex-direction:column}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.7)}
+.sh-h{padding:22px 20px 14px;justify-content:space-between}
+.search{margin:0 20px;height:48px;border-radius:24px;background:var(--s2);gap:10px;padding:0 18px;color:var(--t2);font:400 15px var(--ff)}
+.chips{margin:14px 20px 4px;gap:8px}
+.chips span{font:500 11px var(--fm);letter-spacing:.1em;text-transform:uppercase;color:var(--t2);padding:8px 14px;border-radius:18px;background:var(--s2)}
+.chips span.on{background:var(--t1);color:#000}
+.list{flex:1;overflow:hidden}
+.gh{padding:18px 20px 6px}
+.it{padding:12px 20px;gap:14px;font:400 16px var(--ff)}
+.it .id{font:400 12px var(--fm);color:var(--t3);margin-left:6px}
+.it.sel{background:var(--s1)}
+.it .dotsel{width:8px;height:8px;border-radius:4px;border:1.5px solid var(--t3)}
+.it.sel .dotsel{background:var(--acc);border-color:var(--acc)}
+.pdots{gap:3px}.pdots i{width:4px;height:4px;border-radius:2px;background:#2A2A2A;display:block}.pdots i.l{background:var(--t1)}
+.auto{margin:8px 20px 6px;padding:14px 18px;gap:14px;background:var(--s1);border-radius:20px}
+.foot{padding:14px 20px 30px;justify-content:space-between;border-top:1px solid var(--line)}
+.sw{width:40px;height:24px;border-radius:12px;background:var(--s2);border:1.5px solid var(--line2);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:8px;background:var(--t3)}
+.sw.on{background:var(--t1);border-color:var(--t1)}.sw.on::after{left:19px;background:#000}
+.desk .titlebar{border:0}
+.desk .right{border-left:0;padding:0 16px 16px 0;background:transparent;gap:8px}
+.blk{background:var(--s1);border-radius:24px;padding:18px 20px}
+.tg{justify-content:space-between;padding:10px 0;font:400 14.5px var(--ff)}
+`,
+ring(R) {
+  const n = 64, r = R/2 - 8, out = [];
+  for (let i = 0; i < n; i++) {
+    const a = i/n*Math.PI*2 - Math.PI/2;
+    const col = ON ? (i === 0 ? '#FF3B2F' : '#FFFFFF') : (i % 8 === 0 ? '#3A3A3A' : '#1E1E1E');
+    out.push(`<circle cx="${R/2+Math.cos(a)*r}" cy="${R/2+Math.sin(a)*r}" r="${ON && i===0 ? 4.2 : 3}" fill="${col}"/>`);
+  }
+  // второе, внутреннее кольцо — «трасса»
+  const r2 = r - 20;
+  for (let i = 0; i < 96; i++) { const a = i/96*Math.PI*2; out.push(`<circle cx="${R/2+Math.cos(a)*r2}" cy="${R/2+Math.sin(a)*r2}" r="1" fill="${ON?'#3A3A3A':'#171717'}"/>`); }
+  const inner = ON ? dots('01:24', R*.0175, R*.0068, '#fff', '#141414') : dots('--:--', R*.0175, R*.0068, '#5a5a5a', '#121212');
+  return `<div class="ring" style="--R:${R}px"><svg width="${R}" height="${R}">${out.join('')}</svg>
+   <div class="c">${inner}<span class="cap" style="color:${ON?'var(--t1)':'var(--t2)'}">${ON?'нажми — отключить':'нажми — подключить'}</span></div></div>`;
+},
+status() {
+  return ON ? `<div class="row rec"><b></b><span class="cap" style="color:var(--t1)">Защита активна</span></div>`
+            : `<div class="row rec"><b style="background:var(--t3);box-shadow:none"></b><span class="cap">Не защищено</span></div>`;
+},
+server() {
+  return `<div class="card srv row"><div class="cc">NL</div><div class="grow"><div class="n">Амстердам</div><div class="m cap" style="font-size:10.5px;color:var(--t3)">AMS-03 · авто</div></div>
+   <span class="ai">AI</span><span class="ping">38MS</span><span class="t2">${ic('chev',18)}</span></div>`;
+},
+tiles() {
+  return `<div class="tiles"><div class="col tile"><span class="cap row" style="gap:6px;font-size:10px">${ic('down',12)}Получено</span><div class="v">1.82<small>ГБ</small></div></div>
+    <div class="col tile"><span class="cap row" style="gap:6px;font-size:10px">${ic('up',12)}Отправлено</span><div class="v">214<small>МБ</small></div></div></div>`;
+},
+glyphs() {
+  const g = (t, on) => `<div class="row glyph ${on?'on':''}"><span class="cap" style="font-size:10px;color:${on?'var(--t1)':'var(--t3)'}">${t}</span><i></i></div>`;
+  return `<div class="row glyphs">${g('Авто',true)}${g('AI',true)}${g('Kill',ON)}</div>`;
+},
+item(s) {
+  const n = s.ping < 50 ? 4 : s.ping < 80 ? 3 : s.ping < 150 ? 2 : 1;
+  return `<div class="it row ${s.sel?'sel':''}"><span class="dotsel"></span><span class="cc" style="font-size:12px">${s.cc}</span>
+   <span class="grow">${s.city}<span class="id">${s.id}</span></span>${s.ai?'<span class="ai">AI</span>':''}
+   <span class="ping" style="width:40px;text-align:right">${s.ping}</span><span class="row pdots">${[0,1,2,3].map(i=>`<i class="${i<n?'l':''}"></i>`).join('')}</span></div>`;
+},
+list() {
+  return `<div class="sh-h row"><span style="font:500 28px var(--ff);letter-spacing:-.03em">Серверы</span><div class="row" style="gap:8px"><div class="iconbtn">${ic('refresh',18)}</div><div class="iconbtn">${ic('plus',18)}</div></div></div>
+   <div class="search row">${ic('search',18)}Поиск</div>
+   <div class="row chips"><span class="on">Все 10</span><span>AI 6</span><span>★ 2</span></div>
+   <div class="list"><div class="auto row">${ic('zap',20)}<div class="grow"><div style="font:500 15px var(--ff)">Автовыбор</div><div class="cap" style="font-size:10px;color:var(--t3);margin-top:3px">пинг + AI-проба</div></div><div class="sw on"></div></div>
+    ${groups.map(g => `<div class="gh row cap" style="justify-content:space-between;color:var(--t3)"><span>${g.country}</span><span>${String(g.items.length).padStart(2,'0')}</span></div>${g.items.map(C.item).join('')}`).join('')}</div>
+   <div class="foot row cap" style="font-size:10px;color:var(--t3)"><span>+ Подписка</span><span>Проверено 2 мин</span></div>`;
+},
+phone() {
+  const top = `<div class="top row"><span class="word">ONYX</span><div class="iconbtn">${ic('more',18)}</div></div>`;
+  if (S === 'list') return `<div class="screen">${statusBar()}${top}</div><div class="dim"></div><div class="sheet">${C.list()}</div><div class="homebar"></div>`;
+  return `<div class="screen">${statusBar()}${top}
+   <div class="main"><div style="height:26px"></div>${C.status()}<div style="flex:1"></div>${C.ring(286)}<div style="flex:1"></div>
+   ${ON?C.tiles()+'<div style="height:8px"></div>':''}${C.server()}<div style="height:8px"></div>${C.glyphs()}<div style="height:32px"></div></div></div><div class="homebar"></div>`;
+},
+desk() {
+  const right = S === 'list' ? `<div class="col blk" style="flex:1;padding:0;overflow:hidden">${C.list()}</div>` :
+   `${C.server()}${ON?C.tiles():`<div class="blk"><span class="cap" style="color:var(--t3)">Сессия</span><div style="margin-top:10px">${dots('--', 5, 2, '#444', '#111')}</div></div>`}
+    <div class="blk" style="flex:1"><span class="cap" style="color:var(--t3)">Защита</span>
+     <div class="tg row" style="margin-top:6px">Автопереключение<div class="sw on"></div></div>
+     <div class="tg row">AI Direct Lane<div class="sw on"></div></div>
+     <div class="tg row">Раздельный туннель<span class="cap">4 ПРИЛ. ›</span></div></div>`;
+  return `<div class="titlebar row"><span class="word">ONYX</span><div class="row"><div class="winbtn">${ic('more',16)}</div>${winButtons()}</div></div>
+   <div class="body"><div class="left">${C.status()}<div style="height:34px"></div>${C.ring(340)}<div style="height:34px"></div><div style="width:400px">${C.glyphs()}</div></div>
+   <div class="right">${right}</div></div>`;
+},
+};
+
+/* ───────────────────────── сборка ───────────────────────── */
+function build(extra) {
+  const T = Object.assign({a:A, a2:A2, b:B, c:C}, extra || {})[D];
+  document.getElementById('theme').textContent = T.css;
+  const big = V==='desk' || V==='det' || V==='chk';
+  const W = big ? '1100px' : '390px', H = V==='chk' ? '920px' : big ? '720px' : '844px';
+  document.documentElement.style.setProperty('--W', W);
+  document.documentElement.style.setProperty('--H', H);
+  const body = V==='desk' ? T.desk() : V==='det' ? T.det() : V==='chk' ? T.check() : T.phone();
+  document.getElementById('root').innerHTML = `<div class="app ${V==='chk'?'det':V} ${S} ${ON?"on":"off"}">${body}</div>`;
+  if (T.after) T.after();
+}
+</script>
+<script src="flags-data.js"></script>
+<script src="m3-shapes.js"></script>
+<script src="mock-m3.js"></script>
+<script src="mock-sources.js"></script>
+<script src="mock-ext.js"></script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><link rel="stylesheet" href="fonts/fonts.css">
+<!-- Задача #42: концепты логотипа-лисы Onyx. Рендер: shot.sh logo-fox.html x 1600 1120 -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1600px;height:1120px;background:#08080A;color:#F3F1EC;font-family:'Inter';overflow:hidden}
+h1{font:600 22px 'Inter Tight';letter-spacing:-.01em;padding:28px 40px 4px}
+.sub{font:400 13px 'Inter';color:#8F8C86;padding:0 40px 18px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:0 40px}
+.c{border:1px solid #222226;border-radius:20px;overflow:hidden;background:#0C0C0E}
+.c h2{font:600 15px 'Inter Tight';padding:16px 18px 2px}
+.c p{font:400 12px/1.45 'Inter';color:#8F8C86;padding:0 18px 12px;height:66px}
+.big{display:grid;grid-template-columns:1fr 1fr}
+.big div{height:230px;display:flex;align-items:center;justify-content:center}
+.dark{background:#050506}.light{background:#F3F1EC}
+.small{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #222226}
+.small div{height:96px;display:flex;align-items:center;justify-content:center;gap:18px}
+.lbl{font:500 9.5px 'Inter Tight';letter-spacing:.2em;text-transform:uppercase;color:#57554F;padding:8px 18px 0}
+.tray{display:flex;gap:10px;align-items:center;padding:10px 18px 16px;border-top:1px solid #222226}
+.tray span{font:500 9.5px 'Inter Tight';letter-spacing:.16em;color:#57554F;text-transform:uppercase;margin-right:6px}
+.tb{background:#1C1C1F;border-radius:6px;padding:6px 8px;display:flex;gap:10px;align-items:center}
+.px{image-rendering:pixelated}
+</style></head><body>
+<h1>Onyx — логотип «Лиса». Концепты</h1>
+<div class="sub">Геометрия и язык Onyx: чёрный камень, грани, линза, хайрлайны шампань. Не Firefox: нет огненного хвоста вокруг глобуса и нет оранжевого. Внизу каждого концепта — 32 и 16 px и моно-значок трея в 4 состояниях.</div>
+<div class="grid" id="g"></div>
+<script>
+// Каркас морды (100×100): уши, лоб, скулы, острый подбородок-нос.
+const P = {L1:[19,9],L2:[40,33],T:[50,37],R2:[60,33],R1:[81,9],RT:[85,45],RC:[73,67],N:[50,92],LC:[27,67],LT:[15,45],C:[50,60],LE:[28,22],RE:[72,22]};
+const pt = k => P[k].join(',');
+const poly = (ks, fill, extra='') => `<polygon points="${ks.map(pt).join(' ')}" fill="${fill}" ${extra}/>`;
+const OUT = ['L1','L2','T','R2','R1','RT','RC','N','LC','LT'];
+
+// A. Гранёная морда — фасеты чёрного камня + хайрлайн шампань.
+function A(dark, s) {
+  const sh = dark ? ['#1E1E22','#141417','#0B0B0D','#26262B','#18181C','#101013','#202024','#0E0E10','#2A2A2F','#121215','#1A1A1E','#09090A']
+                  : ['#3A3A40','#2A2A2F','#1B1B1F','#46464C','#303035','#232327','#3E3E44','#1F1F23','#4A4A50','#26262A','#34343A','#151518'];
+  const edge = dark ? '#D2B98F' : '#8E7B5B';
+  const f = [['L1','L2','LT'],['R1','RT','R2'],['L1','LE','L2'],['R1','R2','RE'],['L2','T','C'],['T','R2','C'],['LT','L2','C'],['R2','RT','C'],['LT','C','LC'],['RT','RC','C'],['LC','C','N'],['C','RC','N']];
+  const w = s < 40 ? 0 : 0.7;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 100 100">${f.map((k,i)=>poly(k, sh[i], w?`stroke="${edge}" stroke-opacity=".55" stroke-width="${w}" stroke-linejoin="round"`:'')).join('')}
+    ${poly(OUT,'none',`stroke="${edge}" stroke-width="${s<40?3:1.2}" stroke-linejoin="round"`)}
+    <polygon points="46,86 54,86 50,92" fill="${edge}"/></svg>`;
+}
+// B. Лиса в линзе — камень-линза, лиса лежит на нём; уши прорезают ободок шампань.
+function B(dark, s) {
+  const id = 'm'+Math.random().toString(36).slice(2);
+  const rim = dark ? '#D2B98F' : '#8E7B5B';
+  const k = .78, cy = 58;
+  const head = OUT.map(n => [50 + (P[n][0]-50)*k, cy + (P[n][1]-54)*k]);
+  const hp = head.map(p=>p.join(',')).join(' ');
+  return `<svg width="${s}" height="${s}" viewBox="0 0 100 100"><defs>
+    <radialGradient id="${id}g" cx="50%" cy="22%" r="85%"><stop offset="0" stop-color="${dark?'#2A2925':'#3A3935'}"/><stop offset=".55" stop-color="${dark?'#111012':'#1A191B'}"/><stop offset="1" stop-color="#070708"/></radialGradient>
+    <mask id="${id}"><rect width="100" height="100" fill="#fff"/><polygon points="${hp}" fill="#000" stroke="#000" stroke-width="${s<40?6:4}" stroke-linejoin="round"/></mask></defs>
+    <circle cx="50" cy="54" r="40" fill="url(#${id}g)"/>
+    <circle cx="50" cy="54" r="40" fill="none" stroke="${rim}" stroke-width="${s<40?3.5:1.6}" mask="url(#${id})"/>
+    <polygon points="${hp}" fill="${dark?'#F3F1EC':'#0B0B0D'}" opacity="${dark?.0:0}"/>
+    <polygon points="${hp}" fill="none" stroke="${rim}" stroke-width="${s<40?4:1.6}" stroke-linejoin="round"/>
+    <polygon points="${[[38,53],[44,55],[39,57]].map(p=>p.join(',')).join(' ')}" fill="${rim}"/><polygon points="${[[62,53],[56,55],[61,57]].map(p=>p.join(',')).join(' ')}" fill="${rim}"/></svg>`;
+}
+// C. Монолиния — один непрерывный контур морды + глаза-грани; линия как хайрлайн линзы.
+function C(dark, s) {
+  const ink = dark ? '#F3F1EC' : '#0B0B0D', acc = dark ? '#D2B98F' : '#8E7B5B';
+  const w = s < 40 ? 9 : 4.5;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 100 100"><g fill="none" stroke="${ink}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="${OUT.map(pt).join(' ')}"/>
+    ${s>=40?`<polyline points="${pt('LT')} ${pt('C')} ${pt('RT')}" stroke-width="2" stroke-opacity=".5"/><polyline points="${pt('LC')} ${pt('C')} ${pt('RC')}" stroke-width="2" stroke-opacity=".5"/>`:''}</g>
+    <polygon points="31,50 42,54 33,57" fill="${acc}"/><polygon points="69,50 58,54 67,57" fill="${acc}"/>
+    <polygon points="46,85 54,85 50,92" fill="${acc}"/></svg>`;
+}
+// D. Signal — морда точечной матрицей 11×11, красная точка — нос.
+function D(dark, s) {
+  const on = dark ? '#FFFFFF' : '#0B0B0D', off = dark ? '#1A1A1A' : '#E2E0DB';
+  const rows = ['10000000001','11000000011','11100000111','11111111111','11111111111','11101110111','01111111110','00111111100','00011111000','00001110000','00000100000'];
+  let o = ''; const st = 100/11, r = st*.36;
+  rows.forEach((row,y)=>[...row].forEach((b,x)=>{ const nose = y===10&&x===5;
+    o += `<circle cx="${x*st+st/2}" cy="${y*st+st/2}" r="${nose? r*1.2 : r}" fill="${nose?'#FF3B2F':(b==='1'?on:off)}"/>`; }));
+  return `<svg width="${s}" height="${s}" viewBox="0 0 100 100">${o}</svg>`;
+}
+// Моно-значки трея (16 px): силуэт + метка состояния.
+function trayMono(kind, state, light) {
+  const ink = light ? '#111' : '#fff';
+  const sil = kind === 'D' ? D(!light, 16).replace(/#FF3B2F/,'#FF3B2F') :
+    `<svg width="16" height="16" viewBox="0 0 100 100"><polygon points="${OUT.map(pt).join(' ')}" fill="${state==='off'?'none':ink}" stroke="${ink}" stroke-width="9" stroke-linejoin="round"/>
+     ${state==='ing'?`<polygon points="${['L1','L2','T','R2','R1','RT','RC'].map(pt).join(' ')}" fill="none"/>`:''}
+     ${state==='err'?`<circle cx="80" cy="80" r="20" fill="#E5484D"/>`:''}${state==='ing'?`<circle cx="80" cy="80" r="20" fill="none" stroke="${ink}" stroke-width="10" stroke-dasharray="40 100"/>`:''}</svg>`;
+  return sil;
+}
+const C4 = [
+  ['A · Гранёная морда', 'Морда собрана из граней чёрного камня, рёбра — хайрлайн шампань, нос — маленький треугольник-акцент. Самая «ониксовая»; в 16 px — плотный силуэт.', A],
+  ['B · Лиса в линзе', 'Камень-линза главной кнопки, на нём контур морды; уши прорезают ободок шампань. Логотип = кнопка подключения. В 16 px — круг с ушами.', B],
+  ['C · Монолиния', 'Один непрерывный контур морды, как хайрлайн «Линзы»; глаза-грани и нос — шампань. Самая лёгкая и типографичная: хорошо в тексте, на сплэше и в «О программе».', C],
+  ['D · Signal-матрица', 'Та же морда точками 11×11, нос — красная REC-точка Signal. Фирменная версия для темы Signal; в 16 px читается как пиксельный значок.', D],
+];
+document.getElementById('g').innerHTML = C4.map(([t, d, fn]) => `<div class="c"><h2>${t}</h2><p>${d}</p>
+  <div class="big"><div class="dark">${fn(true, 170)}</div><div class="light">${fn(false, 170)}</div></div>
+  <div class="lbl">32 / 16 px</div>
+  <div class="small"><div class="dark">${fn(true,32)}${fn(true,16)}</div><div class="light">${fn(false,32)}${fn(false,16)}</div></div>
+  <div class="tray"><span>трей</span><div class="tb">${['off','ing','on','err'].map(s=>trayMono(fn===D?'D':'X', s, false)).join('')}</div>
+    <div class="tb" style="background:#E8E6E1">${['off','ing','on','err'].map(s=>trayMono(fn===D?'D':'X', s, true)).join('')}</div></div></div>`).join('');
+</script></body></html>

@@ -3,6 +3,7 @@ import '../core/log_service.dart';
 import 'entities/node.dart';
 import 'subscription_parser.dart';
 import 'node_sanitizer.dart';
+import 'subscription_presets.dart';
 
 class SubscriptionResult {
   const SubscriptionResult({
@@ -52,16 +53,25 @@ class SubscriptionService {
     'https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt',
   ];
 
-  Future<SubscriptionResult> fetch(String url) async {
+  /// Загружает подписку. [mirrors] — зеркала источника, перебираются после
+  /// основного URL (к ним добавляются зеркала пресетов и zieng2).
+  Future<SubscriptionResult> fetch(String url, {List<String> mirrors = const []}) async {
     final cleanUrl = url.trim();
     log.i('Начинаем загрузку подписки', tag: 'SUB');
     log.d('URL: $cleanUrl', tag: 'SUB');
 
     final isTestSubscription = cleanUrl.contains(_testSubscriptionMarker);
+    final preset = SubscriptionPresets.byUrl(cleanUrl);
     final urlsToTry = [
       cleanUrl,
       if (isTestSubscription) ..._testSubscriptionMirrors,
+      // Встроенные пресеты (бесплатные ноды для Китая) — со своими
+      // зеркалами: raw.githubusercontent.com там обычно недоступен.
+      if (preset != null) ...preset.mirrors,
+      ...mirrors,
     ];
+    final seen = <String>{};
+    urlsToTry.retainWhere(seen.add);
 
     String? raw;
     String? lastErrorMsg;
@@ -95,12 +105,18 @@ class SubscriptionService {
       );
     }
 
+    return parseContent(raw, rawUrl: cleanUrl);
+  }
+
+  /// Разбирает и санитизирует уже полученный текст подписки или ссылок.
+  SubscriptionResult parseContent(String raw, {String rawUrl = ''}) {
+    final cleanUrl = rawUrl;
     try {
       final parsed = _parser.parse(raw);
       log.i('Распарсено узлов: ${parsed.length}', tag: 'SUB');
 
       if (parsed.isEmpty) {
-        log.e('Ни одного vless:// URI не найдено в ответе', tag: 'SUB');
+        log.e('Ни одного поддерживаемого сервера в ответе', tag: 'SUB');
         log.d(
           'Первые 200 символов ответа: ${raw.substring(0, raw.length.clamp(0, 200))}',
           tag: 'SUB',
@@ -109,7 +125,7 @@ class SubscriptionService {
           nodes: [],
           rawUrl: cleanUrl,
           fetchedAt: DateTime.now(),
-          error: 'Не найдено ни одного vless:// узла. Проверьте URL.',
+          error: 'Не найдено ни одного сервера (vless, hysteria2, tuic, ss, trojan, anytls). Проверьте ссылку.',
         );
       }
 

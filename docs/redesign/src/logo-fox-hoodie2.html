@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><link rel="stylesheet" href="fonts/fonts.css">
+<!-- #42: H2 «уши под тканью» — гранёный капюшон в огранке оникса, крупная морда. shot.sh logo-fox-hoodie2.html x 1600 1000 -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1600px;background:#08080A;color:#F3F1EC;font-family:'Inter';overflow:hidden}
+h1{font:600 22px 'Inter Tight';padding:28px 40px 4px}
+.sub{font:400 13px/1.5 'Inter';color:#8F8C86;padding:0 40px 18px;max-width:1480px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 40px}
+.c{border:1px solid #222226;border-radius:20px;overflow:hidden;background:#0C0C0E}
+.c h2{font:600 15px 'Inter Tight';padding:16px 18px 2px}
+.c p{font:400 12px/1.45 'Inter';color:#8F8C86;padding:0 18px 12px;height:40px}
+.big{display:grid;grid-template-columns:1fr 1fr}
+.big div{height:360px;display:flex;align-items:center;justify-content:center}
+.dark{background:radial-gradient(120% 90% at 50% 0%,#141416,#050506)}.light{background:#F3F1EC}
+.row{display:flex;gap:22px;align-items:center;justify-content:center}
+.small{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #222226}.small div{height:96px}
+.lbl{font:500 9.5px 'Inter Tight';letter-spacing:.2em;text-transform:uppercase;color:#57554F;padding:8px 18px 0}
+.flat{border-top:1px solid #222226;padding:12px 18px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.tb{background:#1C1C1F;border-radius:6px;padding:6px 8px;display:flex;gap:10px;align-items:center}.tbl{background:#E8E6E1;border-radius:6px;padding:6px 8px;display:flex;gap:10px;align-items:center}
+.flat small{font:500 9.5px 'Inter Tight';letter-spacing:.16em;color:#57554F;text-transform:uppercase}
+.foot{padding:16px 40px;font:400 12.5px/1.5 'Inter';color:#8F8C86}
+</style></head><body>
+<h1>Onyx — лиса в худи (H2): гранёный капюшон, крупная морда</h1>
+<div class="sub">Капюшон теперь в той же низкополигональной огранке оникса, что и морда: те же грани со светом сверху-слева, градиенты и блики шампань на рёбрах — одна вещь из одного камня. Кант, шнурки с наконечниками, V-горловина и плечи остались. Капюшон плотно облегает голову, уши приподнимают его острыми гранёными бугорками. Морда крупнее, глаза и нос-бриллиант увеличены.</div>
+<div class="grid" id="g"></div>
+<div class="foot" id="foot"></div>
+<script>
+// ── Морда V1 ────────────────────────────────────────────────────────────────
+const V = {L1:[19,8,16],LE:[29,23,11],L2:[40,33,6],T:[50,36,13],R2:[60,33,6],RE:[71,23,11],R1:[81,8,16],
+  RT:[86,45,3],RC:[73,68,6],N:[50,93,24],LC:[27,68,6],LT:[14,45,3],LB:[37,47,15],RB:[63,47,15],C:[50,58,25],M:[50,77,26],LJ:[36,80,10],RJ:[64,80,10]};
+const FACETS = [['L2','T','LB'],['T','RB','R2'],['LB','T','C'],['T','RB','C'],['LT','L2','LB'],['R2','RT','RB'],['LT','LB','LC'],['RB','RT','RC'],
+  ['LB','C','LC'],['RB','RC','C'],['LC','C','M'],['C','RC','M'],['LC','M','LJ'],['M','RC','RJ'],['LJ','M','N'],['M','RJ','N']];
+const FACE_OUT = ['LT','L2','T','R2','RT','RC','RJ','N','LJ','LC'];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]], cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=v=>{const l=Math.hypot(...v)||1;return v.map(x=>x/l)}; const LIGHT=norm([-0.55,-0.75,1.0]);
+const mix=(a,b,t)=>{const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));const A=p(a),B=p(b);return '#'+A.map((x,i)=>Math.round(x+(B[i]-x)*Math.max(0,Math.min(1,t))).toString(16).padStart(2,'0')).join('')};
+const P2 = q => q[0].toFixed(2)+','+q[1].toFixed(2);
+
+// Грани с освещением — одна функция для морды, капюшона и плеч (один материал).
+function facets(id, tag, tris, {shade = 1, small = false, champ = '#D2B98F', edge = 1, warm = new Set()}) {
+  const lo = '#050506', hi = '#5A564D';
+  let defs = '', body = '', edges = '';
+  tris.forEach((p, i) => {
+    let n = norm(cross(sub(p[1],p[0]), sub(p[2],p[0]))); if (n[2] < 0) n = n.map(x=>-x);
+    const lit = Math.max(0, n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2]);
+    const base = mix(lo, hi, Math.pow(lit,1.6)*shade);
+    const cx=(p[0][0]+p[1][0]+p[2][0])/3, cy=(p[0][1]+p[1][1]+p[2][1])/3, gid=`${id}${tag}${i}`;
+    const c1 = warm.has(i) ? mix(base, champ, .22) : mix(base,'#ffffff',.07), c2 = mix(base,'#000000',.35);
+    defs += `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${cx-6}" y1="${cy-7}" x2="${cx+6}" y2="${cy+7}"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient>`;
+    const pts = p.map(P2).join(' ');
+    body += `<polygon points="${pts}" fill="url(#${gid})" stroke="url(#${gid})" stroke-width=".25" stroke-linejoin="round"/>`;
+    if (!small) edges += `<polygon points="${pts}" fill="none" stroke="${champ}" stroke-opacity="${((0.05+Math.pow(lit,3)*0.45)*edge).toFixed(2)}" stroke-width="0.35" stroke-linejoin="round"/>`;
+  });
+  return [defs, body + edges];
+}
+
+// ── Капюшон: кольца вершин «кант → середина → силуэт» ─────────────────────────
+const CENTER = [60, 68];
+// Проём капюшона (кант) — многоугольник: огранённое колечко вокруг лица.
+const OPEN = [[60,108],[52,102],[44,95],[37,87],[32,77],[29.5,66],[30,56],[33,49],[39,44],[48,41.5],[60,41],[72,41.5],[81,44],[87,49],[90,56],[90.5,66],[88,77],[83,87],[76,95],[68,102]];
+// Силуэт: уши-бугорки, плечи, нижний край на груди.
+const OUT = [[60,119,6],[34,113,5],[14,104,3],[8,80,3],[11,56,3],[19,38,5],[36,16,9],[48,27,8],[60,30,8],[72,27,8],[84,16,9],[101,38,5],[109,56,3],[112,80,3],[106,104,3],[86,113,5]];
+function rayPoly(c, d, poly) {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i+1)%poly.length];
+    const ex = b[0]-a[0], ey = b[1]-a[1], den = d[0]*ey - d[1]*ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((a[0]-c[0])*ey - (a[1]-c[1])*ex) / den, u = ((a[0]-c[0])*d[1] - (a[1]-c[1])*d[0]) / den;
+    if (t > 0 && u >= 0 && u <= 1) best = Math.min(best, t);
+  }
+  return best;
+}
+function hoodMesh() {
+  const ring = OUT.map((o, i) => {
+    const dx = o[0]-CENTER[0], dy = o[1]-CENTER[1], rx = Math.hypot(dx, dy), d = [dx/rx, dy/rx];
+    const ro = rayPoly(CENTER, d, OPEN);
+    const ear = o[2] === 9, f = ear ? .6 : (i % 2 ? .52 : .4);
+    const zm = ear ? 12 : 10.5 + (i % 2 ? 1.6 : -0.8);
+    return { inn: [CENTER[0]+d[0]*ro, CENTER[1]+d[1]*ro, 15], mid: [CENTER[0]+d[0]*(ro+(rx-ro)*f), CENTER[1]+d[1]*(ro+(rx-ro)*f), zm], out: [o[0], o[1], o[2]] };
+  });
+  const tris = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i+1)%ring.length];
+    if (i % 2 === 0) { tris.push([a.inn,b.inn,b.mid],[a.inn,b.mid,a.mid],[a.mid,b.mid,b.out],[a.mid,b.out,a.out]); }
+    else { tris.push([a.inn,b.inn,a.mid],[b.inn,b.mid,a.mid],[a.mid,b.mid,a.out],[b.mid,b.out,a.out]); }
+  }
+  return tris;
+}
+const TORSO = (() => { const P = {A:[0,128,1],B:[1,114,3],C:[9,103,6],D:[30,99,9],E:[60,104,11],F:[90,99,9],G:[111,103,6],H:[119,114,3],I:[120,128,1],J:[60,128,6],K:[28,126,4],L:[92,126,4]};
+  return [['A','B','K'],['B','C','K'],['C','D','K'],['K','D','J'],['D','E','J'],['E','F','J'],['J','F','L'],['F','G','L'],['G','H','L'],['H','I','L']].map(t=>t.map(k=>P[k])); })();
+
+function cord(id, eye, path, end, angle, small, champ) {
+  const [ex, ey] = eye, [tx, ty] = end;
+  return `<path d="${path}" fill="none" stroke="#2A2926" stroke-width="${small?3.4:2.4}" stroke-linecap="round"/>
+    ${small?'':`<path d="${path}" fill="none" stroke="${champ}" stroke-opacity=".35" stroke-width=".55" stroke-linecap="round" transform="translate(-.55 0)"/>`}
+    <circle cx="${ex}" cy="${ey}" r="${small?2.6:2}" fill="#050506" stroke="${champ}" stroke-width="${small?1.5:.95}"/>
+    <rect x="${tx-1.6}" y="${ty-1}" width="3.2" height="${small?8.5:7}" rx="1.5" fill="url(#${id}aglet)" transform="rotate(${angle} ${tx} ${ty})"/>`;
+}
+
+function hoodie(size, light, id, scale, cy) {
+  const small = size < 60, champ = light ? '#C9AE80' : '#D2B98F';
+  const tf = p => [60 + (p[0]-50)*scale, cy + (p[1]-50)*scale, p[2]*scale];
+  const [dT, bT] = facets(id, 't', TORSO, {shade: .8, small, champ, edge: .7});
+  const [dH, bH] = facets(id, 'h', hoodMesh(), {shade: .92, small, champ});
+  const [dF, bF] = facets(id, 'f', FACETS.map(f => f.map(k => tf(V[k]))), {shade: 1, small, champ});
+  // Глаза и нос — крупнее (×1.2 от V1), чтобы читались и в 48/32 px.
+  const grow = (pts, k) => { const c = [pts.reduce((s,p)=>s+p[0],0)/3, pts.reduce((s,p)=>s+p[1],0)/3]; return pts.map(p => [c[0]+(p[0]-c[0])*k, c[1]+(p[1]-c[1])*k]); };
+  const eye = pts => `<polygon points="${grow(pts, 1.22).map(p => P2(tf([p[0],p[1],20]))).join(' ')}" fill="#020202" stroke="${champ}" stroke-opacity="${small?.6:.9}" stroke-width="${small?.9:.5}"/>`;
+  const N = tf(V.N), s = scale * 1.22;
+  const openPts = OPEN.map(P2).join(' ');
+  const outPts = OUT.map(P2).join(' ');
+  return `<svg width="${size}" height="${size}" viewBox="0 0 120 128"><defs>${dT}${dH}${dF}
+    <radialGradient id="${id}open" cx="50%" cy="18%" r="85%"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#0C0C0D"/></radialGradient>
+    <linearGradient id="${id}shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".75"/><stop offset=".28" stop-color="#000" stop-opacity=".3"/><stop offset=".5" stop-color="#000" stop-opacity="0"/></linearGradient>
+    <linearGradient id="${id}rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4A473F"/><stop offset=".5" stop-color="#1A1A1C"/><stop offset="1" stop-color="#0A0A0B"/></linearGradient>
+    <linearGradient id="${id}rl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#D2B98F" stop-opacity=".6"/><stop offset=".3" stop-color="#ffffff" stop-opacity=".1"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="${id}aglet" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6B5A3E"/><stop offset=".45" stop-color="#F4E6C8"/><stop offset="1" stop-color="#8E7B5B"/></linearGradient>
+    <linearGradient id="${id}nose" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F4E6C8"/><stop offset=".5" stop-color="${champ}"/><stop offset="1" stop-color="#6B5A3E"/></linearGradient>
+    <radialGradient id="${id}sh" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#000" stop-opacity="${light?.3:.8}"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <clipPath id="${id}clip"><polygon points="${openPts}"/></clipPath></defs>
+    ${small?'':`<ellipse cx="60" cy="124" rx="54" ry="4" fill="url(#${id}sh)"/>`}
+    ${bT}${bH}
+    ${small?'':`<polygon points="${outPts}" fill="none" stroke="url(#${id}rl)" stroke-width="1" stroke-linejoin="round"/>`}
+    <polygon points="${openPts}" fill="url(#${id}open)"/>
+    <g clip-path="url(#${id}clip)">${bF}
+      ${small?'':`<polygon points="${FACE_OUT.map(k=>P2(tf(V[k]))).join(' ')}" fill="none" stroke="${champ}" stroke-opacity=".45" stroke-width=".5" stroke-linejoin="round"/>`}
+      ${eye([[33,53],[44,56],[35,59]])}${eye([[67,53],[56,56],[65,59]])}
+      <polygon points="${N[0]-5*s},${N[1]-8*s} ${N[0]+5*s},${N[1]-8*s} ${N[0]},${N[1]+.6}" fill="url(#${id}nose)"/>
+      <polygon points="${openPts}" fill="url(#${id}shade)"/></g>
+    <polygon points="${openPts}" fill="none" stroke="url(#${id}rim)" stroke-width="${small?6.5:5}" stroke-linejoin="round"/>
+    <polygon points="${openPts}" fill="none" stroke="${champ}" stroke-opacity="${small?.95:.8}" stroke-width="${small?1.4:.8}" stroke-linejoin="round"/>
+    ${small?'':`<path d="M60 30 L60 38.5" stroke="${champ}" stroke-opacity=".3" stroke-width=".4" stroke-dasharray="1.2 1.1"/>`}
+    ${cord(id, [51.5,101], 'M51.5 101 C50 107 49 112 48.2 118', [48.2,118], 4, small, champ)}
+    ${cord(id, [68.5,101], 'M68.5 101 C70.2 106 71.5 110.5 72.3 115.5', [72.3,115.5], -7, small, champ)}</svg>`;
+}
+
+// ── Плоские производные ──────────────────────────────────────────────────────
+const FLAT = [[19,9],[40,33],[50,37],[60,33],[81,9],[85,45],[73,67],[50,92],[27,67],[15,45]];
+function flatPlain(size, ink, st) {
+  const id='p'+Math.random().toString(36).slice(2), P=a=>a.map(p=>p.join(',')).join(' '), a = st==='ing'?.55:1;
+  return `<svg width="${size}" height="${size}" viewBox="-4 -4 108 108"><defs><mask id="${id}"><rect x="-10" y="-10" width="130" height="130" fill="#fff"/>
+    <polygon points="29,49 43,54 31,58" fill="#000"/><polygon points="71,49 57,54 69,58" fill="#000"/>${st==='on'||st==='err'?'<circle cx="80" cy="80" r="24" fill="#000"/>':''}</mask></defs>
+    ${st==='off'?`<polygon points="${P(FLAT)}" fill="none" stroke="${ink}" stroke-width="11" stroke-linejoin="round"/>`:`<polygon points="${P(FLAT)}" fill="${ink}" fill-opacity="${a}" stroke="${ink}" stroke-opacity="${a}" stroke-width="4" stroke-linejoin="round" mask="url(#${id})"/>`}
+    ${st==='on'?'<circle cx="80" cy="80" r="18" fill="#D2B98F"/>':''}${st==='err'?'<circle cx="80" cy="80" r="18" fill="#E5484D"/>':''}</svg>`;
+}
+function flatHood(size, ink, st, scale, cy) {
+  const id='q'+Math.random().toString(36).slice(2), P=a=>a.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' '), a = st==='ing'?.55:1;
+  const tf = p => [60 + (p[0]-50)*scale, cy + (p[1]-50)*scale];
+  const face = FACE_OUT.map(k => tf(V[k]));
+  const eyes = [[[33,53],[44,56],[35,59]],[[67,53],[56,56],[65,59]]].map(e => e.map(tf));
+  return `<svg width="${size}" height="${size}" viewBox="0 0 120 128"><defs><mask id="${id}"><rect x="-10" y="-10" width="140" height="150" fill="#fff"/>
+      <polygon points="${P(OPEN)}" fill="#000" stroke="#000" stroke-width="5"/>${st==='on'||st==='err'?'<circle cx="96" cy="104" r="26" fill="#000"/>':''}</mask>
+      <mask id="${id}f"><rect x="-10" y="-10" width="140" height="150" fill="#fff"/>${eyes.map(e=>`<polygon points="${P(e)}" fill="#000"/>`).join('')}</mask></defs>
+    ${st==='off' ? `<polygon points="${P(OUT)}" fill="none" stroke="${ink}" stroke-width="9" stroke-linejoin="round"/><polygon points="${P(face)}" fill="none" stroke="${ink}" stroke-width="7" stroke-linejoin="round"/>`
+      : `<polygon points="${P(OUT)}" fill="${ink}" fill-opacity="${a}" mask="url(#${id})"/><polygon points="${P(face)}" fill="${ink}" fill-opacity="${a}" mask="url(#${id}f)"/>`}
+    ${st==='on'?'<circle cx="96" cy="104" r="20" fill="#D2B98F"/>':''}${st==='err'?'<circle cx="96" cy="104" r="20" fill="#E5484D"/>':''}</svg>`;
+}
+
+let n = 0; const S = ['off','ing','on','err'];
+const card = (t, d, scale, cy) => `<div class="c"><h2>${t}</h2><p>${d}</p>
+  <div class="big"><div class="dark">${hoodie(330, false, 'a'+(n++), scale, cy)}</div><div class="light">${hoodie(330, true, 'a'+(n++), scale, cy)}</div></div>
+  <div class="lbl">48 / 32 / 16 px</div>
+  <div class="small"><div class="dark row">${[48,32,16].map(s=>hoodie(s,false,'a'+(n++),scale,cy)).join('')}</div><div class="light row">${[48,32,16].map(s=>hoodie(s,true,'a'+(n++),scale,cy)).join('')}</div></div>
+  <div class="flat"><small>трей 16 · худи</small><div class="tb">${S.map(s=>flatHood(16,'#fff',s,scale,cy)).join('')}</div><div class="tbl">${S.map(s=>flatHood(16,'#111',s,scale,cy)).join('')}</div>
+    <small>×4</small><div class="tb">${S.map(s=>flatHood(56,'#fff',s,scale,cy)).join('')}</div></div>
+  <div class="flat"><small>трей 16 · без капюшона</small><div class="tb">${S.map(s=>flatPlain(16,'#fff',s)).join('')}</div><div class="tbl">${S.map(s=>flatPlain(16,'#111',s)).join('')}</div>
+    <small>×4</small><div class="tb">${S.map(s=>flatPlain(56,'#fff',s)).join('')}</div></div></div>`;
+document.getElementById('g').innerHTML =
+  card('H2 · P1 — морда почти во весь проём', 'Морда занимает проём капюшона почти целиком, капюшон облегает голову; глаза, нос и грани читаются даже в 32 px.', .74, 62) +
+  card('H2 · P2 — морда чуть меньше, с запасом капюшона', 'Над лбом и по бокам остаётся тень капюшона — больше «глубины» и таинственности, морда всё ещё крупная.', .64, 66);
+document.getElementById('foot').textContent = 'Трей 16 px: плоский худи (контур капюшона + силуэт морды) читается как «лиса в капюшоне» только при ×2 и крупнее; в 16 px надёжнее силуэт без капюшона — его и оставляю для трея и Android monochrome. Объёмное худи — иконка приложения, «О программе», сплэш.';
+</script></body></html>

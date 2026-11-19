@@ -1,13 +1,30 @@
 import 'dart:io';
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter/services.dart';
 import 'package:archive/archive.dart';
 import '../core/log_service.dart';
+import '../domain/singbox_config_builder.dart';
+import '../domain/smart_probe.dart';
+import 'win_child_guard.dart';
 
-/// Управляет бинарниками sing-box и wintun.
-/// При первом запуске скачивает их с GitHub.
+/// Управляет бинарниками sing-box / wintun и rule-set файлами маршрутизации.
+///
+/// Откуда берутся файлы (по порядку):
+///   1. **Бандл.** Windows-установщик кладёт `core\sing-box.exe` и
+///      `core\wintun.dll` рядом с onyx.exe; на Android sing-box лежит в
+///      nativeLibraryDir как libsingbox.so. Rule-set (.srs) — во Flutter
+///      assets. Сеть не нужна: это главное для Китая, где загрузки с GitHub
+///      режутся.
+///   2. **Загрузка** (только если бандла нет — dev-сборка или старый
+///      установщик): GitHub, затем зеркала. Каждый архив сверяется с
+///      закреплённым SHA-256, поэтому подмена на зеркале не пройдёт.
+///
+/// Версия sing-box записывается в `singbox.version`: при обновлении Onyx
+/// старый бинарник в рабочей папке заменяется (конфиг нового формата старый
+/// sing-box 1.10 не понимает).
 class BinaryManager {
   static const _channel = MethodChannel('z43.studios.onyx/native');
 
@@ -15,26 +32,34 @@ class BinaryManager {
     final dir = await _channel.invokeMethod<String>('getNativeLibraryDir');
     return dir!;
   }
+
   BinaryManager._();
   static final instance = BinaryManager._();
 
-  static const _singboxVersion = '1.10.1';
+  static const singboxVersion = '1.14.4';
+
   static const _singboxUrlWindows =
       'https://github.com/SagerNet/sing-box/releases/download/'
-      'v$_singboxVersion/sing-box-$_singboxVersion-windows-amd64.zip';
-  static const _singboxUrlAndroid =
-      'https://github.com/SagerNet/sing-box/releases/download/'
-      'v$_singboxVersion/sing-box-$_singboxVersion-android-arm64.tar.gz';
+      'v$singboxVersion/sing-box-$singboxVersion-windows-amd64.zip';
+  static const _singboxSha256Windows =
+      '99185d75d314a07dbba4a130c8ad986cbeb629a07927975636b341ca61f991df';
 
   static const _wintunUrl = 'https://www.wintun.net/builds/wintun-0.14.1.zip';
-  static const _geositeUrl =
-      'https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db';
-  static const _geoipUrl =
-      'https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip.db';
+  static const _wintunSha256 =
+      '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51';
+
+  /// Зеркала для github.com (префикс + исходный URL). Используются, только
+  /// если прямая загрузка не удалась; целостность гарантирует SHA-256.
+  static const githubMirrors = [
+    'https://ghfast.top/',
+    'https://gh-proxy.com/',
+  ];
 
   late Directory _binDir;
   bool _initialized = false;
   String? _androidNativeLibDir;
+
+  Directory get binDir => _binDir;
 
   File get singboxExe {
     if (Platform.isAndroid && _androidNativeLibDir != null) {
@@ -46,12 +71,14 @@ class BinaryManager {
   }
 
   File get wintunDll => File(path.join(_binDir.path, 'wintun.dll'));
-  File get geositeDb => File(path.join(_binDir.path, 'geosite.db'));
-  File get geoipDb => File(path.join(_binDir.path, 'geoip.db'));
   File get configFile => File(path.join(_binDir.path, 'config.json'));
   File get pidFile => File(path.join(_binDir.path, 'sing-box.pid'));
+  File get _versionFile => File(path.join(_binDir.path, 'singbox.version'));
 
-  /// Инициализация — создаём папку для бинарников
+  /// Папка, куда установщик кладёт бандл (`<папка onyx.exe>\core`).
+  Directory get _bundledCoreDir =>
+      Directory(path.join(File(Platform.resolvedExecutable).parent.path, 'core'));
+
   Future<void> init() async {
     if (_initialized) return;
     final appDir = await getApplicationSupportDirectory();
@@ -59,206 +86,195 @@ class BinaryManager {
     await _binDir.create(recursive: true);
 
     if (Platform.isAndroid) {
-      final nativeDir = await _getNativeLibraryDir();
-      _androidNativeLibDir = nativeDir;
+      _androidNativeLibDir = await _getNativeLibraryDir();
     }
 
     _initialized = true;
     log.i('Директория бинарников: ${_binDir.path}', tag: 'BIN');
+
+    // Брошенные копии нашего sing-box от прошлого запуска (пробы, туннель
+    // после падения) держат singbox\sing-box.exe — обновление ядра не смогло
+    // бы его заменить. Свои процессы этого запуска ещё не стартовали (#57).
+    if (Platform.isWindows) {
+      try {
+        WinChildGuard.killOrphans(singboxExe.path);
+      } catch (e) {
+        log.w('Поиск брошенных sing-box не удался: $e', tag: 'BIN');
+      }
+    }
+    // Их конфиги (с учётными данными серверов) — тоже.
+    DeepProbe.cleanupStaleConfigs();
   }
 
-  /// Проверяет наличие всех необходимых файлов
+  bool get _ruleSetsReady => SingboxConfigBuilder.ruleSetFiles
+      .every((n) => File(path.join(_binDir.path, '$n.srs')).existsSync());
+
+  bool get _versionCurrent =>
+      _versionFile.existsSync() &&
+      _versionFile.readAsStringSync().trim() == singboxVersion;
+
+  /// Всё ли на месте для подключения.
+  ///
+  /// Если бандл есть, но ещё не разложен — возвращаем true: ensureBinaries()
+  /// разложит его без сети за доли секунды, SetupScreen не нужен.
   bool get isReady {
     if (Platform.isAndroid) return true;
-    if (Platform.isWindows) {
-      return singboxExe.existsSync() &&
-             wintunDll.existsSync() &&
-             geositeDb.existsSync() &&
-             geoipDb.existsSync();
-    }
-    return singboxExe.existsSync() &&
-           geositeDb.existsSync() &&
-           geoipDb.existsSync();
+    // До init() папки ещё нет — «не готов», а не LateInitializationError.
+    if (!_initialized) return false;
+    final local = singboxExe.existsSync() &&
+        _versionCurrent &&
+        _ruleSetsReady &&
+        (!Platform.isWindows || wintunDll.existsSync());
+    return local || _hasBundle;
   }
 
-  /// Скачивает sing-box и wintun если они отсутствуют
+  bool get _hasBundle =>
+      Platform.isWindows &&
+      File(path.join(_bundledCoreDir.path, 'sing-box.exe')).existsSync() &&
+      File(path.join(_bundledCoreDir.path, 'wintun.dll')).existsSync();
+
+  /// Готовит sing-box, wintun и rule-set файлы.
   Future<void> ensureBinaries({
     void Function(String status, double? progress)? onStatus,
   }) async {
+    await init();
+
+    // Rule-set — на всех платформах (Android: для цепочки sing-box).
+    await _ensureRuleSets(force: !_versionCurrent);
+
     if (Platform.isAndroid) {
+      if (!singboxExe.existsSync()) {
+        throw Exception(
+          'libsingbox.so не найден в ${singboxExe.path}. Переустановите приложение.',
+        );
+      }
+      await _versionFile.writeAsString(singboxVersion);
       onStatus?.call('Готово', 1.0);
       return;
     }
-    await init();
 
-    if (!Platform.isAndroid) {
-      if (!singboxExe.existsSync()) {
-        await _downloadSingbox(onStatus: onStatus);
+    final needSingbox = !singboxExe.existsSync() || !_versionCurrent;
+    final needWintun = Platform.isWindows && !wintunDll.existsSync();
+
+    if (needSingbox || needWintun) {
+      if (_hasBundle) {
+        onStatus?.call('Распаковываем ядро...', null);
+        if (needSingbox) {
+          await _copy(path.join(_bundledCoreDir.path, 'sing-box.exe'), singboxExe.path);
+        }
+        if (needWintun) {
+          await _copy(path.join(_bundledCoreDir.path, 'wintun.dll'), wintunDll.path);
+        }
+        log.i('Ядро взято из бандла установщика (${_bundledCoreDir.path})', tag: 'BIN');
+      } else {
+        if (needSingbox) await _downloadSingbox(onStatus: onStatus);
+        if (needWintun) await _downloadWintun(onStatus: onStatus);
       }
-      if (Platform.isWindows && !wintunDll.existsSync()) {
-        await _downloadWintun(onStatus: onStatus);
-      }
-    } else {
-      if (!singboxExe.existsSync()) {
-        throw Exception(
-          'libsingbox.so not found in nativeLibraryDir: ${singboxExe.path}. '
-          'Reinstall the app.'
-        );
-      }
-      log.i('sing-box (bundled): ${singboxExe.path}', tag: 'BIN');
     }
 
-    if (!geositeDb.existsSync()) {
-      await _downloadFile(_geositeUrl, geositeDb.path, 'geosite.db', onStatus);
-    }
-    if (!geoipDb.existsSync()) {
-      await _downloadFile(_geoipUrl, geoipDb.path, 'geoip.db', onStatus);
-    }
+    await _versionFile.writeAsString(singboxVersion);
+    onStatus?.call('Готово', 1.0);
   }
 
-  Future<void> _downloadFile(
+  Future<void> _copy(String from, String to) async {
+    await File(from).copy(to);
+  }
+
+  Future<void> _ensureRuleSets({bool force = false}) async {
+    for (final name in SingboxConfigBuilder.ruleSetFiles) {
+      final dest = File(path.join(_binDir.path, '$name.srs'));
+      if (!force && dest.existsSync()) continue;
+      final data = await rootBundle.load('assets/rules/$name.srs');
+      await dest.writeAsBytes(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        flush: true,
+      );
+    }
+    log.d('Rule-set файлы на месте', tag: 'BIN');
+  }
+
+  // ── Загрузка (резервный путь) ────────────────────────────────────────────
+
+  /// Скачивает [url] (и при неудаче — через зеркала), проверяет SHA-256.
+  Future<List<int>> _downloadVerified(
     String url,
-    String savePath,
-    String name,
+    String expectedSha256,
+    String label,
     void Function(String, double?)? onStatus,
   ) async {
-    log.i('Скачиваем $name...', tag: 'BIN');
-    onStatus?.call('Скачиваем $name...', 0);
-    final dio = Dio();
-
-    try {
-      await dio.download(
-        url,
-        savePath,
-        onReceiveProgress: (got, total) {
-          if (total > 0) {
-            final pct = got / total;
-            onStatus?.call(
-              'Скачиваем $name... ${(pct * 100).toInt()}%',
-              pct,
-            );
-          }
-        },
-      );
-      log.i('$name скачан', tag: 'BIN');
-    } catch (e) {
-      log.e('Ошибка скачивания $name: $e', tag: 'BIN');
-      rethrow;
-    }
-  }
-
-  Future<void> _downloadSingbox({
-    void Function(String, double?)? onStatus,
-  }) async {
-    log.i('Скачиваем sing-box v$_singboxVersion...', tag: 'BIN');
-    onStatus?.call('Скачиваем sing-box $_singboxVersion...', 0);
-
-    final url = Platform.isAndroid ? _singboxUrlAndroid : _singboxUrlWindows;
-    final extension = Platform.isAndroid ? '.tar.gz' : '.zip';
-    final archivePath = path.join(_binDir.path, 'sing-box$extension');
-    final dio = Dio();
-
-    try {
-      await dio.download(
-        url,
-        archivePath,
-        onReceiveProgress: (got, total) {
-          if (total > 0) {
-            final pct = got / total;
-            onStatus?.call(
-              'Скачиваем sing-box... ${(pct * 100).toInt()}%',
-              pct,
-            );
-          }
-        },
-      );
-
-      log.i('Распаковываем sing-box...', tag: 'BIN');
-      onStatus?.call('Распаковываем...', null);
-
-      final entryName = Platform.isWindows ? 'sing-box.exe' : 'sing-box';
-      if (Platform.isAndroid) {
-        await _extractFromTarGz(archivePath, entryName, singboxExe.path);
-      } else {
-        await _extractFromZip(archivePath, entryName, singboxExe.path);
+    final candidates = [
+      url,
+      if (url.startsWith('https://github.com/'))
+        for (final m in githubMirrors) '$m$url',
+    ];
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(minutes: 3),
+    ));
+    Object? lastError;
+    for (final candidate in candidates) {
+      try {
+        log.i('Скачиваем $label: $candidate', tag: 'BIN');
+        final resp = await dio.get<List<int>>(
+          candidate,
+          options: Options(responseType: ResponseType.bytes),
+          onReceiveProgress: (got, total) {
+            if (total > 0) {
+              onStatus?.call('Скачиваем $label... ${(got * 100 ~/ total)}%', got / total);
+            }
+          },
+        );
+        final bytes = resp.data ?? const <int>[];
+        final digest = sha256.convert(bytes).toString();
+        if (digest != expectedSha256) {
+          lastError = 'SHA-256 не совпал ($digest)';
+          log.w('$label с $candidate: неверный SHA-256 — отбрасываем', tag: 'BIN');
+          continue;
+        }
+        return bytes;
+      } catch (e) {
+        lastError = e;
+        log.w('$label: $candidate недоступен: $e', tag: 'BIN');
       }
-
-      await File(archivePath).delete();
-      log.i('sing-box готов', tag: 'BIN');
-    } catch (e) {
-      log.e('Ошибка загрузки sing-box: $e', tag: 'BIN');
-      rethrow;
     }
+    throw Exception('Не удалось скачать $label: $lastError');
   }
 
-  Future<void> _downloadWintun({
-    void Function(String, double?)? onStatus,
-  }) async {
-    log.i('Скачиваем wintun...', tag: 'BIN');
+  Future<void> _downloadSingbox({void Function(String, double?)? onStatus}) async {
+    if (!Platform.isWindows) {
+      throw UnsupportedError('Загрузка sing-box поддерживается только на Windows');
+    }
+    onStatus?.call('Скачиваем sing-box $singboxVersion...', 0);
+    final bytes = await _downloadVerified(
+      _singboxUrlWindows,
+      _singboxSha256Windows,
+      'sing-box',
+      onStatus,
+    );
+    onStatus?.call('Распаковываем...', null);
+    _extractFromZip(bytes, 'sing-box.exe', singboxExe.path);
+    log.i('sing-box $singboxVersion готов', tag: 'BIN');
+  }
+
+  Future<void> _downloadWintun({void Function(String, double?)? onStatus}) async {
     onStatus?.call('Скачиваем WinTUN драйвер...', 0);
-
-    final zipPath = path.join(_binDir.path, 'wintun.zip');
-    final dio = Dio();
-
-    try {
-      await dio.download(
-        _wintunUrl,
-        zipPath,
-        onReceiveProgress: (got, total) {
-          if (total > 0) {
-            onStatus?.call(
-              'Скачиваем WinTUN... ${((got / total) * 100).toInt()}%',
-              got / total,
-            );
-          }
-        },
-      );
-
-      log.i('Распаковываем wintun.dll...', tag: 'BIN');
-      await _extractFromZip(
-        zipPath,
-        'wintun/bin/amd64/wintun.dll',
-        wintunDll.path,
-      );
-      await File(zipPath).delete();
-      log.i('wintun.dll готов', tag: 'BIN');
-    } catch (e) {
-      log.e('Ошибка загрузки wintun: $e', tag: 'BIN');
-      rethrow;
-    }
+    final bytes = await _downloadVerified(_wintunUrl, _wintunSha256, 'WinTUN', onStatus);
+    _extractFromZip(bytes, 'wintun/bin/amd64/wintun.dll', wintunDll.path);
+    log.i('wintun.dll готов', tag: 'BIN');
   }
 
-  Future<void> _extractFromZip(String zipPath, String entryName, String destPath) async {
-    final bytes = await File(zipPath).readAsBytes();
+  void _extractFromZip(List<int> bytes, String entryName, String destPath) {
     final archive = ZipDecoder().decodeBytes(bytes);
     for (final file in archive) {
       if (file.name.endsWith(entryName) && file.isFile) {
-        final data = file.content as List<int>;
-        await File(destPath).writeAsBytes(data);
+        File(destPath).writeAsBytesSync(file.content as List<int>, flush: true);
         return;
       }
     }
     throw Exception('Entry $entryName not found in ZIP');
   }
 
-  Future<void> _extractFromTarGz(String tgzPath, String entryName, String destPath) async {
-    final bytes = await File(tgzPath).readAsBytes();
-    final gzDecoded = GZipDecoder().decodeBytes(bytes);
-    final archive = TarDecoder().decodeBytes(gzDecoded);
-    for (final file in archive) {
-      if (file.name.endsWith(entryName) && file.isFile) {
-        final data = file.content as List<int>;
-        await File(destPath).writeAsBytes(data);
-        if (Platform.isAndroid) {
-          await Process.run('chmod', ['+x', destPath]);
-        }
-        return;
-      }
-    }
-    throw Exception('Entry $entryName not found in tar.gz');
-  }
-
-  /// Пишет конфиг sing-box в файл
+  /// Пишет конфиг sing-box в файл.
   Future<void> writeConfig(String jsonConfig) async {
     await init();
     await configFile.writeAsString(jsonConfig, flush: true);

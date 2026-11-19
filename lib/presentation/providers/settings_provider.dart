@@ -1,4 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/log_service.dart';
+import '../../domain/node_scorer.dart';
+import '../../domain/routing_region.dart';
+import '../../infrastructure/geo_ip.dart';
+export '../../domain/routing_region.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsState {
@@ -8,7 +15,25 @@ class SettingsState {
     this.splitTunnelingEnabled = false,
     this.excludedApps = const <String>{},
     this.autoFailover = true,
+    this.routingRegion = RoutingRegion.auto,
+    this.discordMode = true,
+    this.detectedRegion = RoutingRegion.russia,
   });
+
+  /// Регион, определённый по устройству (для [RoutingRegion.auto]).
+  final RoutingRegion detectedRegion;
+
+  /// Конкретный регион для маршрутизации и скоринга: «Авто» развёрнут
+  /// в [detectedRegion]. UI может показать «Авто: Китай».
+  RoutingRegion get effectiveRegion => routingRegion.resolve(detectedRegion);
+
+  /// Регион умной маршрутизации (см. RoutingRegion): чьи «домашние» сайты
+  /// идут мимо туннеля. Имеет смысл только при [smartRouting].
+  final RoutingRegion routingRegion;
+
+  /// Режим Discord: домены и (на Windows) процесс Discord — строго через
+  /// туннель; при выборе сервера предпочитаются ноды с рабочим UDP.
+  final bool discordMode;
 
   final bool smartRouting;
 
@@ -38,6 +63,9 @@ class SettingsState {
     bool? splitTunnelingEnabled,
     Set<String>? excludedApps,
     bool? autoFailover,
+    RoutingRegion? routingRegion,
+    bool? discordMode,
+    RoutingRegion? detectedRegion,
   }) =>
       SettingsState(
         smartRouting: smartRouting ?? this.smartRouting,
@@ -46,11 +74,14 @@ class SettingsState {
             splitTunnelingEnabled ?? this.splitTunnelingEnabled,
         excludedApps: excludedApps ?? this.excludedApps,
         autoFailover: autoFailover ?? this.autoFailover,
+        routingRegion: routingRegion ?? this.routingRegion,
+        discordMode: discordMode ?? this.discordMode,
+        detectedRegion: detectedRegion ?? this.detectedRegion,
       );
 }
 
 class SettingsNotifier extends StateNotifier<SettingsState> {
-  SettingsNotifier() : super(const SettingsState()) {
+  SettingsNotifier() : super(SettingsState(detectedRegion: detectDevice())) {
     _load();
   }
 
@@ -59,9 +90,73 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   static const _keySplitTunneling = 'settings_split_tunneling';
   static const _keyExcludedApps = 'settings_excluded_apps';
   static const _keyAutoFailover = 'settings_auto_failover';
+  static const _keyRoutingRegion = 'settings_routing_region';
+  static const _keyDiscordMode = 'settings_discord_mode';
+  static const _keyMigratedV2 = 'settings_migrated_v2';
+  static const _keyGeoCountry = 'geo_ip_country';
+  static const _keyGeoAt = 'geo_ip_at';
+
+  /// Как часто уточнять страну по IP (этап 2): страна меняется редко.
+  static const geoRefreshEvery = Duration(hours: 6);
+
+  /// Регион устройства: страна по IP (если известна и это CN/RU/BY), иначе
+  /// часовой пояс и локаль.
+  static RoutingRegion _detected(String? country) => GeoIp.regionFor(country) ?? detectDevice();
+
+  /// Уточнить регион «Авто» по внешнему IP. [canLookup] — можно ли ходить в
+  /// сеть напрямую (на Windows — только без туннеля, иначе узнаем страну
+  /// сервера); проверяется и после ответа: если за это время подключились,
+  /// результат выбрасываем.
+  Future<void> refreshGeo({required bool Function() canLookup, bool force = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final at = DateTime.tryParse(prefs.getString(_keyGeoAt) ?? '');
+    _geoAt ??= at;
+    if (!force && at != null && DateTime.now().difference(at) < geoRefreshEvery) return;
+    if (!canLookup()) return;
+    final cc = await lookupCountry();
+    if (cc == null || !canLookup() || !mounted) return;
+    await prefs.setString(_keyGeoCountry, cc);
+    _geoAt = DateTime.now();
+    await prefs.setString(_keyGeoAt, _geoAt!.toIso8601String());
+    final region = _detected(cc);
+    if (region != state.detectedRegion) {
+      log.i('Регион «Авто» по IP ($cc): ${region.name}', tag: 'GEO');
+      state = state.copyWith(detectedRegion: region);
+      _applyScoring();
+    }
+  }
+
+  /// Страна по IP известна и не старше [geoRefreshEvery] (этап 2): перед
+  /// подключением в регионе «Авто» ждать ответа не нужно.
+  bool get geoFresh {
+    final at = _geoAt;
+    return at != null && DateTime.now().difference(at) < geoRefreshEvery;
+  }
+
+  DateTime? _geoAt;
+
+  /// Запрос страны по IP. Переопределяется в тестах.
+  static Future<String?> Function() lookupCountry = GeoIp.countryCode;
+
+  /// Определение региона устройства (без сети). Переопределяется в тестах.
+  static RoutingRegion Function() detectDevice = () => RoutingRegionLabel.detect(
+        offset: DateTime.now().timeZoneOffset,
+        timeZoneName: DateTime.now().timeZoneName,
+        locale: Platform.localeName,
+      );
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    // Разовая миграция (0.3.0, «одна кнопка»): переключатели региона и
+    // Discord ушли с главного экрана — возвращаем разумные дефолты, чтобы
+    // старый выбор (например «Китай» у пользователя в Беларуси) не остался
+    // незаметно включённым. Дальше пользователь выбирает в Настройках.
+    if (prefs.getBool(_keyMigratedV2) != true) {
+      await prefs.setString(_keyRoutingRegion, RoutingRegion.auto.name);
+      await prefs.setBool(_keyDiscordMode, true);
+      await prefs.setBool(_keyMigratedV2, true);
+    }
     if (!mounted) return;
     state = state.copyWith(
       smartRouting: prefs.getBool(_keySmartRouting) ?? true,
@@ -70,7 +165,13 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       excludedApps:
           (prefs.getStringList(_keyExcludedApps) ?? const []).toSet(),
       autoFailover: prefs.getBool(_keyAutoFailover) ?? true,
+      routingRegion:
+          RoutingRegionLabel.parse(prefs.getString(_keyRoutingRegion)),
+      discordMode: prefs.getBool(_keyDiscordMode) ?? true,
+      detectedRegion: _detected(prefs.getString(_keyGeoCountry)),
     );
+    _geoAt = DateTime.tryParse(prefs.getString(_keyGeoAt) ?? '');
+    _applyScoring();
   }
 
   Future<void> toggleSmartRouting(bool value) async {
@@ -89,6 +190,26 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     state = state.copyWith(splitTunnelingEnabled: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keySplitTunneling, value);
+  }
+
+  /// Скоринг нод зависит от региона и режима Discord.
+  void _applyScoring() {
+    NodeScorer.region = state.effectiveRegion;
+    NodeScorer.preferUdp = state.discordMode;
+  }
+
+  Future<void> setRoutingRegion(RoutingRegion value) async {
+    state = state.copyWith(routingRegion: value);
+    _applyScoring();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyRoutingRegion, value.name);
+  }
+
+  Future<void> toggleDiscordMode(bool value) async {
+    state = state.copyWith(discordMode: value);
+    _applyScoring();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyDiscordMode, value);
   }
 
   Future<void> toggleAutoFailover(bool value) async {

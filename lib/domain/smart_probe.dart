@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import '../core/log_service.dart';
 import 'entities/node.dart';
 import 'node_scorer.dart'; // ← NEW: Умная система весов
 import 'singbox_config_builder.dart';
+import 'udp_probe.dart';
+import '../infrastructure/geo_ip.dart';
+import '../infrastructure/win_child_guard.dart';
 
 // ── TCP ProbeResult ───────────────────────────────────────────────────────────
 
@@ -39,8 +43,10 @@ class ProbeResult {
 class SmartProbe {
   const SmartProbe();
 
-  static const _concurrency = 5;
-  static const _timeout = Duration(seconds: 5);
+  // #41: TCP-рукопожатие дешёвое — 16 одновременно; 4 с хватает живому
+  // серверу даже с одним повтором SYN (в Китае — 1 с + 3 с).
+  static const _concurrency = 16;
+  static const _timeout = Duration(seconds: 4);
 
   /// Проверяет список нод параллельно батчами по [_concurrency].
   ///
@@ -53,32 +59,27 @@ class SmartProbe {
     void Function(int done, int total)? onProgress,
   }) async {
     log.i(
-      'Этап 1: TCP-пинг ${nodes.length} узлов (по $_concurrency параллельно)',
+      'Этап 1: TCP-пинг ${nodes.length} узлов (до $_concurrency одновременно)',
       tag: 'PROBE',
     );
 
+    // Пул воркеров (#41): медленная/мёртвая нода не держит остальных, как
+    // было с батчами «по 5, ждём всех». 300 нод — около минуты в худшем
+    // случае вместо пяти.
     final results = List<Node?>.filled(nodes.length, null);
-    int done = 0;
-
-    for (var i = 0; i < nodes.length; i += _concurrency) {
-      final end = min(i + _concurrency, nodes.length);
-      final batch = nodes.sublist(i, end);
-      final batchIndices = List.generate(end - i, (j) => i + j);
-
-      final probed = await Future.wait(
-        List.generate(batch.length, (j) async {
-          final node = batch[j];
-          final result = await probeOne(node);
-          done++;
-          onProgress?.call(done, nodes.length);
-          return result;
-        }),
-      );
-
-      for (var j = 0; j < probed.length; j++) {
-        results[batchIndices[j]] = probed[j];
+    var next = 0;
+    var done = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = next++;
+        if (i >= nodes.length) return;
+        results[i] = await probeOne(nodes[i]);
+        done++;
+        onProgress?.call(done, nodes.length);
       }
     }
+
+    await Future.wait(List.generate(min(_concurrency, nodes.length), (_) => worker()));
 
     final allNodes = results.whereType<Node>().toList();
     final alive = allNodes.where((n) => n.isAlive).length;
@@ -94,13 +95,21 @@ class SmartProbe {
   }
 
   Future<Node> probeOne(Node node) async {
+    // Hysteria2/TUIC живут на UDP: TCP-порта нет, TCP-пинг всегда «мёртв».
+    // Считаем ноду кандидатом; реальную задержку и UDP проставит Deep Probe.
+    if (node.isQuic) {
+      log.d('~ ${node.name} — QUIC-нода, TCP-пинг пропущен', tag: 'PROBE');
+      return node.copyWith(isAlive: true);
+    }
     final r = await _tcpProbe(node);
     if (r.isAlive) {
       log.i('✓ ${node.name} — ${r.latencyMs}мс', tag: 'PROBE');
     } else {
       log.w('✗ ${node.name} — недоступен: ${r.error}', tag: 'PROBE');
     }
-    return node.copyWith(isAlive: r.isAlive, latencyMs: r.latencyMs);
+    // Не ответил — прошлый пинг стираем (#87), иначе мёртвый сервер
+    // показывался бы со старой цифрой.
+    return node.copyWith(isAlive: r.isAlive, latencyMs: r.latencyMs, clearLatency: !r.isAlive);
   }
 
   Future<ProbeResult> _tcpProbe(Node node) async {
@@ -210,6 +219,88 @@ class DeepProbe {
 
   /// Путь к sing-box.exe (из BinaryManager.instance.singboxExe.path).
   final String singboxExePath;
+
+  /// Итог полной проверки ноды (#87). Чистая функция — покрыта тестами.
+  ///
+  /// Проверка прошла ([basicOk]) — нода жива и работает. Задержка: TCP-пинг
+  /// изнутри пробы ([tcpMs] ≥ 0), у QUIC — время HTTPS-запроса [httpsMs],
+  /// у TCP-ноды без TCP-пинга — прежний TCP-пинг или HTTPS ÷
+  /// [Node.httpsRttFactor] (#73).
+  ///
+  /// Не прошла:
+  ///   • QUIC (Hysteria2/TUIC) — других признаков жизни у них нет (TCP-пинга
+  ///     не бывает): нода мёртвая, прошлый пинг стираем. Раньше оставались
+  ///     вчерашние цифра и «живость», и сервер, до которого из этой сети не
+  ///     доходит ни пакета, выглядел рабочим;
+  ///   • TCP-нода — по TCP-пингу изнутри пробы, если мерили: ответил — жива
+  ///     с этим пингом, нет (−1) — мёртвая, пинг стираем; не мерили (−2) —
+  ///     живость и пинг остаются от TCP-пинга этого же круга (этап 1).
+  static Node outcome(
+    Node node, {
+    required bool basicOk,
+    int tcpMs = -2,
+    int? httpsMs,
+    bool aiOk = false,
+    bool udpOk = false,
+    String? exitCountry,
+  }) {
+    if (basicOk) {
+      final int? latency = tcpMs >= 0
+          ? tcpMs
+          : node.isQuic
+              ? httpsMs
+              : node.latencyMs ?? (httpsMs == null ? null : (httpsMs / Node.httpsRttFactor).round());
+      return node.copyWith(
+        isAlive: true,
+        isTrulyWorking: true,
+        aiReachable: aiOk,
+        udpSupported: udpOk,
+        latencyMs: latency,
+        exitCountry: exitCountry,
+      );
+    }
+    final bool? alive = node.isQuic ? false : (tcpMs == -2 ? null : tcpMs >= 0);
+    return node.copyWith(
+      isAlive: alive,
+      isTrulyWorking: false,
+      aiReachable: false,
+      udpSupported: false,
+      latencyMs: !node.isQuic && tcpMs >= 0 ? tcpMs : null,
+      clearLatency: alive == false,
+      exitCountry: exitCountry,
+    );
+  }
+
+  /// Результат TCP-пинга (этап 1) поверх текущей ноды пула. Не ответил —
+  /// пинг стирается (#87); «работает» сбрасывается до подтверждения Deep
+  /// Probe — иначе мёртвая нода висела бы зелёной.
+  static Node mergeTcp(Node cur, Node upd) => cur.copyWith(
+        isAlive: upd.isAlive,
+        latencyMs: upd.latencyMs,
+        clearLatency: upd.latencyMs == null,
+        isTrulyWorking: upd.isAlive ? cur.isTrulyWorking : false,
+      );
+
+  /// Результат полной проверки поверх текущей ноды пула. Живость: под TUN
+  /// ([underTun]) и у QUIC — из самой проверки ([outcome]); у TCP-нод вне
+  /// TUN — TCP-пинг этапа 1 или подтверждённая работа. Пинг, стёртый
+  /// проверкой, стирается и в пуле (#87). Страна выхода узнаётся один раз
+  /// (#68): пустой ответ не стирает старую.
+  static Node mergeDeep(Node cur, Node upd, {bool underTun = false}) => cur.copyWith(
+        isAlive: (underTun || cur.isQuic) ? upd.isAlive : (cur.isAlive || upd.isTrulyWorking),
+        isTrulyWorking: upd.isTrulyWorking,
+        aiReachable: upd.aiReachable,
+        udpSupported: upd.udpSupported,
+        latencyMs: upd.latencyMs,
+        clearLatency: upd.latencyMs == null,
+        exitCountry: upd.exitCountry ?? cur.exitCountry,
+      );
+
+  /// Сколько проб (отдельных sing-box) работает прямо сейчас. Пока они
+  /// есть, медленная проба здоровья туннеля не в счёт (#69): пробы грузят
+  /// сеть и процессор, тормозит не сервер.
+  static int get inFlight => _inFlight;
+  static int _inFlight = 0;
 
   /// Сколько нод проверяем параллельно в одном батче.
   /// 5 — баланс между скоростью и нагрузкой на систему.
@@ -323,15 +414,24 @@ class DeepProbe {
     required void Function(Node updated) onNodeResult,
     void Function(int done, int total)? onProgress,
     bool Function()? isCancelled,
+    int maxNodes = 1 << 30,
+    int minNodes = 0,
+    bool Function()? enough,
+    bool measureTcp = false,
   }) async {
-    final candidates = sortedNodes.where((n) => n.isAlive).toList();
+    // [measureTcp] — TCP-пинг серверов изнутри пробы (под TUN пинг из
+    // приложения ушёл бы в туннель), этап 2 автопилота.
+    // #41: бюджет — не больше [maxNodes] лучших; после [minNodes] останавливаемся,
+    // как только [enough] (нашлось достаточно рабочих). Раньше проверялись
+    // ВСЕ живые — на сотнях нод публичных подписок это десятки минут.
+    final candidates = sortedNodes.where((n) => n.isAlive).take(maxNodes).toList();
     if (candidates.isEmpty) {
       log.w('Deep-скан: нет живых кандидатов', tag: 'DEEP');
       return;
     }
 
     log.i(
-      'Deep-скан ВСЕХ нод: ${candidates.length} кандидатов, '
+      'Deep-скан: до ${candidates.length} кандидатов (минимум $minNodes), '
       'батчи по $_batchSize, база=$_probeHost, AI=$_aiProbeHost',
       tag: 'DEEP',
     );
@@ -339,6 +439,10 @@ class DeepProbe {
     int done = 0;
 
     for (var start = 0; start < candidates.length; start += _batchSize) {
+      if (done >= minNodes && (enough?.call() ?? false)) {
+        log.i('Deep-скан: достаточно рабочих после $done нод — стоп', tag: 'DEEP');
+        return;
+      }
       if (isCancelled?.call() ?? false) {
         log.d('Deep-скан прерван на $done/${candidates.length}', tag: 'DEEP');
         return;
@@ -357,7 +461,7 @@ class DeepProbe {
         List.generate(batch.length, (slot) async {
           final node = batch[slot];
           final port = _basePort + slot;
-          final result = await _probeNodeFull(node, port);
+          final result = await _probeNodeFull(node, port, measureTcp: measureTcp);
           done++;
           onNodeResult(result);
           onProgress?.call(done, candidates.length);
@@ -368,14 +472,119 @@ class DeepProbe {
     log.i('Deep-скан завершён: проверено ${candidates.length} нод', tag: 'DEEP');
   }
 
+  /// Свежий замер перед автопрыжком (#60): время HTTPS-запроса через каждую
+  /// ноду — те же единицы, что у монитора здоровья. Параллельно, лучший из
+  /// двух запросов (первый включает рукопожатие с сервером). Порты — свободные
+  /// от ОС, не пересекаются со сканом. Возвращает id → мс (−1 — не ответила).
+  ///
+  /// Работает и при поднятом VPN: на Windows трафик sing-box.exe идёт мимо
+  /// туннеля (правило в конфиге), на Android приложение исключено из VPN.
+  Future<Map<String, int>> measure(List<Node> nodes) async {
+    final res = <String, int>{};
+    await Future.wait([
+      for (final n in nodes) _measureOne(n).then((ms) => res[n.id] = ms),
+    ]);
+    return res;
+  }
+
+  Future<int> _measureOne(Node node) async {
+    Process? process;
+    String? configPath;
+    try {
+      final port = await _freePort();
+      configPath = _probeConfigPath(port);
+      await _writeProbeConfig(node, port, configPath);
+      process = await Process.start(
+        singboxExePath,
+        ['run', '-c', configPath],
+        mode: ProcessStartMode.detached,
+      );
+      _inFlight++;
+      WinChildGuard.adopt(process.pid);
+      // Ждём слушатель до 3 с вместо фиксированных 2 с.
+      var up = false;
+      for (var i = 0; i < 12 && !up; i++) {
+        await Future.delayed(const Duration(milliseconds: 250));
+        up = await _isSocksListening(port);
+      }
+      if (!up) return -1;
+      var best = -1;
+      for (var i = 0; i < 2; i++) {
+        final sw = Stopwatch()..start();
+        final ok = await _httpsProbeViaSocks5(port, node.name)
+            .timeout(const Duration(seconds: 5), onTimeout: () => false);
+        sw.stop();
+        if (!ok) break;
+        final ms = sw.elapsedMilliseconds;
+        if (best < 0 || ms < best) best = ms;
+      }
+      log.i('Замер ${node.name}: ${best < 0 ? "не ответил" : "$best мс"}', tag: 'DEEP');
+      return best;
+    } catch (e) {
+      log.d('[${node.name}] замер: $e', tag: 'DEEP');
+      return -1;
+    } finally {
+      try {
+        process?.kill();
+      } catch (_) {}
+      if (process != null) _inFlight--;
+      if (configPath != null) {
+        try {
+          File(configPath).deleteSync();
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Убрать брошенные конфиги проб (`onyx_probe_*.json` во временной
+  /// папке): если Onyx закрыли посреди проверки, `finally` не срабатывал, а
+  /// в конфиге — параметры сервера с учётными данными. Только старше
+  /// [olderThan], чтобы не задеть пробы соседнего экземпляра Onyx (#57).
+  static int cleanupStaleConfigs({
+    Duration olderThan = const Duration(minutes: 10),
+    Directory? dir,
+  }) {
+    dir ??= Directory(Platform.isWindows
+        ? (Platform.environment['TEMP'] ?? Directory.systemTemp.path)
+        : Directory.systemTemp.path);
+    final cutoff = DateTime.now().subtract(olderThan);
+    var removed = 0;
+    try {
+      for (final e in dir.listSync(followLinks: false)) {
+        final name = e.uri.pathSegments.isEmpty ? '' : e.uri.pathSegments.last;
+        if (e is! File || !name.startsWith('onyx_probe_') || !name.endsWith('.json')) continue;
+        try {
+          if (e.lastModifiedSync().isBefore(cutoff)) {
+            e.deleteSync();
+            removed++;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    if (removed > 0) log.i('Удалено брошенных конфигов проб: $removed', tag: 'DEEP');
+    return removed;
+  }
+
+  static Future<int> _freePort() async {
+    final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = s.port;
+    await s.close();
+    return port;
+  }
+
   /// Полная проверка одной ноды: базовая связность + (при успехе) AI.
   /// Всегда возвращает ноду с проставленными флагами (в т.ч. false/false
   /// при провале), чтобы вызывающий мог обновить UI без исключений.
-  Future<Node> _probeNodeFull(Node node, int port) async {
+  Future<Node> _probeNodeFull(Node node, int port, {bool measureTcp = false}) async {
     final configPath = _probeConfigPath(port);
     Process? process;
     bool basicOk = false;
     bool aiOk = false;
+    bool udpOk = false;
+    int? httpsMs;
+    String? exitCountry;
+    // TCP-пинг изнутри пробы (под TUN): -2 — не мерили, -1 — сервер не ответил
+    var tcpMs = -2;
 
     try {
       await _writeProbeConfig(node, port, configPath);
@@ -384,6 +593,9 @@ class DeepProbe {
         ['run', '-c', configPath],
         mode: ProcessStartMode.detached,
       );
+      _inFlight++;
+      // Пробы не переживают onyx.exe: задание Windows погасит их при любом выходе (#57)
+      WinChildGuard.adopt(process.pid);
       log.d('[${node.name}] PID=${process.pid}, SOCKS5 порт=$port', tag: 'DEEP');
 
       await Future.delayed(_startupDelay);
@@ -393,10 +605,30 @@ class DeepProbe {
         return node.copyWith(isTrulyWorking: false, aiReachable: false);
       }
 
+      if (measureTcp && !node.isQuic) {
+        tcpMs = await tcpPingViaSocks5(port, node.host, node.port);
+        log.d('[${node.name}] TCP-пинг через пробу: ${tcpMs < 0 ? "нет ответа" : "$tcpMs мс"}', tag: 'DEEP');
+      }
+
+      final sw = Stopwatch()..start();
       basicOk = await _httpsProbeViaSocks5(port, node.name).timeout(
         _httpTimeout,
         onTimeout: () => false,
       );
+      sw.stop();
+      // Время HTTPS-запроса через прокси (грубо, с запасом — включает TLS к
+      // cp.cloudflare.com): задержка QUIC-нод и TCP-нод без TCP-пинга ([outcome]).
+      if (basicOk) httpsMs = sw.elapsedMilliseconds;
+      if (basicOk) {
+        // UDP — то, на чём живут голос, камера и стримы Discord.
+        final udp = await UdpProbe.viaSocks5(
+          port,
+          attempts: 3,
+          timeout: const Duration(seconds: 3),
+        );
+        udpOk = udp.ok;
+        log.d('[${node.name}] UDP: ${udp.summary}', tag: 'DEEP');
+      }
 
       // AI проверяем только у живых нод — на мёртвой это пустая трата времени.
       if (basicOk) {
@@ -406,9 +638,15 @@ class DeepProbe {
         );
       }
 
+      // Страна выхода (#68) — один раз на ноду: сервер не переезжает.
+      if (basicOk && node.exitCountry == null) {
+        exitCountry = await exitCountryViaProxy(port).timeout(_httpTimeout, onTimeout: () => null);
+        log.d('[${node.name}] страна выхода: ${exitCountry ?? "не узнали"}', tag: 'DEEP');
+      }
+
       log.i(
         '${basicOk ? "✓" : "✗"} [${node.name}] '
-        'база=${basicOk ? "ok" : "нет"} AI=${aiOk ? "ok" : "нет"}',
+        'база=${basicOk ? "ok" : "нет"} AI=${aiOk ? "ok" : "нет"} UDP=${udpOk ? "ok" : "нет"}',
         tag: 'DEEP',
       );
     } catch (e) {
@@ -417,12 +655,97 @@ class DeepProbe {
       try {
         process?.kill();
       } catch (_) {}
+      if (process != null) _inFlight--;
       try {
         File(configPath).deleteSync();
       } catch (_) {}
     }
 
-    return node.copyWith(isTrulyWorking: basicOk, aiReachable: aiOk);
+    // TCP-пинг изнутри пробы — свежая «живость» и задержка (те же единицы,
+    // что у обычного TCP-пинга: одно рукопожатие); провал стирает старое (#87).
+    return outcome(
+      node,
+      basicOk: basicOk,
+      tcpMs: tcpMs,
+      httpsMs: httpsMs,
+      aiOk: aiOk,
+      udpOk: udpOk,
+      exitCountry: exitCountry,
+    );
+  }
+
+  /// Страна выхода через запущенную пробу (#68): Cloudflare trace ЧЕРЕЗ сам
+  /// сервер, `loc=XX` → «xx». Cloudflare видит IP сервера, как при любом
+  /// сёрфинге через него; сторонним GeoIP-сервисам адрес сервера не уходит.
+  /// Сертификат проверяется: ответ должен прийти от Cloudflare, а не от
+  /// сервера-посредника. null — не ответил или нет loc.
+  static Future<String?> exitCountryViaProxy(int proxyPort, {String host = 'www.cloudflare.com'}) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 4)
+      ..findProxy = (_) => 'PROXY 127.0.0.1:$proxyPort';
+    try {
+      final req = await client.getUrl(Uri.parse('https://$host/cdn-cgi/trace'));
+      req.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
+      final resp = await req.close().timeout(_httpTimeout);
+      if (resp.statusCode != 200) {
+        await resp.drain<void>();
+        return null;
+      }
+      final body = await resp.transform(const Utf8Decoder(allowMalformed: true)).join().timeout(_httpTimeout);
+      return GeoIp.parseTrace(body)?.toLowerCase();
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// TCP-пинг сервера через запущенную пробу: SOCKS5 CONNECT к host:port.
+  /// sing-box отвечает на CONNECT только после настоящего TCP-рукопожатия с
+  /// сервером (правило пробы «свой сервер — напрямую»), поэтому время ответа
+  /// и есть TCP-пинг — без туннеля, даже когда VPN поднят. Два замера, берём
+  /// лучший (во втором не участвует DNS, если host — домен). −1 — сервер не
+  /// ответил.
+  static Future<int> tcpPingViaSocks5(int proxyPort, String host, int port,
+      {Duration timeout = const Duration(seconds: 4)}) async {
+    var best = -1;
+    for (var i = 0; i < 2; i++) {
+      final ms = await _socksConnectMs(proxyPort, host, port, timeout);
+      if (ms < 0) return best;
+      if (best < 0 || ms < best) best = ms;
+    }
+    return best;
+  }
+
+  static Future<int> _socksConnectMs(int proxyPort, String host, int port, Duration timeout) async {
+    Socket? s;
+    try {
+      s = await Socket.connect('127.0.0.1', proxyPort, timeout: const Duration(seconds: 2));
+      final reader = _ByteReader(s);
+      s.add(const [0x05, 0x01, 0x00]); // SOCKS5, один метод: без авторизации
+      final hello = await reader.take(2).timeout(timeout);
+      if (hello[0] != 0x05 || hello[1] != 0x00) return -1;
+      final ip = InternetAddress.tryParse(host);
+      final req = <int>[0x05, 0x01, 0x00];
+      if (ip != null && ip.type == InternetAddressType.IPv4) {
+        req..add(0x01)..addAll(ip.rawAddress);
+      } else if (ip != null) {
+        req..add(0x04)..addAll(ip.rawAddress);
+      } else {
+        final name = host.codeUnits;
+        req..add(0x03)..add(name.length)..addAll(name);
+      }
+      req..add(port >> 8)..add(port & 0xFF);
+      final sw = Stopwatch()..start();
+      s.add(req);
+      final reply = await reader.take(2).timeout(timeout);
+      sw.stop();
+      return (reply[0] == 0x05 && reply[1] == 0x00) ? sw.elapsedMilliseconds : -1;
+    } catch (_) {
+      return -1;
+    } finally {
+      s?.destroy();
+    }
   }
 
   // ── Приватные методы ───────────────────────────────────────────────────────
@@ -527,7 +850,9 @@ class DeepProbe {
             configPath,
           ],
           mode: ProcessStartMode.detached);
+      _inFlight++;
       activeProcs[port] = process;
+      WinChildGuard.adopt(process.pid); // #57
       log.d(
         '[${node.name}] PID=${process.pid}, SOCKS5 порт=$port',
         tag: 'DEEP',
@@ -545,6 +870,7 @@ class DeepProbe {
       }
       if (cancelled[0]) return;
 
+      final sw = Stopwatch()..start();
       final ok = await _httpsProbeViaSocks5(port, node.name).timeout(
         _httpTimeout,
         onTimeout: () {
@@ -558,7 +884,10 @@ class DeepProbe {
           '✓ [${node.name}] HTTP 204 через порт $port — нода рабочая!',
           tag: 'DEEP',
         );
-        winner = node.copyWith(isTrulyWorking: true);
+        winner = node.copyWith(
+          isTrulyWorking: true,
+          latencyMs: node.isQuic ? sw.elapsedMilliseconds : null,
+        );
       } else {
         log.w('✗ [${node.name}] HTTPS-проверка провалилась', tag: 'DEEP');
       }
@@ -568,6 +897,7 @@ class DeepProbe {
       try {
         process?.kill();
       } catch (_) {}
+      if (process != null) _inFlight--;
       activeProcs.remove(port);
       try {
         File(configPath).deleteSync();
@@ -685,5 +1015,46 @@ class DeepProbe {
     final json = builder.buildJson(config);
     await File(path).writeAsString(json, flush: true);
     log.d('Probe-конфиг: $path', tag: 'DEEP');
+  }
+}
+/// Чтение ровно N байт из сокета (SOCKS5-рукопожатие для TCP-пинга пробы).
+class _ByteReader {
+  _ByteReader(Socket s) {
+    s.listen(
+      (d) {
+        _buf.addAll(d);
+        _check();
+      },
+      onError: (Object e) => _fail(e),
+      onDone: () => _fail(const SocketException('соединение закрыто')),
+      cancelOnError: true,
+    );
+  }
+
+  final _buf = <int>[];
+  int _need = 0;
+  Completer<List<int>>? _c;
+  Object? _error;
+
+  Future<List<int>> take(int n) {
+    _need = n;
+    final c = _c = Completer<List<int>>();
+    _check();
+    if (!c.isCompleted && _error != null) c.completeError(_error!);
+    return c.future;
+  }
+
+  void _check() {
+    final c = _c;
+    if (c == null || c.isCompleted || _buf.length < _need) return;
+    final out = _buf.sublist(0, _need);
+    _buf.removeRange(0, _need);
+    c.complete(out);
+  }
+
+  void _fail(Object e) {
+    _error = e;
+    final c = _c;
+    if (c != null && !c.isCompleted) c.completeError(e);
   }
 }
